@@ -38,12 +38,14 @@ public class KnowledgeBasePersistenceService {
         kb.incrementAccessCount();
         knowledgeBaseRepository.save(kb);
 
-        // 重复知识库的向量数据应该已经存在，不需要重新向量化
+        // 重复知识库的向量数据应该已经存在，不需要重新向量化；响应契约与新上传保持一致
         return Map.of(
             "knowledgeBase", Map.of(
                 "id", kb.getId(),
                 "name", kb.getName(),
-                "fileSize", kb.getFileSize()
+                "category", kb.getCategory() != null ? kb.getCategory() : "",
+                "fileSize", kb.getFileSize(),
+                "vectorStatus", kb.getVectorStatus() != null ? kb.getVectorStatus().name() : "PENDING"
             ),
             "storage", Map.of(
                 "fileKey", kb.getStorageKey() != null ? kb.getStorageKey() : "",
