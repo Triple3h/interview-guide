@@ -52,6 +52,8 @@ class VoiceInterviewWebSocketHandlerTest {
   @Mock
   private VoiceContextCompressor voiceContextCompressor;
   @Mock
+  private interview.guide.modules.voiceinterview.context.VoiceHistoryLoader voiceHistoryLoader;
+  @Mock
   private ObjectProvider<MeterRegistry> meterRegistryProvider;
 
   private VoiceInterviewWebSocketHandler handler;
@@ -144,6 +146,7 @@ class VoiceInterviewWebSocketHandlerTest {
         llmService,
         interviewService,
         voiceContextCompressor,
+        voiceHistoryLoader,
         properties,
         meterRegistryProvider
     );
