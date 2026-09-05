@@ -50,6 +50,9 @@ dependencies {
     implementation libs.tika.core
     implementation libs.tika.parsers
 
+    // Apache PDFBox for scanned-PDF page rendering (OCR fallback, version aligned with Tika)
+    implementation libs.pdfbox
+
     // AWS S3 SDK for RustFS storage
     implementation "software.amazon.awssdk:s3:${libs.versions.aws.sdk.get()}"
 

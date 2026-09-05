@@ -9,6 +9,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -27,7 +28,28 @@ class DocumentParseIntegrationTest {
     void setUp() {
         // 使用真实的服务实例
         textCleaningService = new TextCleaningService();
-        documentParseService = new DocumentParseService(textCleaningService);
+        documentParseService = new DocumentParseService(
+            textCleaningService,
+            List.of(
+                new PlainTextDocumentParseStrategy(),
+                new MarkdownDocumentParseStrategy(),
+                new TikaDocumentParseStrategy()
+            )
+        );
+    }
+
+    @Test
+    @DisplayName("集成测试 - 解析结果携带文档格式标记")
+    void testParseResultCarriesFormat() throws IOException {
+        byte[] mdBytes = getClass().getResourceAsStream("/test-files/sample-resume.md").readAllBytes();
+        byte[] txtBytes = getClass().getResourceAsStream("/test-files/sample-resume.txt").readAllBytes();
+
+        ParsedDocument mdParsed = documentParseService.parseDocument(mdBytes, "sample-resume.md");
+        ParsedDocument txtParsed = documentParseService.parseDocument(txtBytes, "sample-resume.txt");
+
+        assertEquals(ParsedDocument.DocumentFormat.MARKDOWN, mdParsed.format());
+        assertEquals(ParsedDocument.DocumentFormat.PLAIN_TEXT, txtParsed.format());
+        assertFalse(mdParsed.isBlank());
     }
 
     @Test

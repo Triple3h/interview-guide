@@ -14,6 +14,7 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -43,10 +44,21 @@ class DocumentParseServiceTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        documentParseService = new DocumentParseService(textCleaningService);
+        documentParseService = new DocumentParseService(textCleaningService, defaultStrategies());
 
         // 默认行为：TextCleaningService 直接返回输入（单元测试关注 DocumentParseService 逻辑）
         when(textCleaningService.cleanText(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
+    }
+
+    /**
+     * 与生产装配一致的策略链：纯文本/Markdown 直读，Tika 兜底
+     */
+    private List<DocumentParseStrategy> defaultStrategies() {
+        return List.of(
+            new PlainTextDocumentParseStrategy(),
+            new MarkdownDocumentParseStrategy(),
+            new TikaDocumentParseStrategy()
+        );
     }
 
     @Test
@@ -400,7 +412,7 @@ class DocumentParseServiceTest {
 
         // 使用真实的 TextCleaningService
         TextCleaningService realCleaningService = new TextCleaningService();
-        DocumentParseService realService = new DocumentParseService(realCleaningService);
+        DocumentParseService realService = new DocumentParseService(realCleaningService, defaultStrategies());
 
         // When
         String result = realService.parseContent(file);
@@ -415,6 +427,67 @@ class DocumentParseServiceTest {
         // 验证分隔线被清理
         assertFalse(result.contains("============"));
         assertFalse(result.contains("--------"));
+    }
+
+    @Test
+    @DisplayName("parseDocument 返回带格式标记的解析结果")
+    void testParseDocumentReturnsFormat() {
+        // Given
+        byte[] mdBytes = "# 标题\n内容".getBytes(StandardCharsets.UTF_8);
+        byte[] txtBytes = "普通文本".getBytes(StandardCharsets.UTF_8);
+
+        // When
+        ParsedDocument mdParsed = documentParseService.parseDocument(mdBytes, "notes.md");
+        ParsedDocument txtParsed = documentParseService.parseDocument(txtBytes, "notes.txt");
+
+        // Then
+        assertEquals(ParsedDocument.DocumentFormat.MARKDOWN, mdParsed.format());
+        assertTrue(mdParsed.content().contains("标题"));
+        assertEquals(ParsedDocument.DocumentFormat.PLAIN_TEXT, txtParsed.format());
+    }
+
+    @Test
+    @DisplayName("策略分发按注入顺序命中首个支持的策略")
+    void testStrategyDispatchOrder() {
+        // Given: 一个无条件命中的策略放在链首
+        DocumentParseStrategy alwaysFirst = new DocumentParseStrategy() {
+            @Override
+            public boolean supports(String fileName) {
+                return true;
+            }
+
+            @Override
+            public ParsedDocument parse(byte[] fileBytes, String fileName) {
+                return new ParsedDocument("来自首选策略", ParsedDocument.DocumentFormat.PLAIN_TEXT);
+            }
+        };
+        DocumentParseService orderedService = new DocumentParseService(
+            textCleaningService, List.of(alwaysFirst, new TikaDocumentParseStrategy()));
+
+        // When: 即使文件扩展名属于其他策略，也应命中链首
+        ParsedDocument parsed = orderedService.parseDocument(
+            "内容".getBytes(StandardCharsets.UTF_8), "notes.txt");
+
+        // Then
+        assertEquals("来自首选策略", parsed.content());
+        verify(textCleaningService, times(1)).cleanText(anyString());
+    }
+
+    @Test
+    @DisplayName("downloadAndParseDocument 返回带格式标记的解析结果")
+    void testDownloadAndParseDocument() {
+        // Given
+        String storageKey = "knowledgebases/test.md";
+        byte[] fileBytes = "# 题库\n内容".getBytes(StandardCharsets.UTF_8);
+        when(fileStorageService.downloadFile(storageKey)).thenReturn(fileBytes);
+
+        // When
+        ParsedDocument parsed = documentParseService.downloadAndParseDocument(
+            fileStorageService, storageKey, "test.md");
+
+        // Then
+        assertEquals(ParsedDocument.DocumentFormat.MARKDOWN, parsed.format());
+        assertTrue(parsed.content().contains("题库"));
     }
 
 }

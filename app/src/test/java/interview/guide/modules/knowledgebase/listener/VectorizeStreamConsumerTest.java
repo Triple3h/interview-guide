@@ -1,6 +1,8 @@
 package interview.guide.modules.knowledgebase.listener;
 
 import interview.guide.common.exception.BusinessException;
+import interview.guide.infrastructure.file.DocumentOcrService;
+import interview.guide.infrastructure.file.ParsedDocument;
 import interview.guide.infrastructure.redis.RedisService;
 import interview.guide.modules.knowledgebase.model.KbBatchItemStatus;
 import interview.guide.modules.knowledgebase.model.KbUploadBatchItemEntity;
@@ -43,6 +45,8 @@ class VectorizeStreamConsumerTest {
     private KnowledgeBaseRepository knowledgeBaseRepository;
     @Mock
     private KbUploadBatchItemRepository batchItemRepository;
+    @Mock
+    private DocumentOcrService documentOcrService;
 
     private VectorizeStreamConsumer consumer;
 
@@ -50,7 +54,7 @@ class VectorizeStreamConsumerTest {
     void setUp() {
         MockitoAnnotations.openMocks(this);
         consumer = new VectorizeStreamConsumer(
-            redisService, vectorService, parseService, knowledgeBaseRepository, batchItemRepository);
+            redisService, vectorService, parseService, knowledgeBaseRepository, batchItemRepository, documentOcrService);
     }
 
     private KnowledgeBaseEntity kb(long id, String storageKey, VectorStatus status) {
@@ -185,16 +189,20 @@ class VectorizeStreamConsumerTest {
     class BusinessProcess {
 
         @Test
-        @DisplayName("正常流程：从存储下载并解析后执行向量化")
+        @DisplayName("正常流程：从存储下载并解析后执行向量化，并写入 chunk 数量")
         void shouldDownloadParseAndVectorize() {
             KnowledgeBaseEntity entity = kb(100L, "knowledgebases/2026/09/05/test.pdf", VectorStatus.PROCESSING);
             when(knowledgeBaseRepository.findById(100L)).thenReturn(Optional.of(entity));
-            when(parseService.downloadAndParseContent("knowledgebases/2026/09/05/test.pdf", "test.pdf"))
-                .thenReturn("提取的文本内容");
+            ParsedDocument parsed = new ParsedDocument("提取的文本内容", ParsedDocument.DocumentFormat.RICH_TEXT);
+            when(parseService.downloadAndParseDocument("knowledgebases/2026/09/05/test.pdf", "test.pdf"))
+                .thenReturn(parsed);
+            when(vectorService.vectorizeAndStore(eq(100L), any(ParsedDocument.class))).thenReturn(3);
 
             consumer.processBusiness(new VectorizeStreamConsumer.VectorizePayload(100L));
 
-            verify(vectorService).vectorizeAndStore(100L, "提取的文本内容");
+            verify(vectorService).vectorizeAndStore(100L, parsed);
+            assertThat(entity.getChunkCount()).isEqualTo(3);
+            verify(knowledgeBaseRepository).save(entity);
         }
 
         @Test
@@ -204,7 +212,7 @@ class VectorizeStreamConsumerTest {
 
             consumer.processBusiness(new VectorizeStreamConsumer.VectorizePayload(100L));
 
-            verify(vectorService, never()).vectorizeAndStore(anyLong(), anyString());
+            verify(vectorService, never()).vectorizeAndStore(anyLong(), any(ParsedDocument.class));
         }
 
         @Test
@@ -216,7 +224,27 @@ class VectorizeStreamConsumerTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("文件存储信息缺失");
 
-            verify(vectorService, never()).vectorizeAndStore(anyLong(), anyString());
+            verify(vectorService, never()).vectorizeAndStore(anyLong(), any(ParsedDocument.class));
+        }
+
+        @Test
+        @DisplayName("扫描版 PDF 文本不足时走 OCR 兜底解析")
+        void shouldFallbackToOcrWhenParsedTextInsufficient() {
+            KnowledgeBaseEntity entity = kb(100L, "knowledgebases/scan.pdf", VectorStatus.PROCESSING);
+            entity.setOriginalFilename("scan.pdf");
+            when(knowledgeBaseRepository.findById(100L)).thenReturn(Optional.of(entity));
+            ParsedDocument tikaParsed = new ParsedDocument("", ParsedDocument.DocumentFormat.RICH_TEXT);
+            when(parseService.downloadAndParseDocument("knowledgebases/scan.pdf", "scan.pdf"))
+                .thenReturn(tikaParsed);
+            when(documentOcrService.needsOcr(tikaParsed, "scan.pdf")).thenReturn(true);
+            ParsedDocument ocrParsed = new ParsedDocument("OCR 提取的文本", ParsedDocument.DocumentFormat.MARKDOWN);
+            when(parseService.ocrScannedDocument("knowledgebases/scan.pdf", "scan.pdf")).thenReturn(ocrParsed);
+            when(vectorService.vectorizeAndStore(eq(100L), any(ParsedDocument.class))).thenReturn(5);
+
+            consumer.processBusiness(new VectorizeStreamConsumer.VectorizePayload(100L));
+
+            verify(parseService).ocrScannedDocument("knowledgebases/scan.pdf", "scan.pdf");
+            verify(vectorService).vectorizeAndStore(100L, ocrParsed);
         }
 
         @Test
@@ -224,7 +252,8 @@ class VectorizeStreamConsumerTest {
         void shouldThrowWhenContentBlank() {
             KnowledgeBaseEntity entity = kb(100L, "key", VectorStatus.PROCESSING);
             when(knowledgeBaseRepository.findById(100L)).thenReturn(Optional.of(entity));
-            when(parseService.downloadAndParseContent(anyString(), anyString())).thenReturn("   ");
+            when(parseService.downloadAndParseDocument(anyString(), anyString()))
+                .thenReturn(new ParsedDocument("   ", ParsedDocument.DocumentFormat.RICH_TEXT));
 
             assertThatThrownBy(() -> consumer.processBusiness(new VectorizeStreamConsumer.VectorizePayload(100L)))
                 .isInstanceOf(BusinessException.class)

@@ -1,8 +1,10 @@
 package interview.guide.modules.knowledgebase.service;
 
 import interview.guide.infrastructure.file.ContentTypeDetectionService;
+import interview.guide.infrastructure.file.DocumentOcrService;
 import interview.guide.infrastructure.file.DocumentParseService;
 import interview.guide.infrastructure.file.FileStorageService;
+import interview.guide.infrastructure.file.ParsedDocument;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -20,6 +22,7 @@ public class KnowledgeBaseParseService {
     private final DocumentParseService documentParseService;
     private final ContentTypeDetectionService contentTypeDetectionService;
     private final FileStorageService storageService;
+    private final DocumentOcrService documentOcrService;
 
     /**
      * 解析上传的知识库文件，提取文本内容
@@ -49,11 +52,23 @@ public class KnowledgeBaseParseService {
      *
      * @param storageKey       存储键
      * @param originalFilename 原始文件名
-     * @return 提取的文本内容
+     * @return 解析结果（带文档格式标记）
      */
-    public String downloadAndParseContent(String storageKey, String originalFilename) {
+    public ParsedDocument downloadAndParseDocument(String storageKey, String originalFilename) {
         log.info("从存储下载并解析知识库文件: {}", originalFilename);
-        return documentParseService.downloadAndParseContent(storageService, storageKey, originalFilename);
+        return documentParseService.downloadAndParseDocument(storageService, storageKey, originalFilename);
+    }
+
+    /**
+     * OCR 兜底解析扫描版 PDF（逐页渲染后调用视觉模型转写）
+     *
+     * @param storageKey       存储键
+     * @param originalFilename 原始文件名
+     * @return 解析结果（Markdown 格式）
+     */
+    public ParsedDocument ocrScannedDocument(String storageKey, String originalFilename) {
+        log.info("OCR 兜底解析知识库文件: {}", originalFilename);
+        return documentOcrService.parseScannedDocument(storageService, storageKey, originalFilename);
     }
 
     /**

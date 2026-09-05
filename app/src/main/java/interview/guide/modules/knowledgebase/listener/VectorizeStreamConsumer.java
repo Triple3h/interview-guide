@@ -4,6 +4,8 @@ import interview.guide.common.async.AbstractStreamConsumer;
 import interview.guide.common.constant.AsyncTaskStreamConstants;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
+import interview.guide.infrastructure.file.DocumentOcrService;
+import interview.guide.infrastructure.file.ParsedDocument;
 import interview.guide.infrastructure.redis.RedisService;
 import interview.guide.modules.knowledgebase.model.KbBatchItemStatus;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity;
@@ -32,19 +34,22 @@ public class VectorizeStreamConsumer extends AbstractStreamConsumer<VectorizeStr
     private final KnowledgeBaseParseService parseService;
     private final KnowledgeBaseRepository knowledgeBaseRepository;
     private final KbUploadBatchItemRepository batchItemRepository;
+    private final DocumentOcrService documentOcrService;
 
     public VectorizeStreamConsumer(
         RedisService redisService,
         KnowledgeBaseVectorService vectorService,
         KnowledgeBaseParseService parseService,
         KnowledgeBaseRepository knowledgeBaseRepository,
-        KbUploadBatchItemRepository batchItemRepository
+        KbUploadBatchItemRepository batchItemRepository,
+        DocumentOcrService documentOcrService
     ) {
         super(redisService);
         this.vectorService = vectorService;
         this.parseService = parseService;
         this.knowledgeBaseRepository = knowledgeBaseRepository;
         this.batchItemRepository = batchItemRepository;
+        this.documentOcrService = documentOcrService;
     }
 
     record VectorizePayload(Long kbId) {}
@@ -122,11 +127,18 @@ public class VectorizeStreamConsumer extends AbstractStreamConsumer<VectorizeStr
             throw new BusinessException(ErrorCode.KNOWLEDGE_BASE_PARSE_FAILED, "文件存储信息缺失，无法解析");
         }
 
-        String content = parseService.downloadAndParseContent(kb.getStorageKey(), kb.getOriginalFilename());
-        if (content == null || content.isBlank()) {
+        ParsedDocument parsed = parseService.downloadAndParseDocument(kb.getStorageKey(), kb.getOriginalFilename());
+        if (documentOcrService.needsOcr(parsed, kb.getOriginalFilename())) {
+            // Tika 提取不到足够文本（典型为扫描版 PDF），走视觉模型逐页 OCR 兜底
+            log.info("Tika 提取文本不足，启用 OCR 兜底解析: kbId={}, fileName={}", kbId, kb.getOriginalFilename());
+            parsed = parseService.ocrScannedDocument(kb.getStorageKey(), kb.getOriginalFilename());
+        }
+        if (parsed == null || parsed.isBlank()) {
             throw new BusinessException(ErrorCode.KNOWLEDGE_BASE_PARSE_FAILED, "无法从文件中提取文本内容");
         }
-        vectorService.vectorizeAndStore(kbId, content);
+        int chunkCount = vectorService.vectorizeAndStore(kbId, parsed);
+        kb.setChunkCount(chunkCount);
+        knowledgeBaseRepository.save(kb);
     }
 
     @Override

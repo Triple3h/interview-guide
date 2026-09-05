@@ -1,7 +1,12 @@
 package interview.guide.modules.knowledgebase.service;
 
 import interview.guide.common.exception.BusinessException;
+import interview.guide.infrastructure.file.ParsedDocument;
 import interview.guide.modules.knowledgebase.repository.VectorRepository;
+import interview.guide.modules.knowledgebase.service.chunking.DefaultTokenChunker;
+import interview.guide.modules.knowledgebase.service.chunking.DocumentChunkingService;
+import interview.guide.modules.knowledgebase.service.chunking.MarkdownHeadingChunker;
+import interview.guide.modules.knowledgebase.service.chunking.QaContentChunker;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -34,9 +39,8 @@ import static org.mockito.Mockito.*;
  *   <li>删除向量数据（deleteByKnowledgeBaseId）</li>
  * </ul>
  *
- * <p>注意：TextSplitter 未被 Mock，测试依赖 TokenTextSplitter 的真实行为。
- * 这是有意为之，因为分词逻辑是向量化的核心部分，应该进行集成测试。
- * 如需完全隔离，可将 TextSplitter 改为构造函数注入。
+ * <p>注意：分块链未被 Mock，测试依赖真实分块策略（QA/Markdown/通用）的行为。
+ * 这是有意为之，因为分块逻辑是向量化的核心部分。
  */
 @DisplayName("知识库向量服务测试")
 @SuppressWarnings("unchecked") // Mockito ArgumentCaptor 泛型警告
@@ -53,7 +57,13 @@ class KnowledgeBaseVectorServiceTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        vectorService = new KnowledgeBaseVectorService(vectorStore, vectorRepository);
+        KnowledgeBaseChunkingProperties chunkingProperties = new KnowledgeBaseChunkingProperties();
+        DocumentChunkingService chunkingService = new DocumentChunkingService(List.of(
+            new QaContentChunker(chunkingProperties),
+            new MarkdownHeadingChunker(chunkingProperties),
+            new DefaultTokenChunker(chunkingProperties)
+        ));
+        vectorService = new KnowledgeBaseVectorService(vectorStore, chunkingService, vectorRepository);
     }
 
     // ==================== 共享辅助方法 ====================
@@ -75,6 +85,13 @@ class KnowledgeBaseVectorServiceTest {
                 .append("\n\n");
         }
         return contentBuilder.toString();
+    }
+
+    /**
+     * 包装为二进制文档解析结果（走通用分块策略）
+     */
+    private ParsedDocument richText(String content) {
+        return new ParsedDocument(content, ParsedDocument.DocumentFormat.RICH_TEXT);
     }
 
     /**
@@ -165,9 +182,10 @@ class KnowledgeBaseVectorServiceTest {
             String content = generateLongContent(5);
 
             // When: 执行向量化
-            vectorService.vectorizeAndStore(knowledgeBaseId, content);
+            int chunkCount = vectorService.vectorizeAndStore(knowledgeBaseId, richText(content));
 
-            // Then: 验证所有新数据写入成功后才替换旧数据
+            // Then: 长文本应产生 chunks，且所有新数据写入成功后才替换旧数据
+            assertTrue(chunkCount > 0, "长文本应产生 chunks");
             verify(vectorRepository, times(1)).deleteByKnowledgeBaseId(knowledgeBaseId);
             verify(vectorRepository, times(1)).promoteVectorJob(eq(knowledgeBaseId), anyString());
 
@@ -187,7 +205,7 @@ class KnowledgeBaseVectorServiceTest {
             ArgumentCaptor<List<Document>> captor = ArgumentCaptor.forClass(List.class);
 
             // When: 执行向量化
-            vectorService.vectorizeAndStore(knowledgeBaseId, content);
+            vectorService.vectorizeAndStore(knowledgeBaseId, richText(content));
 
             // Then: 捕获所有 add 调用
             verify(vectorStore, atLeastOnce()).add(captor.capture());
@@ -210,7 +228,7 @@ class KnowledgeBaseVectorServiceTest {
             ArgumentCaptor<List<Document>> captor = ArgumentCaptor.forClass(List.class);
 
             // When
-            vectorService.vectorizeAndStore(knowledgeBaseId, content);
+            vectorService.vectorizeAndStore(knowledgeBaseId, richText(content));
 
             // Then: 捕获添加的文档，验证 metadata
             verify(vectorStore, atLeastOnce()).add(captor.capture());
@@ -239,7 +257,7 @@ class KnowledgeBaseVectorServiceTest {
             String content = generateLongContent(10);
 
             // When
-            vectorService.vectorizeAndStore(knowledgeBaseId, content);
+            vectorService.vectorizeAndStore(knowledgeBaseId, richText(content));
 
             // Then: 验证 add 成功后再删除旧数据并提升新数据
             var inOrder = inOrder(vectorRepository, vectorStore);
@@ -261,7 +279,7 @@ class KnowledgeBaseVectorServiceTest {
             // When & Then
             BusinessException exception = assertThrows(
                 BusinessException.class,
-                () -> vectorService.vectorizeAndStore(knowledgeBaseId, content)
+                () -> vectorService.vectorizeAndStore(knowledgeBaseId, richText(content))
             );
 
             assertTrue(exception.getMessage().contains("向量化知识库失败"));
@@ -278,7 +296,7 @@ class KnowledgeBaseVectorServiceTest {
             String content = "";
 
             // When
-            vectorService.vectorizeAndStore(knowledgeBaseId, content);
+            vectorService.vectorizeAndStore(knowledgeBaseId, richText(content));
 
             // Then: 空内容成功向量化后会删除旧数据并提升空任务结果
             verify(vectorRepository, times(1)).deleteByKnowledgeBaseId(knowledgeBaseId);
@@ -535,7 +553,7 @@ class KnowledgeBaseVectorServiceTest {
             // 实际会在设置 metadata 时抛出 NullPointerException，被包装为 RuntimeException
             RuntimeException exception = assertThrows(
                 RuntimeException.class,
-                () -> vectorService.vectorizeAndStore(null, content)
+                () -> vectorService.vectorizeAndStore(null, richText(content))
             );
 
             assertTrue(exception.getMessage().contains("向量化知识库失败"),
@@ -543,17 +561,17 @@ class KnowledgeBaseVectorServiceTest {
         }
 
         @Test
-        @DisplayName("内容为null时 - 应包装为业务异常")
+        @DisplayName("内容为null时 - 视为空内容处理，不添加数据")
         void testNullContent() {
             // Given
             Long knowledgeBaseId = 1L;
 
-            // When & Then: null content 应被统一包装为向量化业务异常
-            BusinessException exception = assertThrows(
-                BusinessException.class,
-                () -> vectorService.vectorizeAndStore(knowledgeBaseId, null)
-            );
-            assertTrue(exception.getMessage().contains("向量化知识库失败"));
+            // When: null 解析结果按空内容处理（生产链路中消费方已提前拦截空内容）
+            int chunkCount = vectorService.vectorizeAndStore(knowledgeBaseId, null);
+
+            // Then: 不会写入任何 chunk
+            assertEquals(0, chunkCount);
+            verify(vectorStore, never()).add(anyList());
         }
 
         @Test

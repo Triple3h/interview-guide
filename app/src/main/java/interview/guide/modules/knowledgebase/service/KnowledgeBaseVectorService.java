@@ -3,11 +3,11 @@ package interview.guide.modules.knowledgebase.service;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.common.transaction.TransactionalExecutor;
+import interview.guide.infrastructure.file.ParsedDocument;
 import interview.guide.modules.knowledgebase.repository.VectorRepository;
+import interview.guide.modules.knowledgebase.service.chunking.DocumentChunkingService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
-import org.springframework.ai.transformer.splitter.TextSplitter;
-import org.springframework.ai.transformer.splitter.TokenTextSplitter;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,49 +35,49 @@ public class KnowledgeBaseVectorService {
     private static final String METADATA_TARGET_KB_ID = "kb_target_id";
     private static final String METADATA_VECTOR_JOB_ID = "kb_vector_job_id";
     private final VectorStore vectorStore;
-    private final TextSplitter textSplitter;
+    private final DocumentChunkingService chunkingService;
     private final VectorRepository vectorRepository;
     private final TransactionalExecutor transactionalExecutor;
 
     @Autowired
     public KnowledgeBaseVectorService(
         VectorStore vectorStore,
+        DocumentChunkingService chunkingService,
         VectorRepository vectorRepository,
         TransactionalExecutor transactionalExecutor
     ) {
         this.vectorStore = vectorStore;
+        this.chunkingService = chunkingService;
         this.vectorRepository = vectorRepository;
         this.transactionalExecutor = transactionalExecutor;
-        // 使用 TokenTextSplitter 默认配置，每个 chunk 约 800 tokens，基于标点边界切分（无重叠）
-        this.textSplitter = TokenTextSplitter.builder().build();
     }
 
-    KnowledgeBaseVectorService(VectorStore vectorStore, VectorRepository vectorRepository) {
-        this(vectorStore, vectorRepository, null);
+    KnowledgeBaseVectorService(VectorStore vectorStore, DocumentChunkingService chunkingService, VectorRepository vectorRepository) {
+        this(vectorStore, chunkingService, vectorRepository, null);
     }
 
     /**
      * 将知识库内容向量化并存储
      * @param knowledgeBaseId 知识库ID
-     * @param content 知识库文本内容
+     * @param parsed 解析后的文档内容
+     * @return 写入的 chunk 数量
      */
-    public void vectorizeAndStore(Long knowledgeBaseId, String content) {
+    public int vectorizeAndStore(Long knowledgeBaseId, ParsedDocument parsed) {
         String jobId = null;
         try {
             if (knowledgeBaseId == null) {
                 throw new IllegalArgumentException("knowledgeBaseId不能为空");
             }
             jobId = UUID.randomUUID().toString();
-            log.info("开始向量化知识库: kbId={}, jobId={}, contentLength={}",
-                knowledgeBaseId, jobId, content.length());
+            log.info("开始向量化知识库: kbId={}, jobId={}, contentLength={}, format={}",
+                knowledgeBaseId, jobId, parsed == null ? 0 : parsed.content().length(),
+                parsed == null ? null : parsed.format());
 
-            // 1. 将文本分块
-            List<Document> chunks = textSplitter.apply(
-                List.of(new Document(content))
-            );
-            
+            // 1. 按文档类型选择分块策略
+            List<Document> chunks = chunkingService.chunk(parsed);
+
             log.info("文本分块完成: {} 个chunks", chunks.size());
-            
+
             // 2. 为每个 chunk 添加临时 metadata，成功后再提升为正式 kb_id。
             applyPendingMetadata(chunks, knowledgeBaseId, jobId);
 
@@ -96,6 +96,7 @@ public class KnowledgeBaseVectorService {
             activateVectorJob(knowledgeBaseId, jobId);
             log.info("知识库向量化完成: kbId={}, jobId={}, chunks={}, batches={}",
                     knowledgeBaseId, jobId, totalChunks, batchCount);
+            return totalChunks;
         } catch (Exception e) {
             cleanupPendingVectorJob(knowledgeBaseId, jobId);
             log.error("向量化知识库失败: kbId={}, jobId={}, error={}",
