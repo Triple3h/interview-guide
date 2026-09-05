@@ -3,6 +3,7 @@ package interview.guide.modules.knowledgebase.repository;
 import interview.guide.modules.knowledgebase.model.RagChatSessionEntity;
 import interview.guide.modules.knowledgebase.model.RagChatSessionEntity.SessionStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -10,7 +11,7 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.Optional;
 
-/** 
+/**
  * RAG聊天会话Repository
  */
 @Repository
@@ -20,6 +21,19 @@ public interface RagChatSessionRepository extends JpaRepository<RagChatSessionEn
      * 按更新时间倒序获取所有活跃会话
      */
     List<RagChatSessionEntity> findByStatusOrderByUpdatedAtDesc(SessionStatus status);
+
+    /**
+     * 获取某个学习成员的会话（按置顶状态和更新时间排序）
+     */
+    @Query("SELECT s FROM RagChatSessionEntity s WHERE s.userId = :userId ORDER BY s.isPinned DESC, s.updatedAt DESC")
+    List<RagChatSessionEntity> findByUserIdOrderByPinnedAndUpdatedAtDesc(@Param("userId") Long userId);
+
+    /**
+     * 把无归属的存量会话划给指定成员（首位成员创建时调用）
+     */
+    @Modifying
+    @Query("UPDATE RagChatSessionEntity s SET s.userId = :userId WHERE s.userId IS NULL")
+    int backfillLegacySessions(@Param("userId") Long userId);
 
     /**
      * 获取所有会话（按更新时间倒序）

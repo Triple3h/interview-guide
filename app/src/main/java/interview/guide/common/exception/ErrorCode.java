@@ -81,7 +81,13 @@ public enum ErrorCode {
     MODULE_NOT_FOUND(11008, "模块不存在"),
     VOICE_CONFIG_READ_FAILED(11009, "读取语音服务配置失败"),
     VOICE_CONFIG_WRITE_FAILED(11010, "写入语音服务配置失败"),
-    VOICE_CONFIG_TEST_FAILED(11011, "语音服务连通性测试失败");
+    VOICE_CONFIG_TEST_FAILED(11011, "语音服务连通性测试失败"),
+
+    // ========== 用户与学习模块错误 12xxx ==========
+    USER_NOT_FOUND(12001, "用户不存在"),
+    USER_NICKNAME_DUPLICATED(12002, "该昵称已被使用"),
+    LEARNING_RECORD_NOT_FOUND(12003, "学习记录不存在"),
+    LEARNING_MASTERY_INVALID(12004, "掌握度取值无效");
 
     private final Integer code;
     private final String message;

@@ -67,6 +67,12 @@ public class RagChatMessageEntity {
      */
     private Boolean completed = true;
 
+    /**
+     * Agent 工具调用步骤（JSON 数组，仅 ASSISTANT 消息使用，供前端回放步骤）
+     */
+    @Column(name = "tool_steps_json", columnDefinition = "TEXT")
+    private String toolStepsJson;
+
     public enum MessageType {
         USER,      // 用户消息
         ASSISTANT  // AI 回答

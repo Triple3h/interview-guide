@@ -7,6 +7,7 @@ import type { CategoryDTO } from './api/skill';
 import { Loader2 } from 'lucide-react';
 import { ROUTE_PATTERNS, ROUTES } from './constants/routes';
 import { uuid } from './utils/uuid';
+import UserGate from './components/UserGate';
 
 // Lazy load components
 const UploadPage = lazy(() => import('./pages/UploadPage'));
@@ -14,7 +15,8 @@ const HistoryList = lazy(() => import('./pages/HistoryPage'));
 const ResumeDetailPage = lazy(() => import('./pages/ResumeDetailPage'));
 const Interview = lazy(() => import('./pages/InterviewPage'));
 const InterviewHistoryPage = lazy(() => import('./pages/InterviewHistoryPage'));
-const KnowledgeBaseQueryPage = lazy(() => import('./pages/KnowledgeBaseQueryPage'));
+const LearningAgentPage = lazy(() => import('./pages/LearningAgentPage'));
+const LearningRecordsPage = lazy(() => import('./pages/LearningRecordsPage'));
 const KnowledgeBaseUploadPage = lazy(() => import('./pages/KnowledgeBaseUploadPage'));
 const KnowledgeBaseManagePage = lazy(() => import('./pages/KnowledgeBaseManagePage'));
 const KnowledgeBaseInterviewPage = lazy(() => import('./pages/KnowledgeBaseInterviewLandingPage'));
@@ -189,6 +191,7 @@ function InterviewWrapper() {
 function App() {
   return (
     <BrowserRouter>
+      <UserGate>
       <Suspense fallback={<Loading />}>
         <Routes>
           <Route path="/" element={<Layout />}>
@@ -252,10 +255,14 @@ function App() {
 
             {/* 问答助手（知识库聊天） */}
             <Route path="knowledgebase/chat" element={<KnowledgeBaseQueryPageWrapper />} />
+
+            {/* 学习台账 */}
+            <Route path="learning/records" element={<LearningRecordsPage />} />
           </Route>
 
         </Routes>
       </Suspense>
+      </UserGate>
     </BrowserRouter>
   );
 }
@@ -401,25 +408,19 @@ function KnowledgeBaseManagePageWrapper() {
   return <KnowledgeBaseManagePage onUpload={handleUpload} onChat={handleChat} />;
 }
 
-// 知识库问答页面包装器
+// 学习帮手页面包装器（原问答助手重构）
 function KnowledgeBaseQueryPageWrapper() {
   const navigate = useNavigate();
-  const location = useLocation();
-  const isChatMode = location.pathname === '/knowledgebase/chat';
 
   const handleBack = () => {
-    if (isChatMode) {
-      navigate('/knowledgebase');
-    } else {
-      navigate('/history');
-    }
+    navigate('/knowledgebase');
   };
 
   const handleUpload = () => {
     navigate(ROUTES.knowledgebaseUpload);
   };
 
-  return <KnowledgeBaseQueryPage onBack={handleBack} onUpload={handleUpload} />;
+  return <LearningAgentPage onBack={handleBack} onUpload={handleUpload} />;
 }
 
 // 知识库上传页面包装器

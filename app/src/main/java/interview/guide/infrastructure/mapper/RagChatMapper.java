@@ -34,6 +34,7 @@ public interface RagChatMapper {
      * 将消息实体转换为消息DTO
      */
     @Mapping(target = "type", source = "message", qualifiedByName = "getTypeString")
+    @Mapping(target = "toolSteps", source = "toolStepsJson")
     MessageDTO toMessageDTO(RagChatMessageEntity message);
     
     /**

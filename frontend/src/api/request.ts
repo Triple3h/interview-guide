@@ -1,4 +1,5 @@
 import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
+import { CURRENT_USER_STORAGE_KEY } from '../utils/currentUser';
 
 declare module 'axios' {
   interface AxiosRequestConfig {
@@ -23,6 +24,22 @@ export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
 const instance: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
   timeout: 60000,
+});
+
+// 极简选人模式：所有请求携带当前学习成员标识
+instance.interceptors.request.use((config) => {
+  const raw = localStorage.getItem(CURRENT_USER_STORAGE_KEY);
+  if (raw) {
+    try {
+      const stored = JSON.parse(raw) as { id?: number };
+      if (typeof stored.id === 'number') {
+        config.headers['X-User-Id'] = String(stored.id);
+      }
+    } catch {
+      // 忽略损坏的本地数据，由后端提示重新选人
+    }
+  }
+  return config;
 });
 
 function isRecord(value: unknown): value is Record<string, unknown> {

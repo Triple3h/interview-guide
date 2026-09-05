@@ -409,7 +409,7 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
             className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
           >
             <MessageSquare className="w-4 h-4" />
-            问答助手
+            学习帮手
           </button>
         </div>
       </div>

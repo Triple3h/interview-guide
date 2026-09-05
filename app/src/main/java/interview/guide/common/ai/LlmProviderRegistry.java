@@ -150,6 +150,29 @@ public class LlmProviderRegistry {
     }
 
     /**
+     * 获取学习 Agent 手动 ReAct 循环专用 ChatClient：仅 SafeGuard，
+     * 不带 SkillsTool、Memory 与 ToolCallingAdvisor。
+     * <p>
+     * 不挂 ToolCallingAdvisor 的原因：Spring AI 2.0 中它会接管整个工具调用循环，
+     * 且其流式聚合对部分模型（如 deepseek）把工具名拆分到多个分片的响应存在兼容问题
+     * （toolName cannot be null or empty）。工具轮改由业务侧用 ToolCallingManager
+     * 非流式编排，见 LearningAgentService。
+     */
+    public ChatClient getAgentLoopChatClient(String providerId) {
+        String id = resolveProviderId(providerId);
+        return clientCache.computeIfAbsent(id + ":agent-loop", key -> createAgentLoopChatClient(id));
+    }
+
+    private ChatClient createAgentLoopChatClient(String providerId) {
+        OpenAiChatModel chatModel = getChatModel(providerId);
+
+        ChatClient.Builder builder = ChatClient.builder(chatModel);
+        buildSafeGuardAdvisor().ifPresent(advisor -> builder.defaultAdvisors(List.of(advisor)));
+        log.info("[LlmProviderRegistry] Created agent-loop ChatClient (SafeGuard only, manual tool loop) for {}", providerId);
+        return builder.build();
+    }
+
+    /**
      * 清空缓存，重新加载所有 provider。
      */
     public void reload() {

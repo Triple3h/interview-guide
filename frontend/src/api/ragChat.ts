@@ -1,5 +1,4 @@
 import { request } from './request';
-import { streamSse } from './stream';
 
 // ========== 类型定义 ==========
 
@@ -23,6 +22,8 @@ export interface RagChatMessage {
   id: number;
   type: 'user' | 'assistant';
   content: string;
+  /** Agent 工具调用步骤（JSON 字符串，仅 assistant 消息） */
+  toolSteps?: string | null;
   createdAt: string;
 }
 
@@ -102,32 +103,5 @@ export const ragChatApi = {
    */
   async deleteSession(sessionId: number): Promise<void> {
     return request.delete(`/api/rag-chat/sessions/${sessionId}`);
-  },
-
-  /**
-   * 发送消息（流式SSE）
-   */
-  async sendMessageStream(
-    sessionId: number,
-    question: string,
-    onMessage: (chunk: string) => void,
-    onComplete: () => void,
-    onError: (error: Error) => void
-  ): Promise<void> {
-    return streamSse({
-      url: `/api/rag-chat/sessions/${sessionId}/messages/stream`,
-      init: {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question }),
-      },
-      onMessage,
-      onComplete,
-      onError,
-      parseMode: 'event',
-      trimDataPrefixSpace: false,
-      unescapeEscapedNewlines: true,
-      dataJoiner: '',
-    });
   },
 };

@@ -90,6 +90,7 @@ public class RagChatDTO {
         Long id,
         String type,  // "user" | "assistant"
         String content,
+        String toolSteps,  // JSON 字符串，Agent 工具调用步骤（仅 ASSISTANT 消息）
         LocalDateTime createdAt
     ) {}
 }
