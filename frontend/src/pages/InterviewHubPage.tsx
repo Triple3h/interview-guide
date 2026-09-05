@@ -12,6 +12,7 @@ import { getSkillIcon } from '../utils/skillIcons';
 import { getTemplateName } from '../utils/voiceInterview';
 import { getScoreTextColor } from '../utils/score';
 import { formatDateTime } from '../utils/date';
+import { uuid } from '../utils/uuid';
 import {
   useInterviewConfig,
   CUSTOM_SKILL_ID,
@@ -98,7 +99,7 @@ export default function InterviewHubPage() {
     }
 
     if (config.mode === 'text') {
-      navigate(ROUTES.interviewCreate(crypto.randomUUID()), {
+      navigate(ROUTES.interviewCreate(uuid()), {
         state: {
           resumeId: config.resumeId,
           interviewConfig: {
