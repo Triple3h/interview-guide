@@ -14,7 +14,7 @@ import java.util.List;
  */
 public record BatchGenerateKnowledgeBaseQuestionsRequest(
     @NotEmpty(message = "请至少选择一个知识库")
-    @Size(max = 50, message = "一次最多选择50个知识库")
+    @Size(max = 200, message = "一次最多选择200个知识库")
     List<Long> knowledgeBaseIds,
     @Pattern(regexp = "junior|mid|senior", message = "题目难度不合法")
     String difficulty,

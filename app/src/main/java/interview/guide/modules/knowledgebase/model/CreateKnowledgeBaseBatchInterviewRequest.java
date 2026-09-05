@@ -12,7 +12,7 @@ import java.util.List;
  */
 public record CreateKnowledgeBaseBatchInterviewRequest(
     @NotEmpty(message = "请至少选择一个知识库")
-    @Size(max = 50, message = "一次最多选择50个知识库")
+    @Size(max = 200, message = "一次最多选择200个知识库")
     List<Long> knowledgeBaseIds,
     String difficulty,
     @Min(value = 1, message = "主问题数量最少1题")
