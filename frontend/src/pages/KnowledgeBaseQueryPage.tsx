@@ -26,6 +26,7 @@ interface CategoryGroup {
   name: string;
   items: KnowledgeBaseItem[];
   isExpanded: boolean;
+  selectedCount: number;
 }
 
 export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBaseQueryPageProps) {
@@ -121,15 +122,17 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
     });
 
     sortedCategories.forEach(name => {
+      const items = groups.get(name)!;
       result.push({
         name,
-        items: groups.get(name)!,
+        items,
         isExpanded: expandedCategories.has(name),
+        selectedCount: items.filter(item => selectedKbIds.has(item.id)).length,
       });
     });
 
     return result;
-  }, [knowledgeBases, expandedCategories]);
+  }, [knowledgeBases, expandedCategories, selectedKbIds]);
 
   const toggleCategory = (category: string) => {
     setExpandedCategories(prev => {
@@ -143,6 +146,26 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
     });
   };
 
+  // 选中集合的展示摘要：恰好选满整组时直接展示分组名，
+  // 否则最多展示 3 个标签，其余折叠为省略号（悬停查看全部）
+  const selectionSummary = useMemo(() => {
+    const wholeGroups = groupedKnowledgeBases.filter(group =>
+      group.items.length > 0 && group.items.every(item => selectedKbIds.has(item.id))
+    );
+    const wholeGroupIds = new Set(wholeGroups.flatMap(group => group.items.map(item => item.id)));
+    const isWholeGroupSelection = wholeGroups.length > 0
+      && selectedKbIds.size === wholeGroupIds.size
+      && Array.from(selectedKbIds).every(id => wholeGroupIds.has(id));
+
+    const selectedIds = Array.from(selectedKbIds);
+    const visibleKbIds = selectedIds.slice(0, 3);
+    const hiddenKbNames = selectedIds.slice(3)
+      .map(id => knowledgeBases.find(kb => kb.id === id)?.name)
+      .filter((name): name is string => !!name);
+
+    return { wholeGroups, isWholeGroupSelection, visibleKbIds, hiddenKbNames };
+  }, [groupedKnowledgeBases, selectedKbIds, knowledgeBases]);
+
   const loadSessions = async () => {
     setLoadingSessions(true);
     try {
@@ -155,21 +178,39 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
     }
   };
 
+  // 统一应用新的知识库选择：选择集变化时结束当前会话（会话与知识库集合绑定）
+  const applyKbSelection = (newSet: Set<number>) => {
+    const changed = newSet.size !== selectedKbIds.size
+      || Array.from(selectedKbIds).some(id => !newSet.has(id));
+    setSelectedKbIds(newSet);
+    if (changed && currentSessionId) {
+      setCurrentSessionId(null);
+      setCurrentSessionTitle('');
+      setMessages([]);
+    }
+  };
+
   const handleToggleKb = (kbId: number) => {
-    setSelectedKbIds(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(kbId)) {
-        newSet.delete(kbId);
+    const newSet = new Set(selectedKbIds);
+    if (newSet.has(kbId)) {
+      newSet.delete(kbId);
+    } else {
+      newSet.add(kbId);
+    }
+    applyKbSelection(newSet);
+  };
+
+  const handleToggleCategorySelection = (group: CategoryGroup) => {
+    const allSelected = group.selectedCount === group.items.length;
+    const newSet = new Set(selectedKbIds);
+    group.items.forEach(item => {
+      if (allSelected) {
+        newSet.delete(item.id);
       } else {
-        newSet.add(kbId);
+        newSet.add(item.id);
       }
-      if (newSet.size !== prev.size && currentSessionId) {
-        setCurrentSessionId(null);
-        setCurrentSessionTitle('');
-        setMessages([]);
-      }
-      return newSet;
     });
+    applyKbSelection(newSet);
   };
 
   const handleNewSession = () => {
@@ -490,20 +531,41 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
                 {/* 会话信息 */}
                 <div className="p-4 border-b border-slate-200 dark:border-slate-600">
                   <h2 className="text-base font-semibold text-slate-800 dark:text-white">
-                    {currentSessionTitle || (selectedKbIds.size === 1
-                      ? knowledgeBases.find(kb => kb.id === Array.from(selectedKbIds)[0])?.name || '新对话'
-                      : `${selectedKbIds.size} 个知识库 - 新对话`)}
+                    {currentSessionTitle || (selectionSummary.isWholeGroupSelection && selectionSummary.wholeGroups.length === 1
+                      ? selectionSummary.wholeGroups[0].name
+                      : selectedKbIds.size === 1
+                        ? knowledgeBases.find(kb => kb.id === Array.from(selectedKbIds)[0])?.name || '新对话'
+                        : `${selectedKbIds.size} 个知识库 - 新对话`)}
                   </h2>
                   <div className="flex flex-wrap gap-1.5 mt-2">
-                    {Array.from(selectedKbIds).map(kbId => {
-                      const kb = knowledgeBases.find(k => k.id === kbId);
-                      return kb ? (
-                          <span key={kbId}
-                                className="px-2 py-0.5 bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 text-xs rounded-full">
-                          {kb.name}
+                    {selectionSummary.isWholeGroupSelection ? (
+                      selectionSummary.wholeGroups.map(group => (
+                        <span key={group.name}
+                              title={`已选中整组「${group.name}」共 ${group.items.length} 个知识库`}
+                              className="px-2 py-0.5 bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 text-xs rounded-full">
+                          {group.name}
                         </span>
-                      ) : null;
-                    })}
+                      ))
+                    ) : (
+                      <>
+                        {selectionSummary.visibleKbIds.map(kbId => {
+                          const kb = knowledgeBases.find(k => k.id === kbId);
+                          return kb ? (
+                              <span key={kbId}
+                                    className="px-2 py-0.5 bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 text-xs rounded-full">
+                            {kb.name}
+                          </span>
+                        ) : null;
+                        })}
+                        {selectedKbIds.size > selectionSummary.visibleKbIds.length && (
+                          <span
+                            title={`全部 ${selectedKbIds.size} 个知识库：\n${selectionSummary.hiddenKbNames.join('\n')}`}
+                            className="px-2 py-0.5 bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 text-xs rounded-full cursor-default">
+                            … +{selectedKbIds.size - selectionSummary.visibleKbIds.length}
+                          </span>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -697,22 +759,37 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      {groupedKnowledgeBases.map((group) => (
+                      {groupedKnowledgeBases.map((group) => {
+                        const allSelected = group.items.length > 0 && group.selectedCount === group.items.length;
+                        return (
                           <div key={group.name}
                                className="border border-slate-100 dark:border-slate-700 rounded-lg overflow-hidden">
-                          <button
+                          <div
                             onClick={() => toggleCategory(group.name)}
-                            className="w-full flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                            className="w-full flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer select-none"
                           >
                             <div className="flex items-center gap-2">
                               <ChevronRight
                                 className={`w-3.5 h-3.5 text-slate-400 transition-transform ${group.isExpanded ? 'rotate-90' : ''}`}
                               />
+                              <input
+                                type="checkbox"
+                                checked={allSelected}
+                                ref={(el) => {
+                                  if (el) el.indeterminate = !allSelected && group.selectedCount > 0;
+                                }}
+                                onChange={() => handleToggleCategorySelection(group)}
+                                onClick={(e) => e.stopPropagation()}
+                                className="w-3.5 h-3.5 text-primary-500 rounded focus:ring-primary-500"
+                                title={allSelected ? '取消全选该分类' : '全选该分类'}
+                              />
                               <span
                                   className="font-medium text-slate-700 dark:text-slate-300 text-sm">{group.name}</span>
                             </div>
-                            <span className="text-xs text-slate-400">{group.items.length}</span>
-                          </button>
+                            <span className="text-xs text-slate-400">
+                              {group.selectedCount > 0 ? `${group.selectedCount}/${group.items.length}` : group.items.length}
+                            </span>
+                          </div>
 
                           <AnimatePresence>
                             {group.isExpanded && (
@@ -752,7 +829,8 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
                             )}
                           </AnimatePresence>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
