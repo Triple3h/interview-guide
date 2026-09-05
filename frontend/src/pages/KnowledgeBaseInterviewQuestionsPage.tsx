@@ -453,7 +453,7 @@ export default function KnowledgeBaseInterviewQuestionsPage() {
         <div className="flex gap-2 shrink-0">
           <button
             onClick={() => navigate(`/knowledgebase-interview/${knowledgeBaseIdNum}/interviews`)}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-indigo-500 text-white text-sm font-medium hover:bg-indigo-600 shadow-sm shadow-indigo-500/20 whitespace-nowrap"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary-600 dark:bg-primary-500 text-white text-sm font-medium hover:bg-primary-700 dark:hover:bg-primary-400 shadow-sm shadow-primary-600/20 whitespace-nowrap"
           >
             <BarChart3 className="w-4 h-4" />
             查看面试记录

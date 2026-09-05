@@ -113,11 +113,11 @@ export default function AnalysisPanel({
 
   const getCategoryColor = (category: string) => {
     const colors: Record<string, string> = {
-      '项目': 'bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300',
-      '技能': 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300',
+      '项目': 'bg-primary-100 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300',
+      '技能': 'bg-cyan-100 dark:bg-cyan-900/50 text-cyan-700 dark:text-cyan-300',
       '内容': 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300',
-      '格式': 'bg-pink-100 dark:bg-pink-900/50 text-pink-700 dark:text-pink-300',
-      '结构': 'bg-cyan-100 dark:bg-cyan-900/50 text-cyan-700 dark:text-cyan-300',
+      '格式': 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300',
+      '结构': 'bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300',
       '表达': 'bg-orange-100 dark:bg-orange-900/50 text-orange-700 dark:text-orange-300'
     };
     return colors[category] || 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300';
@@ -292,7 +292,7 @@ export default function AnalysisPanel({
               label="项目经验"
               score={projectScore}
               maxScore={40}
-              color="bg-purple-500"
+              color="bg-primary-500"
               delay={0.3}
               className="col-span-2"
             />

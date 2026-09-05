@@ -179,7 +179,7 @@ function TypeBadge({ item }: { item: UnifiedInterviewItem }) {
   }
   if (item.type === 'voice') {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 rounded-full text-xs font-medium">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 rounded-full text-xs font-medium">
         <Mic className="w-3 h-3" />
         语音
       </span>
@@ -534,7 +534,7 @@ export default function InterviewHistoryPage({
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <StatCard icon={Users} label="面试总数" value={stats.totalCount} color="bg-primary-500" />
           <StatCard icon={CheckCircle} label="已完成" value={stats.completedCount} color="bg-emerald-500" />
-          <StatCard icon={TrendingUp} label="平均分数" value={stats.averageScore} suffix="分" color="bg-indigo-500" />
+          <StatCard icon={TrendingUp} label="平均分数" value={stats.averageScore} suffix="分" color="bg-amber-500" />
         </div>
       )}
 
@@ -554,17 +554,17 @@ export default function InterviewHistoryPage({
           <div className="h-48">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trendData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" className="dark:stroke-slate-700" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                <YAxis domain={[0, 100]} axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e3dccb" className="dark:stroke-slate-700" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#8a8172', fontSize: 12 }} />
+                <YAxis domain={[0, 100]} axisLine={false} tickLine={false} tick={{ fill: '#8a8172', fontSize: 12 }} />
                 <Tooltip formatter={(value) => [`${value} 分`, '得分']} />
                 <Line
                   type="monotone"
                   dataKey="score"
-                  stroke="#6366f1"
+                  stroke={document.documentElement.classList.contains('dark') ? '#7cc9c8' : '#286a70'}
                   strokeWidth={3}
-                  dot={{ fill: '#6366f1', strokeWidth: 2, r: 5 }}
-                  activeDot={{ r: 8, fill: '#6366f1' }}
+                  dot={{ fill: document.documentElement.classList.contains('dark') ? '#7cc9c8' : '#286a70', strokeWidth: 2, r: 5 }}
+                  activeDot={{ r: 8, fill: document.documentElement.classList.contains('dark') ? '#7cc9c8' : '#286a70' }}
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -728,14 +728,14 @@ export default function InterviewHistoryPage({
                         {item.type === 'text' ? (
                           <FileText className="w-5 h-5 text-slate-400" />
                         ) : (
-                          <Mic className="w-5 h-5 text-purple-400" />
+                          <Mic className="w-5 h-5 text-primary-400" />
                         )}
                         <div>
                           <div className="flex items-center gap-2 flex-wrap">
                             <p className="font-medium text-slate-800 dark:text-white">{item.title}</p>
                             {isKnowledgeBaseView && item.type === 'text' && (
                               <span
-                                className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded text-xs font-medium"
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 rounded text-xs font-medium"
                                 title="面试方向"
                               >
                                 <Tag className="w-3 h-3" />

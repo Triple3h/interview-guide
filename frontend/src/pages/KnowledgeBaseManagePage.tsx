@@ -426,7 +426,7 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
             icon={MessageSquare}
             label="总提问次数"
             value={stats.totalQuestionCount}
-            color="bg-indigo-500"
+            color="bg-amber-500"
           />
           <StatCard
             icon={Eye}

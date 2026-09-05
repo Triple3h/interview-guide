@@ -136,8 +136,8 @@ export default function FileUploadCard({
       >
         {/* 渐变边框效果 */}
         <div
-          className={`absolute inset-0 rounded-2xl p-[2px] bg-gradient-to-r from-indigo-200 via-purple-200 to-indigo-200 -z-10
-            ${dragOver ? 'from-indigo-400 via-purple-400 to-indigo-400' : ''}`}
+          className={`absolute inset-0 rounded-2xl p-[2px] bg-gradient-to-r from-primary-200 via-primary-300 to-primary-200 -z-10
+            ${dragOver ? 'from-primary-500 via-primary-400 to-primary-500' : ''}`}
         >
           <div className="w-full h-full bg-white dark:bg-slate-800 rounded-2xl"/>
         </div>

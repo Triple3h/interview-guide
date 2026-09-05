@@ -51,10 +51,11 @@ export default function RadarChart({ data, height = 320, className = '' }: Radar
     // 检测是否为深色模式
     const isDark = typeof window !== 'undefined' && document.documentElement.classList.contains('dark');
 
-    const gridColor = isDark ? '#334155' : '#e2e8f0';
-    const tickColor = isDark ? '#94a3b8' : '#64748b';
-    const tooltipBg = isDark ? '#1e293b' : '#fff';
-    const tooltipBorder = isDark ? '#334155' : '#e2e8f0';
+    const gridColor = isDark ? '#343a44' : '#e3dccb';
+    const tickColor = isDark ? '#9a9186' : '#8a8172';
+    const tooltipBg = isDark ? '#1c2026' : '#fffaf1';
+    const tooltipBorder = isDark ? '#343a44' : '#e0d8c9';
+    const accentColor = isDark ? '#7cc9c8' : '#286a70';
 
   return (
     <div className={className} style={{ height }}>
@@ -74,8 +75,8 @@ export default function RadarChart({ data, height = 320, className = '' }: Radar
           <Radar
             name="得分"
             dataKey="score"
-            stroke="#6366f1"
-            fill="#6366f1"
+            stroke={accentColor}
+            fill={accentColor}
             fillOpacity={0.6}
             strokeWidth={2}
           />

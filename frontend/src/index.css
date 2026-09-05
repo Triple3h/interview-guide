@@ -1,27 +1,128 @@
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @plugin "@tailwindcss/typography";
 
 /* 启用深色模式 - 使用 class 策略 */
 @custom-variant dark (&:where(.dark, .dark *));
 
-
-/* 自定义主题 */
+/*
+ * 设计语言：参考 OpenViking（openviking.net）的"纸感终端"风格
+ * - 浅色：暖米纸底 + 细网格纹理 + 墨色文字 + 青碧（teal）强调
+ * - 深色：深蓝灰底 + 暖白文字 + 亮青强调
+ * - 字体：Space Grotesk（拉丁/标题）+ JetBrains Mono（标签/代码）
+ *
+ * slate / primary 两套色阶按"使用槽位"重定义：
+ * 工具类编译后引用 var(--color-slate-*)，因此 .dark 下整体替换色阶即可全局换肤。
+ */
 @theme {
-  --color-primary-50: #eef2ff;
-  --color-primary-100: #e0e7ff;
-  --color-primary-200: #c7d2fe;
-  --color-primary-300: #a5b4fc;
-  --color-primary-400: #818cf8;
-  --color-primary-500: #6366f1;
-  --color-primary-600: #4f46e5;
-  --color-primary-700: #4338ca;
-  --color-primary-800: #3730a3;
-  --color-primary-900: #312e81;
-  --color-primary-950: #1e1b4b;
+  /* primary：青碧色阶（浅色主题） */
+  --color-primary-50: #eef6f5;
+  --color-primary-100: #d8ebe9;
+  --color-primary-200: #b0d8d6;
+  --color-primary-300: #8ac7c6;
+  --color-primary-400: #5aabaf;
+  --color-primary-500: #3d8f94;
+  --color-primary-600: #286a70;
+  --color-primary-700: #1f5d63;
+  --color-primary-800: #1a4d53;
+  --color-primary-900: #163f44;
+  --color-primary-950: #0d2a2e;
 
-  --font-display: 'Outfit', -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif;
-  --font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+  /* slate：暖纸灰色阶（浅色主题）——来自 OpenViking 的米色/墨色体系 */
+  --color-slate-50: #f7f3ea;
+  --color-slate-100: #f0e9db;
+  --color-slate-200: #e3dccb;
+  --color-slate-300: #d8d0c2;
+  --color-slate-400: #b3a996;
+  --color-slate-500: #8a8172;
+  --color-slate-600: #625b50;
+  --color-slate-700: #4a443a;
+  --color-slate-800: #2b2720;
+  --color-slate-900: #1d1a15;
+  --color-slate-950: #14110d;
+
+  /* 纯白微调为暖白，让大面积卡片融入纸面 */
+  --color-white: #fffdf8;
+
+  --font-display: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --font-sans: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* OpenViking 语义变量（组件层直接引用，深浅主题自动切换） */
+:root {
+  --ov-bg: #f6f2e8;
+  --ov-bg-soft: #fbf7ee;
+  --ov-panel: #fffaf1;
+  --ov-panel-strong: #fdf8ee;
+  --ov-muted: #f4edde;
+  --ov-muted-2: #eee5d5;
+  --ov-border: #d8d0c2;
+  --ov-border-soft: #e0d8c9;
+  --ov-border-strong: #bdb3a2;
+  --ov-ink: #171511;
+  --ov-text: #26231e;
+  --ov-text-soft: #3a352d;
+  --ov-muted-fg: #625b50;
+  --ov-accent: #286a70;
+  --ov-accent-strong: #1d6c71;
+  --ov-accent-soft-bg: rgba(40, 106, 112, 0.1);
+  --ov-accent-border: rgba(40, 106, 112, 0.3);
+  --ov-grid: rgba(35, 31, 25, 0.05);
+  --ov-grid-soft: rgba(35, 31, 25, 0.04);
+  --ov-shadow: rgba(40, 33, 24, 0.08);
+  --ov-shadow-lift: rgba(40, 33, 24, 0.14);
+}
+
+.dark {
+  /* 深色主题：OpenViking 深蓝灰 + 暖白文字 + 亮青强调 */
+  --ov-bg: #101317;
+  --ov-bg-soft: #14171c;
+  --ov-panel: #1c2026;
+  --ov-panel-strong: #20252c;
+  --ov-muted: #242932;
+  --ov-muted-2: #2b313b;
+  --ov-border: #343a44;
+  --ov-border-soft: #2c323b;
+  --ov-border-strong: #59606b;
+  --ov-ink: #f5efe4;
+  --ov-text: #ede5d9;
+  --ov-text-soft: #d6cdbf;
+  --ov-muted-fg: #b7ad9f;
+  --ov-accent: #2f9297;
+  --ov-accent-strong: #3aa0a6;
+  --ov-accent-soft-bg: rgba(124, 201, 200, 0.12);
+  --ov-accent-border: rgba(124, 201, 200, 0.34);
+  --ov-grid: rgba(245, 239, 228, 0.05);
+  --ov-grid-soft: rgba(245, 239, 228, 0.035);
+  --ov-shadow: rgba(0, 0, 0, 0.32);
+  --ov-shadow-lift: rgba(0, 0, 0, 0.5);
+
+  /* 深色主题下整体替换色阶（按使用槽位映射：slate-50/100/200/300 在深色下是文字色，
+     slate-600/700 是边框与按钮底色，slate-800/900/950 是面板与页面底色） */
+  --color-primary-50: #0f1e21;
+  --color-primary-100: #14343a;
+  --color-primary-200: #1b4a51;
+  --color-primary-300: #2a6a70;
+  --color-primary-400: #57b5ba;
+  --color-primary-500: #2f9297;
+  --color-primary-600: #28858b;
+  --color-primary-700: #23777d;
+  --color-primary-800: #1e6469;
+  --color-primary-900: #1a5257;
+  --color-primary-950: #123a3f;
+
+  --color-slate-50: #f5efe4;
+  --color-slate-100: #ede5d9;
+  --color-slate-200: #d6cdbf;
+  --color-slate-300: #b7ad9f;
+  --color-slate-400: #9a9186;
+  --color-slate-500: #8b8378;
+  --color-slate-600: #59606b;
+  --color-slate-700: #343a44;
+  --color-slate-800: #1c2026;
+  --color-slate-900: #14171c;
+  --color-slate-950: #101317;
 }
 
 /* 自定义基础样式 */
@@ -33,8 +134,13 @@
   body {
     @apply antialiased;
     font-family: var(--font-sans);
-    @apply bg-gradient-to-br from-slate-50 via-white to-indigo-50 text-slate-900;
-    @apply dark:bg-gradient-to-br dark:from-slate-950 dark:via-slate-900 dark:to-slate-800 dark:text-slate-50;
+    color: var(--ov-text);
+    background-color: var(--ov-bg);
+    background-image:
+      linear-gradient(90deg, var(--ov-grid) 1px, transparent 1px),
+      linear-gradient(var(--ov-grid-soft) 1px, transparent 1px);
+    background-size: 44px 44px;
+    background-attachment: fixed;
   }
 
   #root {
@@ -44,55 +150,94 @@
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-display);
     @apply font-semibold tracking-tight;
+    color: var(--ov-ink);
+  }
+
+  ::selection {
+    background: rgba(40, 106, 112, 0.28);
+  }
+  .dark ::selection {
+    background: rgba(124, 201, 200, 0.3);
   }
 }
 
-/* 深色模式通用样式 - 自动应用于所有卡片和容器 */
+/* 通用组件样式 */
 @layer components {
-    /* 通用卡片背景 */
+    /* 通用卡片背景：暖纸面板 + 柔和投影 */
     .dark-card {
-        @apply bg-white dark:bg-slate-800/95 backdrop-blur-xl rounded-2xl border border-slate-200/50 dark:border-slate-700/50;
-        @apply shadow-lg shadow-slate-200/50 dark:shadow-slate-900/50;
+        background-color: var(--ov-panel);
+        border: 1px solid var(--ov-border-soft);
+        border-radius: 1rem;
+        box-shadow: 0 8px 32px var(--ov-shadow);
+        backdrop-filter: blur(12px);
     }
 
     /* 通用输入框 */
     .dark-input {
-        @apply bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100;
-        @apply focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 dark:focus:ring-primary-400/20 dark:focus:border-primary-400;
-        @apply transition-all duration-200;
+        background-color: var(--ov-panel);
+        border: 1px solid var(--ov-border);
+        color: var(--ov-text);
+        transition: all 0.2s;
+    }
+    .dark-input::placeholder {
+        color: var(--ov-border-strong);
+    }
+    .dark-input:focus {
+        outline: none;
+        border-color: var(--ov-accent);
+        box-shadow: 0 0 0 3px var(--ov-accent-soft-bg);
     }
 
     /* 通用文字颜色 */
     .dark-text {
-        @apply text-slate-900 dark:text-slate-50;
+        color: var(--ov-text);
     }
 
     .dark-text-muted {
-        @apply text-slate-600 dark:text-slate-400;
+        color: var(--ov-muted-fg);
     }
 
-    /* 按钮基础样式 */
+    /* 主按钮：青碧实色 + 奶白文字（OpenViking accent 风格） */
     .btn-primary {
-        @apply bg-gradient-to-r from-primary-600 to-primary-500 dark:from-primary-500 dark:to-primary-400;
-        @apply text-white font-medium;
-        @apply hover:from-primary-700 hover:to-primary-600 dark:hover:from-primary-600 dark:hover:to-primary-500;
-        @apply active:scale-[0.98];
-        @apply shadow-lg shadow-primary-500/25 dark:shadow-primary-500/20;
-        @apply transition-all duration-200;
+        background-color: var(--ov-accent);
+        color: #fbf7ec;
+        font-weight: 500;
+        box-shadow: 0 2px 12px var(--ov-accent-border);
+        transition: all 0.2s;
+    }
+    .btn-primary:hover {
+        background-color: var(--ov-accent-strong);
+    }
+    .btn-primary:active {
+        transform: scale(0.98);
     }
 
     .btn-secondary {
-        @apply bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200;
-        @apply hover:bg-slate-200 dark:hover:bg-slate-700;
-        @apply active:scale-[0.98];
-        @apply border border-slate-200 dark:border-slate-700;
-        @apply transition-all duration-200;
+        background-color: var(--ov-panel-strong);
+        color: var(--ov-text-soft);
+        border: 1px solid var(--ov-border);
+        transition: all 0.2s;
+    }
+    .btn-secondary:hover {
+        background-color: var(--ov-muted);
+    }
+    .btn-secondary:active {
+        transform: scale(0.98);
     }
 
     /* 状态徽章 */
     .status-badge {
         @apply px-3 py-1.5 rounded-full text-xs font-semibold tracking-wide uppercase;
-        @apply border backdrop-blur-sm;
+        @apply border;
+    }
+
+    /* mono 小标签（区块标题、元信息） */
+    .ov-label {
+        font-family: var(--font-mono);
+        font-size: 0.6875rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--ov-muted-fg);
     }
 }
 
@@ -103,13 +248,24 @@
   }
 
     .scrollbar-thin::-webkit-scrollbar-track {
-    @apply bg-slate-100 rounded;
-        @apply dark:bg-slate-800;
+    @apply rounded;
+        background-color: var(--ov-muted);
   }
 
     .scrollbar-thin::-webkit-scrollbar-thumb {
-    @apply bg-slate-300 rounded hover:bg-slate-400;
-        @apply dark:bg-slate-600 dark:hover:bg-slate-500;
+    @apply rounded;
+        background-color: var(--ov-border-strong);
+    }
+    .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+        background-color: var(--ov-accent);
+  }
+
+  /* 网格纹理背景（叠加在面板上时用） */
+  .bg-grid {
+    background-image:
+      linear-gradient(90deg, var(--ov-grid) 1px, transparent 1px),
+      linear-gradient(var(--ov-grid-soft) 1px, transparent 1px);
+    background-size: 44px 44px;
   }
 }
 
@@ -125,59 +281,61 @@
 
   .rbc-toolbar button {
     @apply px-4 py-2 rounded-lg font-medium text-sm;
-    @apply bg-slate-100/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200;
-    @apply border border-slate-200/50 dark:border-slate-700/50;
-    @apply hover:bg-slate-200/90 dark:hover:bg-slate-700/90;
-    @apply backdrop-blur-sm;
+    background-color: var(--ov-panel-strong);
+    color: var(--ov-text-soft);
+    border: 1px solid var(--ov-border);
     @apply transition-all duration-200;
   }
 
+  .rbc-toolbar button:hover {
+    background-color: var(--ov-muted);
+  }
+
   .rbc-toolbar button.rbc-active {
-    @apply bg-primary-600/90 dark:bg-primary-500/90 text-white;
-    @apply border-primary-600/90 dark:border-primary-500/90;
-    @apply shadow-lg shadow-primary-500/20;
-    @apply backdrop-blur-sm;
+    background-color: var(--ov-accent);
+    color: #fbf7ec;
+    border-color: var(--ov-accent);
+    box-shadow: 0 2px 12px var(--ov-accent-border);
   }
 
   .rbc-toolbar-label {
-    @apply font-display font-bold text-lg text-slate-900 dark:text-white;
+    @apply font-display font-bold text-lg;
+    color: var(--ov-ink);
   }
 
   .rbc-header {
-    @apply py-3 font-display font-semibold text-sm uppercase tracking-wide;
-    @apply bg-slate-50/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300;
-    @apply border-b-2 border-slate-200/50 dark:border-slate-700/50;
-    @apply backdrop-blur-sm;
+    @apply py-3 font-mono font-semibold text-xs uppercase tracking-wider;
+    background-color: var(--ov-bg-soft);
+    color: var(--ov-muted-fg);
+    border-bottom: 1px solid var(--ov-border);
   }
 
   .rbc-month-view, .rbc-time-view, .rbc-agenda-view {
     @apply rounded-xl overflow-hidden;
-    @apply border border-slate-200 dark:border-slate-700/50;
+    border: 1px solid var(--ov-border);
+    background-color: var(--ov-panel);
   }
 
   .rbc-day-bg, .rbc-time-header-content, .rbc-time-gutter {
-    @apply bg-white dark:bg-slate-900/50;
+    background-color: var(--ov-panel);
   }
 
   .rbc-off-range-bg {
-    @apply bg-slate-50 dark:bg-slate-950/50;
+    background-color: var(--ov-muted);
   }
 
   .rbc-today {
-    @apply bg-primary-50/80;
-    @apply dark:bg-primary-950/40;
-    @apply backdrop-blur-sm;
+    background-color: var(--ov-accent-soft-bg);
   }
 
   .rbc-time-slot {
-    @apply border-slate-100 dark:border-slate-800/50;
+    border-color: var(--ov-border-soft);
   }
 
   .rbc-event {
     @apply rounded-lg shadow-md;
     @apply transition-all duration-200;
-    @apply hover:shadow-xl hover:shadow-primary-500/20 hover:scale-[1.02];
-    @apply backdrop-blur-sm;
+    @apply hover:shadow-xl hover:scale-[1.02];
   }
 
   .rbc-event-content {
@@ -185,85 +343,42 @@
   }
 
   .rbc-month-row {
-    @apply border-slate-200 dark:border-slate-700/30;
+    border-color: var(--ov-border-soft);
   }
 
   .rbc-day-slot .rbc-time-slot {
-    @apply border-slate-100 dark:border-slate-800/30;
+    border-color: var(--ov-border-soft);
   }
 
   .rbc-time-view-resources .rbc-time-gutter {
-    @apply bg-slate-50/80 dark:bg-slate-800/30;
+    background-color: var(--ov-bg-soft);
   }
 
   .rbc-time-header-content {
-    @apply border-slate-200 dark:border-slate-700/30;
+    border-color: var(--ov-border-soft);
   }
 
   .rbc-agenda-view table.rbc-agenda-table {
-    @apply border-slate-200 dark:border-slate-700/50;
-    @apply bg-white dark:bg-slate-900/50;
+    border-color: var(--ov-border);
+    background-color: var(--ov-panel);
   }
 
   .rbc-agenda-view table.rbc-agenda-table tbody > tr > td {
-    @apply border-slate-100 dark:border-slate-800/30;
+    border-color: var(--ov-border-soft);
     @apply py-3 px-4;
   }
 
   .rbc-agenda-view table.rbc-agenda-table .rbc-agenda-time-cell {
-    @apply font-display font-semibold text-slate-700 dark:text-slate-300;
+    @apply font-mono font-semibold;
+    color: var(--ov-text-soft);
   }
 
   .rbc-show-more {
-    @apply font-semibold text-primary-600 dark:text-primary-400;
-    @apply hover:text-primary-700 dark:hover:text-primary-300;
-    @apply transition-colors duration-200;
+    @apply font-semibold;
+    color: var(--ov-accent);
   }
 
-  /* 深色模式下日历单元格边框优化 */
-  .dark .rbc-month-view,
-  .dark .rbc-time-view,
-  .dark .rbc-agenda-view {
-    @apply border-slate-700/50;
-  }
-
-  .dark .rbc-header {
-    @apply bg-slate-800/60 text-slate-200 border-slate-700/50;
-  }
-
-  .dark .rbc-day-bg {
-    @apply bg-slate-900/30;
-  }
-
-  .dark .rbc-off-range-bg {
-    @apply bg-slate-950/50 text-slate-500;
-  }
-
-  .dark .rbc-today {
-    @apply bg-primary-950/30;
-  }
-
-  .dark .rbc-month-row {
-    @apply border-slate-700/30;
-  }
-
-  .dark .rbc-time-slot {
-    @apply border-slate-800/30;
-  }
-
-  .dark .rbc-time-header-content {
-    @apply bg-slate-800/40 border-slate-700/30;
-  }
-
-  .dark .rbc-time-gutter {
-    @apply bg-slate-800/40;
-  }
-
-  .dark .rbc-agenda-view table.rbc-agenda-table {
-    @apply bg-slate-900/30 border-slate-700/50;
-  }
-
-  .dark .rbc-agenda-view table.rbc-agenda-table tbody > tr > td {
-    @apply border-slate-800/30;
+  .rbc-show-more:hover {
+    color: var(--ov-accent-strong);
   }
 }
