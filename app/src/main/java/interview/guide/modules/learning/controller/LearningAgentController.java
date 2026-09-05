@@ -11,6 +11,7 @@ import interview.guide.modules.learning.agent.AgentEvent;
 import interview.guide.modules.learning.agent.LearningAgentService;
 import interview.guide.modules.learning.model.LearningAgentDTO.CreateLearningSessionRequest;
 import interview.guide.modules.learning.model.LearningAgentDTO.LearningAgentChatRequest;
+import interview.guide.modules.learning.service.SessionTitleService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +23,10 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
+
+import java.time.Duration;
 
 /**
  * 学习帮手 Agent 控制器
@@ -33,8 +38,14 @@ import reactor.core.publisher.Flux;
 @RequiredArgsConstructor
 public class LearningAgentController {
 
+    /**
+     * 首轮结束后生成标题的兜底超时：LLM 卡住时不允许一直占着 SSE 连接
+     */
+    private static final Duration TITLE_EVENT_TIMEOUT = Duration.ofSeconds(10);
+
     private final RagChatSessionService sessionService;
     private final LearningAgentService agentService;
+    private final SessionTitleService sessionTitleService;
     private final SseEventWriter sseEventWriter;
 
     /**
@@ -81,7 +92,18 @@ public class LearningAgentController {
                 sessionService.completeStreamMessage(messageId, content, stream.stepsJson().get());
                 log.info("学习帮手流式完成: sessionId={}, messageId={}, steps={}",
                     sessionId, messageId, stream.stepsJson().get());
-            });
+            })
+            .concatWith(Mono
+                // 4. 首轮回答结束后自动生成会话标题（标题仍是默认占位时才生成），经 title 事件推给前端
+                .defer(() -> Mono.justOrEmpty(sessionTitleService.autoRenameIfDefault(
+                        sessionId, currentUser.id(), request.question(), stream.content().get())
+                    .map(title -> sseEventWriter.typed(AgentEvent.TYPE_TITLE, AgentEvent.title(title)))))
+                .subscribeOn(Schedulers.boundedElastic())
+                .timeout(TITLE_EVENT_TIMEOUT)
+                .onErrorResume(e -> {
+                    log.warn("会话标题事件生成异常: sessionId={}", sessionId, e);
+                    return Mono.empty();
+                }));
     }
 
     /**

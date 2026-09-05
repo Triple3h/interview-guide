@@ -10,6 +10,8 @@ export interface AgentStreamHandlers {
   onStep: (step: AgentStep) => void;
   onDelta: (text: string) => void;
   onReasoning: (text: string) => void;
+  /** 首轮回答结束后后端自动生成的会话标题 */
+  onTitle?: (title: string) => void;
   onComplete: () => void;
   onError: (error: Error) => void;
 }
@@ -71,6 +73,8 @@ export const learningAgentApi = {
           handlers.onDelta(event.text);
         } else if (event.type === 'reasoning' && typeof event.text === 'string') {
           handlers.onReasoning(event.text);
+        } else if (event.type === 'title' && typeof event.text === 'string') {
+          handlers.onTitle?.(event.text);
         } else if (event.type === 'step') {
           handlers.onStep({
             tool: event.tool ?? 'unknown',

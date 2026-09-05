@@ -12,6 +12,11 @@ public class LearningAgentProperties {
     private String systemPromptPath = "classpath:prompts/learning-agent-system.st";
 
     /**
+     * 首轮回答结束后自动生成会话标题的 Prompt 模板
+     */
+    private String titlePromptPath = "classpath:prompts/learning-session-title.st";
+
+    /**
      * 知识库检索条数
      */
     private int searchTopK = 6;

@@ -281,6 +281,10 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
           setLoading(false);
           loadSessions();
         },
+        onTitle: (title) => {
+          // 首轮回答结束后后端自动生成的标题（仅占位标题会被替换）
+          setCurrentSessionTitle(title);
+        },
         onError: (error: Error) => {
           console.error('学习帮手回答失败:', error);
           updateLastAssistant((msg) => ({
