@@ -4,6 +4,7 @@ import interview.guide.common.annotation.RateLimit;
 import interview.guide.common.result.Result;
 import interview.guide.modules.interview.model.InterviewSessionDTO;
 import interview.guide.modules.knowledgebase.model.BatchGenerateKnowledgeBaseQuestionsRequest;
+import interview.guide.modules.knowledgebase.model.BatchQuestionGenStatusRequest;
 import interview.guide.modules.knowledgebase.model.CreateKnowledgeBaseBatchInterviewRequest;
 import interview.guide.modules.knowledgebase.model.CreateKnowledgeBaseInterviewRequest;
 import interview.guide.modules.knowledgebase.model.CreateKnowledgeBaseQuestionRequest;
@@ -78,6 +79,12 @@ public class KnowledgeBaseInterviewController {
   @GetMapping("/api/knowledgebase/{id}/questions/generation-status")
   public Result<QuestionGenStatusResponse> getQuestionGenerationStatus(@PathVariable Long id) {
     return Result.success(questionService.getGenerationStatus(id));
+  }
+
+  @PostMapping("/api/knowledgebase/questions/generation-status/batch")
+  public Result<List<QuestionGenStatusResponse>> batchQuestionGenerationStatus(
+      @Valid @RequestBody BatchQuestionGenStatusRequest request) {
+    return Result.success(questionService.getGenerationStatuses(request.knowledgeBaseIds()));
   }
 
   @PostMapping("/api/knowledgebase/{id}/questions")

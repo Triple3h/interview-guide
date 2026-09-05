@@ -12,7 +12,8 @@
     "test:question-generation": "node --test src/pages/questionGenerationStatus.test.ts",
     "test:interview-capacity": "node --test src/components/knowledgebaseInterview/interviewCapacity.test.ts",
     "test:interview-entry": "node --test src/pages/interviewEntry.test.ts",
-    "test:kb-batch-upload": "node --test src/pages/knowledgeBaseBatchUpload.test.ts"
+    "test:kb-batch-upload": "node --test src/pages/knowledgeBaseBatchUpload.test.ts",
+    "test:question-generation-queue": "node --test src/components/knowledgebaseInterview/questionGenerationQueue.test.ts"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.1.18",

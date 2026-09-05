@@ -66,6 +66,16 @@ public class QuestionGenerationStateService {
     return toResponse(kb, readConfigOrNull(kb.getQuestionGenConfig()));
   }
 
+  /**
+   * 批量查询生成状态：不存在的知识库直接跳过，供前端生成队列展示。
+   */
+  @Transactional(readOnly = true)
+  public List<QuestionGenStatusResponse> getStatuses(List<Long> knowledgeBaseIds) {
+    return knowledgeBaseRepository.findAllById(knowledgeBaseIds).stream()
+        .map(kb -> toResponse(kb, readConfigOrNull(kb.getQuestionGenConfig())))
+        .toList();
+  }
+
   @Transactional(readOnly = true)
   public QuestionGenerationConfig getConfig(Long knowledgeBaseId, String taskId) {
     KnowledgeBaseEntity kb = knowledgeBaseRepository.findById(knowledgeBaseId)

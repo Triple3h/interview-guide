@@ -28,6 +28,7 @@ import GenerateKnowledgeBaseQuestionsModal, {
   type GenerateQuestionsConfig,
 } from '../components/knowledgebaseInterview/GenerateKnowledgeBaseQuestionsModal';
 import KnowledgeBaseCard from '../components/knowledgebaseInterview/KnowledgeBaseCard';
+import QuestionGenerationQueueDrawer from '../components/knowledgebaseInterview/QuestionGenerationQueueDrawer';
 import { isQuestionGenerationActive } from './questionGenerationStatus';
 
 type SortKey = 'time' | 'name' | 'question';
@@ -55,6 +56,8 @@ export default function KnowledgeBaseInterviewLandingPage() {
   const [generateError, setGenerateError] = useState('');
   const [batchGenerateResult, setBatchGenerateResult] =
     useState<KnowledgeBaseBatchGenerateResultItem[] | null>(null);
+  // 非空时展示本轮批量提交的生成队列抽屉
+  const [generationQueueIds, setGenerationQueueIds] = useState<number[] | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   const loadKnowledgeBases = useCallback(async () => {
@@ -129,6 +132,20 @@ export default function KnowledgeBaseInterviewLandingPage() {
   );
   const knowledgeBaseNameById = useMemo(
     () => new Map(knowledgeBases.map(kb => [kb.id, kb.name])),
+    [knowledgeBases]
+  );
+
+  // 生成队列常驻入口：展示所有有任务记录的知识库（进行中的排前），有生成任务时计数提示
+  const queueKbIds = useMemo(
+    () =>
+      [...knowledgeBases]
+        .filter(kb => kb.questionGenStatus !== 'NONE')
+        .sort((a, b) => Number(isQuestionGenerationActive(b.questionGenStatus)) - Number(isQuestionGenerationActive(a.questionGenStatus)))
+        .map(kb => kb.id),
+    [knowledgeBases]
+  );
+  const activeGenerationCount = useMemo(
+    () => knowledgeBases.filter(kb => isQuestionGenerationActive(kb.questionGenStatus)).length,
     [knowledgeBases]
   );
 
@@ -276,8 +293,12 @@ export default function KnowledgeBaseInterviewLandingPage() {
           followUpCount: config.followUpCount,
           categoryLimit: config.categoryLimit,
         });
+        const submittedIds = results.filter(item => item.submitted).map(item => item.knowledgeBaseId);
         setGenerateTargets([]);
         setBatchGenerateResult(results);
+        if (submittedIds.length > 0) {
+          setGenerationQueueIds(submittedIds);
+        }
         await loadKnowledgeBases();
       } else {
         const result = await knowledgeBaseApi.generateQuestions(generateTargets[0].id, {
@@ -290,7 +311,7 @@ export default function KnowledgeBaseInterviewLandingPage() {
         setGenerateTargets([]);
         navigate(`/knowledgebase-interview/${target.id}/questions`, {
           state: {
-            highlightStatus: 'DRAFT',
+            highlightStatus: 'ACTIVE',
             questionGenTaskId: result.questionGenTaskId,
           },
         });
@@ -315,6 +336,25 @@ export default function KnowledgeBaseInterviewLandingPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          {queueKbIds.length > 0 && (
+            <button
+              onClick={() => setGenerationQueueIds(queueKbIds)}
+              title="查看题目生成队列"
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700 whitespace-nowrap"
+            >
+              {activeGenerationCount > 0 ? (
+                <Loader2 className="w-4 h-4 animate-spin text-primary-500" />
+              ) : (
+                <Layers className="w-4 h-4" />
+              )}
+              生成队列
+              {activeGenerationCount > 0 && (
+                <span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-primary-500 text-white text-xs font-semibold">
+                  {activeGenerationCount}
+                </span>
+              )}
+            </button>
+          )}
           <button
             onClick={loadKnowledgeBases}
             className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700 whitespace-nowrap"
@@ -414,14 +454,29 @@ export default function KnowledgeBaseInterviewLandingPage() {
                 </ul>
               )}
             </div>
-            <button
-              type="button"
-              onClick={() => setBatchGenerateResult(null)}
-              className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 shrink-0"
-              aria-label="关闭批量生成结果"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setGenerationQueueIds(
+                    batchGenerateResult.filter(item => item.submitted).map(item => item.knowledgeBaseId)
+                  );
+                }}
+                disabled={batchGenerateResult.every(item => !item.submitted)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 text-xs font-medium hover:bg-primary-100 dark:hover:bg-primary-900/50 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+              >
+                <Layers className="w-3.5 h-3.5" />
+                查看队列
+              </button>
+              <button
+                type="button"
+                onClick={() => setBatchGenerateResult(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"
+                aria-label="关闭批量生成结果"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -542,6 +597,13 @@ export default function KnowledgeBaseInterviewLandingPage() {
           }
         }}
         onSubmit={handleGenerateSubmit}
+      />
+
+      <QuestionGenerationQueueDrawer
+        open={generationQueueIds !== null && generationQueueIds.length > 0}
+        knowledgeBaseIds={generationQueueIds ?? []}
+        nameById={knowledgeBaseNameById}
+        onClose={() => setGenerationQueueIds(null)}
       />
     </div>
   );

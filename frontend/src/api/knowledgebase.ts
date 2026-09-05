@@ -455,6 +455,15 @@ export const knowledgeBaseApi = {
     );
   },
 
+  async batchQuestionGenerationStatus(
+    knowledgeBaseIds: number[]
+  ): Promise<QuestionGenStatusResponse[]> {
+    return request.post<QuestionGenStatusResponse[]>(
+      '/api/knowledgebase/questions/generation-status/batch',
+      { knowledgeBaseIds }
+    );
+  },
+
   async listQuestions(
     id: number,
     params?: ListKnowledgeBaseQuestionsParams

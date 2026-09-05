@@ -229,6 +229,11 @@ public class KnowledgeBaseQuestionService {
     return questionGenerationStateService.getStatus(knowledgeBaseId);
   }
 
+  @Transactional(readOnly = true)
+  public List<QuestionGenStatusResponse> getGenerationStatuses(List<Long> knowledgeBaseIds) {
+    return questionGenerationStateService.getStatuses(knowledgeBaseIds);
+  }
+
   private void applyCreateRequest(KnowledgeBaseQuestionEntity question,
                                   CreateKnowledgeBaseQuestionRequest request) {
     question.setSkillId(KnowledgeBaseQuestionEntity.DEFAULT_SKILL_ID);

@@ -312,6 +312,41 @@ class QuestionGenerationAsyncTest {
       assertThat(kb.getQuestionGenStatus()).isEqualTo(QuestionGenStatus.QUEUED);
       verify(questionGenStreamProducer).sendGenerateTask(1L, "task-1", 1);
     }
+
+    @Test
+    @DisplayName("任务执行超过时限应中断并走失败重试路径")
+    void shouldRetryWhenGenerationTimesOut() throws Exception {
+      KnowledgeBaseEntity kb = buildKb(1L, QuestionGenStatus.QUEUED, "task-1");
+      when(knowledgeBaseRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(kb));
+      kb.setQuestionGenConfig(objectMapper.writeValueAsString(
+          new QuestionGenerationConfig("mid", 5, 2, 3, null)));
+      when(questionGenStreamProducer.sendGenerateTask(1L, "task-1", 1)).thenReturn(true);
+
+      KnowledgeBaseQuestionGenerationService hangingService =
+          mock(KnowledgeBaseQuestionGenerationService.class);
+      doAnswer(invocation -> {
+        Thread.sleep(3000);
+        return null;
+      }).when(hangingService)
+          .executeGeneration(eq(1L), eq("task-1"), any(QuestionGenerationConfig.class));
+
+      QuestionGenStreamConsumer consumer = new QuestionGenStreamConsumer(
+          redisService, hangingService, stateService, questionGenStreamProducer) {
+        @Override
+        protected long executionTimeoutMillis() {
+          return 100;
+        }
+      };
+      invokeProcessMessage(consumer, Map.of(
+          interview.guide.common.constant.AsyncTaskStreamConstants.FIELD_KB_ID, "1",
+          interview.guide.common.constant.AsyncTaskStreamConstants.FIELD_TASK_ID, "task-1",
+          interview.guide.common.constant.AsyncTaskStreamConstants.FIELD_RETRY_COUNT, "0"
+      ));
+
+      // 超时后状态重置回 QUEUED，并以 retryCount+1 重新入队
+      assertThat(kb.getQuestionGenStatus()).isEqualTo(QuestionGenStatus.QUEUED);
+      verify(questionGenStreamProducer).sendGenerateTask(1L, "task-1", 1);
+    }
   }
 
   @Nested
@@ -391,7 +426,7 @@ class QuestionGenerationAsyncTest {
       assertThat(saved)
           .allSatisfy(question ->
               assertThat(question.getStatus()).isEqualTo(
-                  interview.guide.modules.knowledgebase.model.KnowledgeBaseQuestionStatus.DRAFT));
+                  interview.guide.modules.knowledgebase.model.KnowledgeBaseQuestionStatus.ACTIVE));
     }
 
     @Test

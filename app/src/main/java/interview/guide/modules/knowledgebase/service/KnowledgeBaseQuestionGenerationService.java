@@ -229,7 +229,8 @@ public class KnowledgeBaseQuestionGenerationService {
       entity.setFollowUpsJson(writeFollowUps(dto.followUps(), followUpCount));
       entity.setSourceContext(sourceContext);
       entity.setKbContentHash(kb.getFileHash());
-      entity.setStatus(KnowledgeBaseQuestionStatus.DRAFT);
+      // 生成的题目默认启用，可直接参与组卷；手动微调仍可在题库页改为草稿/归档
+      entity.setStatus(KnowledgeBaseQuestionStatus.ACTIVE);
       entities.add(entity);
     }
     return new GenerationBatch(entities, skippedCount);

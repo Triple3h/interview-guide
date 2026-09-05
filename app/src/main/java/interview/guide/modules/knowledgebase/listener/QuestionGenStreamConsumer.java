@@ -20,6 +20,12 @@ import java.util.Map;
 public class QuestionGenStreamConsumer
     extends AbstractStreamConsumer<QuestionGenStreamConsumer.QuestionGenPayload> {
 
+  /**
+   * 单库生成总时长上限：正常 1~2 分钟，超时视为死任务走失败重试。
+   * 必须小于恢复调度器的 PROCESSING 卡死判定（20 分钟），避免恢复调度与在跑任务双写。
+   */
+  private static final long EXECUTION_TIMEOUT_MILLIS = 10 * 60 * 1000L;
+
   private final KnowledgeBaseQuestionGenerationService generationService;
   private final QuestionGenerationStateService stateService;
   private final QuestionGenStreamProducer producer;
@@ -37,6 +43,11 @@ public class QuestionGenStreamConsumer
     this.generationService = generationService;
     this.stateService = stateService;
     this.producer = producer;
+  }
+
+  @Override
+  protected long executionTimeoutMillis() {
+    return EXECUTION_TIMEOUT_MILLIS;
   }
 
   @Override

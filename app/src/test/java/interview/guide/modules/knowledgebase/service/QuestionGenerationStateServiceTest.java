@@ -4,6 +4,7 @@ import interview.guide.common.exception.BusinessException;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseQuestionEntity;
 import interview.guide.modules.knowledgebase.model.QuestionGenStatus;
+import interview.guide.modules.knowledgebase.model.QuestionGenStatusResponse;
 import interview.guide.modules.knowledgebase.model.QuestionGenerationConfig;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseQuestionRepository;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
@@ -122,6 +123,24 @@ class QuestionGenerationStateServiceTest {
     assertThat(kb.getQuestionGenSkippedCount()).isEqualTo(2);
     verify(questionRepository).deleteByKnowledgeBaseId(1L);
     verify(questionRepository).saveAll(List.of(question));
+  }
+
+  @Test
+  @DisplayName("批量查询返回各库状态并跳过不存在的库")
+  void shouldReturnStatusesForExistingKnowledgeBases() {
+    KnowledgeBaseEntity processing = buildKb(QuestionGenStatus.PROCESSING, "task-1");
+    KnowledgeBaseEntity completed = buildKb(QuestionGenStatus.COMPLETED, "task-2");
+    completed.setId(2L);
+    when(knowledgeBaseRepository.findAllById(List.of(1L, 2L, 99L)))
+        .thenReturn(List.of(processing, completed));
+
+    var statuses = service.getStatuses(List.of(1L, 2L, 99L));
+
+    assertThat(statuses).hasSize(2);
+    assertThat(statuses).extracting(QuestionGenStatusResponse::knowledgeBaseId)
+        .containsExactly(1L, 2L);
+    assertThat(statuses).extracting(QuestionGenStatusResponse::questionGenStatus)
+        .containsExactly(QuestionGenStatus.PROCESSING, QuestionGenStatus.COMPLETED);
   }
 
   private KnowledgeBaseEntity buildKb(QuestionGenStatus status, String taskId) {

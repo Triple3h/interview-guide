@@ -9,10 +9,13 @@ import org.redisson.api.stream.StreamMessageId;
 
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Slf4j
@@ -21,10 +24,20 @@ public abstract class AbstractStreamConsumer<T> {
     private final RedisService redisService;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private ExecutorService executorService;
+    /** 任务级超时启用时的执行器：消费线程只负责等待，业务在独立线程跑，超时可中断 */
+    private ExecutorService workerExecutorService;
     private String consumerName;
 
     protected AbstractStreamConsumer(RedisService redisService) {
         this.redisService = redisService;
+    }
+
+    /**
+     * 单个任务的最大执行时长（毫秒），超过即中断任务并走失败重试；默认 0 表示不启用。
+     * 启用时的值必须小于恢复调度器对 PROCESSING 的卡死判定阈值，否则会出现双跑。
+     */
+    protected long executionTimeoutMillis() {
+        return 0L;
     }
 
     @PostConstruct
@@ -54,6 +67,9 @@ public abstract class AbstractStreamConsumer<T> {
         running.set(false);
         if (executorService != null) {
             executorService.shutdown();
+        }
+        if (workerExecutorService != null) {
+            workerExecutorService.shutdown();
         }
         log.info("{} consumer stopped: consumerName={}", taskDisplayName(), consumerName);
     }
@@ -124,7 +140,7 @@ public abstract class AbstractStreamConsumer<T> {
                 log.info("{} task was not claimed: {}", taskDisplayName(), payloadIdentifier(payload));
                 return;
             }
-            processBusiness(payload);
+            executeBusinessWithTimeout(payload);
             markCompleted(payload);
             ackMessage(messageId);
             log.info("{} task completed: {}", taskDisplayName(), payloadIdentifier(payload));
@@ -157,6 +173,55 @@ public abstract class AbstractStreamConsumer<T> {
             return null;
         }
         return error.length() > 500 ? error.substring(0, 500) : error;
+    }
+
+    /**
+     * 带任务级超时地执行业务：超时则中断任务线程并抛出异常，
+     * 由调用方的失败重试逻辑接管（有限重试，重试耗尽标记 FAILED）。
+     */
+    private void executeBusinessWithTimeout(T payload) throws Exception {
+        long timeoutMillis = executionTimeoutMillis();
+        if (timeoutMillis <= 0) {
+            processBusiness(payload);
+            return;
+        }
+        Future<?> future = workerExecutor().submit(() -> {
+            processBusiness(payload);
+            return null;
+        });
+        try {
+            future.get(timeoutMillis, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            future.cancel(true);
+            throw new IllegalStateException(
+                taskDisplayName() + " task timed out after " + timeoutMillis + "ms: "
+                    + payloadIdentifier(payload), e);
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof Exception exception) {
+                throw exception;
+            }
+            throw e;
+        }
+    }
+
+    private synchronized ExecutorService workerExecutor() {
+        if (workerExecutorService == null) {
+            workerExecutorService = new ThreadPoolExecutor(
+                1,
+                1,
+                0L,
+                TimeUnit.MILLISECONDS,
+                new LinkedBlockingQueue<>(),
+                r -> {
+                    Thread t = new Thread(r, threadName() + "-worker");
+                    t.setDaemon(true);
+                    return t;
+                },
+                new ThreadPoolExecutor.AbortPolicy()
+            );
+        }
+        return workerExecutorService;
     }
 
     private void ackMessage(StreamMessageId messageId) {
