@@ -1,0 +1,19 @@
+# ==============================================================================
+# 生产运行时镜像（薄构建）
+# 只负责托管本地预构建好的 bootJar，不在服务器上跑 Gradle。
+# 产物由 scripts/deploy-tc-cloud.sh 构建（./gradlew :app:bootJar）并同步到
+# app/build/libs/ 下；jar 与 CPU 架构无关，服务器无需模拟构建。
+# 完整的多阶段构建见同目录 Dockerfile（CI / 通用场景使用）。
+# ==============================================================================
+FROM eclipse-temurin:25-jre
+WORKDIR /app
+
+# 容器默认 UTC，会让 LocalDateTime（生成任务时间戳等）整体偏移 8 小时，固定为东八区
+ENV TZ=Asia/Shanghai
+
+# 部署脚本统一把 bootJar 同步为 app.jar，避免 local 变体 jar（*-plain.jar）干扰
+COPY build/libs/app.jar app.jar
+
+EXPOSE 8080
+
+ENTRYPOINT ["java", "-jar", "app.jar"]

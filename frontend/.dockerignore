@@ -1,9 +1,8 @@
 # Dependencies (will be installed inside container)
 node_modules
 
-# Build output (will be generated inside container)
-dist
-build
+# 注意：dist 不在此排除——Dockerfile.prod（薄构建）需要上下文里的本地预构建 dist；
+# 多阶段 Dockerfile 忽略它也无妨（builder 阶段会自行重新构建）。
 
 # Development files
 .env.local

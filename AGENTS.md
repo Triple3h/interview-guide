@@ -109,3 +109,4 @@ docker compose -f docker-compose.dev.yml up -d
 - 后端 Java 细则：`.claude/rules/backend.md`
 - AI、限流、异步细则：`.claude/rules/ai-and-async.md`
 - 前端细则：`.claude/rules/frontend.md`
+- 云服务器部署手册（rsync 同步 + Compose 构建，含已知坑）：`docs/deploy-tc-cloud.md`
