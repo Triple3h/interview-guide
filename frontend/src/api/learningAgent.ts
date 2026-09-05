@@ -24,6 +24,7 @@ interface AgentEventPayload {
   tool?: string;
   phase?: string;
   summary?: string;
+  detail?: string;
   message?: string;
   question?: string;
   options?: string[];
@@ -86,6 +87,7 @@ export const learningAgentApi = {
             tool: event.tool ?? 'unknown',
             phase: (event.phase === 'end' || event.phase === 'error') ? event.phase : 'start',
             summary: event.summary ?? '',
+            detail: event.detail,
           });
         }
         // error 类型事件由 streamSse 统一抛给 onError

@@ -27,14 +27,14 @@ public class LearningAgentToolCallback implements ToolCallback {
     @Override
     public String call(String toolInput) {
         String name = delegate.getToolDefinition().name();
-        stepConsumer.accept(new AgentStep(name, "start", LearningAgentTools.describeArgs(name, toolInput)));
+        stepConsumer.accept(new AgentStep(name, "start", LearningAgentTools.describeArgs(name, toolInput), null));
         try {
             String result = delegate.call(toolInput);
-            stepConsumer.accept(new AgentStep(name, "end", endSummary(name, result)));
+            stepConsumer.accept(new AgentStep(name, "end", endSummary(name, result), endDetail(result)));
             return result;
         } catch (RuntimeException e) {
             log.warn("[LearningAgent] 工具执行失败: tool={}, error={}", name, e.getMessage());
-            stepConsumer.accept(new AgentStep(name, "error", "执行失败: " + abbreviate(e.getMessage(), 60)));
+            stepConsumer.accept(new AgentStep(name, "error", "执行失败: " + abbreviate(e.getMessage(), 60), null));
             throw e;
         }
     }
@@ -53,6 +53,10 @@ public class LearningAgentToolCallback implements ToolCallback {
             case "upsertLearningRecord", "upsertLearningPlan", "askLearner" -> abbreviate(result, 40);
             default -> "执行完成";
         };
+    }
+
+    private String endDetail(String result) {
+        return abbreviate(result, 500);
     }
 
     private String abbreviate(String text, int max) {

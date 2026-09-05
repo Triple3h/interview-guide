@@ -17,6 +17,7 @@ public record AgentEvent(
     String tool,
     String phase,
     String summary,
+    String detail,
     String message,
     String question,
     List<String> options
@@ -30,26 +31,26 @@ public record AgentEvent(
     public static final String TYPE_ERROR = "error";
 
     public static AgentEvent delta(String text) {
-        return new AgentEvent(TYPE_DELTA, text, null, null, null, null, null, null);
+        return new AgentEvent(TYPE_DELTA, text, null, null, null, null, null, null, null);
     }
 
     public static AgentEvent reasoning(String text) {
-        return new AgentEvent(TYPE_REASONING, text, null, null, null, null, null, null);
+        return new AgentEvent(TYPE_REASONING, text, null, null, null, null, null, null, null);
     }
 
-    public static AgentEvent step(String tool, String phase, String summary) {
-        return new AgentEvent(TYPE_STEP, null, tool, phase, summary, null, null, null);
+    public static AgentEvent step(String tool, String phase, String summary, String detail) {
+        return new AgentEvent(TYPE_STEP, null, tool, phase, summary, detail, null, null, null);
     }
 
     public static AgentEvent ask(String question, List<String> options) {
-        return new AgentEvent(TYPE_ASK, null, null, null, null, null, question, options);
+        return new AgentEvent(TYPE_ASK, null, null, null, null, null, null, question, options);
     }
 
     public static AgentEvent title(String text) {
-        return new AgentEvent(TYPE_TITLE, text, null, null, null, null, null, null);
+        return new AgentEvent(TYPE_TITLE, text, null, null, null, null, null, null, null);
     }
 
     public static AgentEvent error(String message) {
-        return new AgentEvent(TYPE_ERROR, null, null, null, null, message, null, null);
+        return new AgentEvent(TYPE_ERROR, null, null, null, null, null, message, null, null);
     }
 }

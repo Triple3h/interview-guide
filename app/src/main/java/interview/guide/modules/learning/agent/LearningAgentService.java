@@ -346,7 +346,7 @@ public class LearningAgentService {
         for (ToolCallback callback : rawCallbacks) {
             decorated.add(new LearningAgentToolCallback(callback, step -> {
                 steps.add(step);
-                liveSink.tryEmitNext(AgentEvent.step(step.tool(), step.phase(), step.summary()));
+                liveSink.tryEmitNext(AgentEvent.step(step.tool(), step.phase(), step.summary(), step.detail()));
             }));
         }
         return decorated.toArray(ToolCallback[]::new);

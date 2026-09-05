@@ -13,23 +13,17 @@ import type {UserProfile} from '../types/user';
 import {formatDateOnly} from '../utils/date';
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
 import CodeBlock from '../components/CodeBlock';
+import ToolStepsPanel from '../components/learning/ToolStepsPanel';
 import UserProfileModal from '../components/UserProfileModal';
 import {
-  AlertTriangle,
-  BookOpenCheck,
   Brain,
   Check,
   CircleHelp,
   Edit,
-  Library,
-  ListTodo,
-  Loader2,
   MessageSquare,
   Pin,
   Plus,
-  Search,
   Trash2,
-  UserRound,
 } from 'lucide-react';
 
 interface LearningAgentPageProps {
@@ -59,16 +53,6 @@ const SUGGESTIONS = [
   '用我学过的知识解释一个新概念',
   '总结一下我的薄弱环节',
 ];
-
-const STEP_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
-  searchKnowledgeBase: Search,
-  upsertLearningRecord: BookOpenCheck,
-  listLearnedTopics: Library,
-  getLearnerProfile: UserRound,
-  loadSkillBaseline: BookOpenCheck,
-  upsertLearningPlan: ListTodo,
-  askLearner: CircleHelp,
-};
 
 export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageProps) {
   const navigate = useNavigate();
@@ -346,15 +330,6 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
     return formatDateOnly(dateStr);
   };
 
-  // 判断步骤是否已结束（start 之后出现了同工具的 end/error）
-  const isStepFinished = (steps: AgentStep[], index: number): boolean => {
-    const step = steps[index];
-    if (step.phase !== 'start') {
-      return true;
-    }
-    return steps.slice(index + 1).some((s) => s.tool === step.tool && s.phase !== 'start');
-  };
-
   // 学员点选提问选项：提交后端放行 Agent 等待，卡片记住所选
   const handleAnswerAsk = async (msg: Message, askIndex: number, answer: string) => {
     if (!currentSessionId) return;
@@ -447,42 +422,6 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
           {msg.reasoning}
         </div>
       </details>
-    );
-  };
-
-  const renderSteps = (steps: AgentStep[]) => {
-    if (!steps || steps.length === 0) {
-      return null;
-    }
-    return (
-      <div className="flex flex-wrap gap-1.5 mb-3">
-        {steps.map((step, index) => {
-          const Icon = STEP_ICONS[step.tool] ?? MessageSquare;
-          const finished = isStepFinished(steps, index);
-          const isError = step.phase === 'error';
-          return (
-            <span
-              key={`${step.tool}-${index}`}
-              className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs ${
-                isError
-                  ? 'bg-red-50 dark:bg-red-900/30 text-red-500'
-                  : 'bg-slate-50 dark:bg-slate-700 text-slate-500 dark:text-slate-400'
-              }`}
-              title={step.summary}
-            >
-              {isError ? (
-                <AlertTriangle className="w-3 h-3"/>
-              ) : finished ? (
-                <Check className="w-3 h-3 text-green-500"/>
-              ) : (
-                <Loader2 className="w-3 h-3 animate-spin text-primary-500"/>
-              )}
-              <Icon className="w-3 h-3"/>
-              {step.summary || step.tool}
-            </span>
-          );
-        })}
-      </div>
     );
   };
 
@@ -629,22 +568,42 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
         {/* 中间：聊天区域 */}
         <div className="flex-1 min-w-0">
           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm flex flex-col h-full border border-slate-100 dark:border-slate-700">
-            {/* 会话信息 + 当前成员 */}
-            <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-600">
-              <h2 className="text-base font-semibold text-slate-800 dark:text-white truncate">
-                {currentSessionTitle || '新的学习对话'}
-              </h2>
-              {profile && (
-                <button
-                  onClick={() => setProfileModalOpen(true)}
-                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors text-sm flex-shrink-0 ml-4"
-                  title="编辑我的学习资料"
-                >
-                  <span className="text-lg leading-none">{profile.avatarEmoji || '🙂'}</span>
-                  <span className="font-medium text-slate-700 dark:text-slate-200">{profile.nickname}</span>
-                  <Edit className="w-3.5 h-3.5 text-slate-400"/>
-                </button>
-              )}
+            {/* 会话头部：学习成员是主体，会话标题为附属信息 */}
+            <div className="flex items-center gap-3 p-4 border-b border-slate-200 dark:border-slate-600">
+              <button
+                onClick={() => setProfileModalOpen(true)}
+                className="group flex items-center gap-3 flex-shrink-0"
+                title="编辑我的学习资料"
+              >
+                <span className="w-10 h-10 rounded-xl bg-primary-600/10 dark:bg-primary-400/15 ring-1 ring-primary-600/20 dark:ring-primary-400/30 flex items-center justify-center text-xl leading-none group-hover:ring-primary-500/50 transition-all">
+                  {profile?.avatarEmoji || '🙂'}
+                </span>
+                <span className="text-left">
+                  <span className="flex items-center gap-1.5">
+                    <span className="text-base font-semibold text-slate-900 dark:text-slate-50 truncate max-w-32">
+                      {profile?.nickname || '学员'}
+                    </span>
+                    <Edit className="w-3.5 h-3.5 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"/>
+                  </span>
+                  <span className="block text-xs text-slate-400 dark:text-slate-500">学习成员 · 点击编辑资料</span>
+                </span>
+              </button>
+
+              <div className="h-8 w-px bg-slate-200 dark:bg-slate-700 flex-shrink-0"/>
+
+              <button
+                onClick={() => currentSessionId && handleEditSessionTitle(currentSessionId, currentSessionTitle)}
+                disabled={!currentSessionId}
+                className="group/title flex-1 min-w-0 flex items-center gap-1.5 text-left disabled:cursor-default"
+                title={currentSessionId ? '重命名对话' : undefined}
+              >
+                <span className="truncate text-sm text-slate-500 dark:text-slate-400 group-hover/title:text-primary-600 dark:group-hover/title:text-primary-400 transition-colors">
+                  {currentSessionTitle || '新的学习对话'}
+                </span>
+                {currentSessionId && (
+                  <Edit className="w-3.5 h-3.5 text-slate-400 opacity-0 group-hover/title:opacity-100 transition-opacity flex-shrink-0"/>
+                )}
+              </button>
             </div>
 
             {/* 消息列表 */}
@@ -695,7 +654,10 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
                           ) : (
                             <div>
                               {renderReasoning(msg, index)}
-                              {renderSteps(msg.steps ?? [])}
+                              <ToolStepsPanel
+                                steps={msg.steps ?? []}
+                                running={loading && index === messages.length - 1}
+                              />
                               {renderAskCards(msg)}
                               <div className="prose prose-slate dark:prose-invert prose-sm max-w-none">
                                 <ReactMarkdown

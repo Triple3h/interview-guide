@@ -6,6 +6,7 @@ package interview.guide.modules.learning.agent;
 public record AgentStep(
     String tool,
     String phase,  // start | end | error
-    String summary
+    String summary,
+    String detail  // 工具结果摘要（仅 end 携带，供前端展开查看；旧消息无此字段为 null）
 ) {
 }

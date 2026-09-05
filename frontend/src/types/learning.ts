@@ -48,4 +48,6 @@ export interface AgentStep {
   tool: string;
   phase: 'start' | 'end' | 'error';
   summary: string;
+  /** 工具结果摘要（仅 end 携带，供展开查看；旧消息无此字段） */
+  detail?: string;
 }
