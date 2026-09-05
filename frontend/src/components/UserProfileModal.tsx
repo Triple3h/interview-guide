@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { Check } from 'lucide-react';
 import { userApi } from '../api/user';
+import { skillApi, type SkillDTO } from '../api/skill';
 import type { SaveUserPayload, UserProfile } from '../types/user';
 
 const EMOJI_OPTIONS = ['🦊', '🐱', '🐼', '🦁', '🐧', '🐨', '🦉', '🐢', '🚀', '🌱', '📚', '🧠'];
@@ -21,6 +23,9 @@ export default function UserProfileModal({ open, mode, initial, onClose, onSaved
   const [avatarEmoji, setAvatarEmoji] = useState(EMOJI_OPTIONS[0]);
   const [occupation, setOccupation] = useState('');
   const [learningDirection, setLearningDirection] = useState('');
+  const [learningSkillId, setLearningSkillId] = useState('');
+  const [skillOptions, setSkillOptions] = useState<SkillDTO[]>([]);
+  const [directionOpen, setDirectionOpen] = useState(false);
   const [currentLevel, setCurrentLevel] = useState('');
   const [learningGoal, setLearningGoal] = useState('');
   const [saving, setSaving] = useState(false);
@@ -34,10 +39,35 @@ export default function UserProfileModal({ open, mode, initial, onClose, onSaved
     setAvatarEmoji(initial?.avatarEmoji ?? EMOJI_OPTIONS[Math.floor(Math.random() * EMOJI_OPTIONS.length)]);
     setOccupation(initial?.occupation ?? '');
     setLearningDirection(initial?.learningDirection ?? '');
+    setLearningSkillId(initial?.learningSkillId ?? '');
     setCurrentLevel(initial?.currentLevel ?? '');
     setLearningGoal(initial?.learningGoal ?? '');
     setError('');
+    // 预置学习方向选项来自面试 skills（过滤掉公司向主题），加载失败时仍可自由输入
+    skillApi.listSkills()
+      .then((list) => setSkillOptions(list.filter((s) => s.isPreset && !s.interviewOnly)))
+      .catch(() => setSkillOptions([]));
   }, [open, initial]);
+
+  const matchedOptions = useMemo(() => {
+    const keyword = learningDirection.trim().toLowerCase();
+    if (!keyword) {
+      return skillOptions;
+    }
+    return skillOptions.filter((s) => s.name.toLowerCase().includes(keyword));
+  }, [learningDirection, skillOptions]);
+
+  const handleDirectionInput = (value: string) => {
+    setLearningDirection(value);
+    const exact = skillOptions.find((s) => s.name === value.trim());
+    setLearningSkillId(exact?.id ?? '');
+  };
+
+  const selectSkillOption = (skill: SkillDTO) => {
+    setLearningDirection(skill.name);
+    setLearningSkillId(skill.id);
+    setDirectionOpen(false);
+  };
 
   const handleSubmit = async () => {
     if (!nickname.trim() || saving) {
@@ -51,6 +81,8 @@ export default function UserProfileModal({ open, mode, initial, onClose, onSaved
         avatarEmoji,
         occupation: occupation.trim() || undefined,
         learningDirection: learningDirection.trim() || undefined,
+        // 始终随资料整体提交：选预置方向传 skill id，自定义方向传空串让后端清除
+        learningSkillId,
         currentLevel: currentLevel.trim() || undefined,
         learningGoal: learningGoal.trim() || undefined,
       };
@@ -136,13 +168,45 @@ export default function UserProfileModal({ open, mode, initial, onClose, onSaved
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">学习方向</label>
-                    <input
-                      type="text"
-                      value={learningDirection}
-                      onChange={(e) => setLearningDirection(e.target.value)}
-                      placeholder="如：Java 后端 / 英语口语"
-                      className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
-                    />
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={learningDirection}
+                        onChange={(e) => handleDirectionInput(e.target.value)}
+                        onFocus={() => setDirectionOpen(true)}
+                        onBlur={() => setDirectionOpen(false)}
+                        placeholder="如：Java 后端开发 / 英语口语"
+                        autoComplete="off"
+                        className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
+                      />
+                      {directionOpen && matchedOptions.length > 0 && (
+                        <ul className="absolute z-10 mt-1 w-full max-h-52 overflow-auto py-1 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 shadow-lg">
+                          {matchedOptions.map((skill) => (
+                            <li key={skill.id}>
+                              <button
+                                type="button"
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  selectSkillOption(skill);
+                                }}
+                                className={`w-full flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors ${
+                                  learningSkillId === skill.id
+                                    ? 'bg-primary-50 dark:bg-primary-900/40 text-primary-600 dark:text-primary-300'
+                                    : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-600'
+                                }`}
+                              >
+                                <span className="w-5 text-center flex-shrink-0">{skill.display?.icon}</span>
+                                <span className="flex-1 truncate">{skill.name}</span>
+                                {learningSkillId === skill.id && (
+                                  <Check className="w-4 h-4 flex-shrink-0 text-primary-500" />
+                                )}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">可从预置方向中选择，也可直接输入自定义方向</p>
                   </div>
                 </div>
 

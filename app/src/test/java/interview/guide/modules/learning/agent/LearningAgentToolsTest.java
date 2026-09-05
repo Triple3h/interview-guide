@@ -1,26 +1,34 @@
 package interview.guide.modules.learning.agent;
 
+import interview.guide.common.exception.BusinessException;
+import interview.guide.common.exception.ErrorCode;
+import interview.guide.modules.interview.skill.InterviewSkillService;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
 import interview.guide.modules.knowledgebase.service.KnowledgeBaseVectorService;
 import interview.guide.modules.learning.model.LearningRecordEntity;
+import interview.guide.modules.learning.service.LearningPlanService;
 import interview.guide.modules.learning.service.LearningRecordService;
 import interview.guide.modules.user.model.UserEntity;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.springframework.ai.document.Document;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -37,12 +45,24 @@ class LearningAgentToolsTest {
     @Mock
     private LearningRecordService recordService;
 
+    @Mock
+    private InterviewSkillService skillService;
+
+    @Mock
+    private LearningPlanService planService;
+
+    @Mock
+    private LearningAskRegistry askRegistry;
+
     private LearningAgentProperties properties;
+
+    private List<AgentEvent> askEvents;
 
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
         properties = new LearningAgentProperties();
+        askEvents = new ArrayList<>();
     }
 
     private LearningAgentTools createTools(List<Long> preferredKbIds) {
@@ -50,7 +70,8 @@ class LearningAgentToolsTest {
         learner.setId(1L);
         learner.setNickname("Alice");
         return new LearningAgentTools(1L, 100L, preferredKbIds, learner,
-            vectorService, knowledgeBaseRepository, recordService, properties);
+            vectorService, knowledgeBaseRepository, recordService, properties, skillService,
+            planService, askRegistry, askEvents::add);
     }
 
     @Nested
@@ -144,6 +165,136 @@ class LearningAgentToolsTest {
                 "searchKnowledgeBase", "{\"query\":\"什么是 B+ 树\"}");
 
             assertThat(summary).contains("检索知识库").contains("什么是 B+ 树");
+        }
+    }
+
+    @Nested
+    @DisplayName("知识基线加载工具")
+    class LoadSkillBaseline {
+
+        @Test
+        @DisplayName("命中分类时返回带使用提示的知识基线内容")
+        void shouldReturnBaselineWithUsageHint() {
+            when(skillService.loadCategoryBaseline("REDIS")).thenReturn("Redis 考察要点：持久化、缓存、分布式锁");
+
+            String result = createTools(List.of()).loadSkillBaseline("REDIS");
+
+            assertThat(result)
+                .contains("REDIS")
+                .contains("Redis 考察要点：持久化、缓存、分布式锁")
+                .contains("不要照本宣科");
+        }
+
+        @Test
+        @DisplayName("未命中分类时返回引导提示")
+        void shouldReturnHintWhenCategoryNotFound() {
+            when(skillService.loadCategoryBaseline("UNKNOWN")).thenReturn(null);
+
+            String result = createTools(List.of()).loadSkillBaseline("UNKNOWN");
+
+            assertThat(result).contains("没有找到").contains("学习方向分类");
+        }
+
+        @Test
+        @DisplayName("describeArgs 从入参 JSON 提取分类 key")
+        void shouldDescribeArgsForBaseline() {
+            String summary = LearningAgentTools.describeArgs(
+                "loadSkillBaseline", "{\"categoryKey\":\"JAVA\"}");
+
+            assertThat(summary).contains("加载知识基线").contains("JAVA");
+        }
+    }
+
+    @Nested
+    @DisplayName("学习计划固化工具")
+    class UpsertLearningPlan {
+
+        @Test
+        @DisplayName("条目委托给计划服务并返回固化结果")
+        void shouldDelegateToPlanService() {
+            when(planService.upsertFromAgent(eq(1L), anyList(), eq(100L)))
+                .thenReturn(new LearningPlanService.UpsertResult(2, 1, 1));
+
+            String result = createTools(List.of()).upsertLearningPlan(List.of(
+                new LearningAgentTools.PlanItemInput("Redis 持久化", "补齐持久化短板", "PENDING"),
+                new LearningAgentTools.PlanItemInput("MySQL 索引", "系统学索引", "IN_PROGRESS")));
+
+            assertThat(result).contains("已固化").contains("2").contains("1");
+            verify(planService).upsertFromAgent(eq(1L), anyList(), eq(100L));
+        }
+
+        @Test
+        @DisplayName("过滤空白主题条目后再提交")
+        void shouldFilterBlankTopics() {
+            when(planService.upsertFromAgent(eq(1L), anyList(), eq(100L)))
+                .thenReturn(new LearningPlanService.UpsertResult(1, 1, 0));
+
+            createTools(List.of()).upsertLearningPlan(List.of(
+                new LearningAgentTools.PlanItemInput("  ", "空白主题", null),
+                new LearningAgentTools.PlanItemInput("Redis 持久化", null, null)));
+
+            @SuppressWarnings("unchecked")
+            ArgumentCaptor<List<LearningPlanService.AgentPlanItem>> captor =
+                ArgumentCaptor.forClass((Class) List.class);
+            verify(planService).upsertFromAgent(eq(1L), captor.capture(), eq(100L));
+            assertThat(captor.getValue()).hasSize(1);
+            assertThat(captor.getValue().get(0).topic()).isEqualTo("Redis 持久化");
+        }
+
+        @Test
+        @DisplayName("服务拒绝时返回可修正提示而不是抛错")
+        void shouldReturnHintWhenServiceRejects() {
+            when(planService.upsertFromAgent(eq(1L), anyList(), eq(100L)))
+                .thenThrow(new BusinessException(ErrorCode.BAD_REQUEST, "计划条目最多 20 条"));
+
+            String result = createTools(List.of()).upsertLearningPlan(List.of(
+                new LearningAgentTools.PlanItemInput("主题", null, null)));
+
+            assertThat(result).contains("计划未保存").contains("最多 20 条");
+        }
+    }
+
+    @Nested
+    @DisplayName("学员提问工具")
+    class AskLearner {
+
+        @Test
+        @DisplayName("发出 ask 事件并返回学员的点选回答")
+        void shouldEmitAskEventAndReturnAnswer() {
+            CompletableFuture<String> future = new CompletableFuture<>();
+            future.complete("先学 Redis 持久化");
+            when(askRegistry.register(eq(100L), eq("先学哪个？"), anyList())).thenReturn(future);
+
+            String result = createTools(List.of()).askLearner(
+                "先学哪个？", List.of("Redis 持久化", "MySQL 索引"));
+
+            assertThat(result).contains("学员的回答").contains("先学 Redis 持久化");
+            assertThat(askEvents).hasSize(1);
+            assertThat(askEvents.get(0).type()).isEqualTo("ask");
+            assertThat(askEvents.get(0).question()).isEqualTo("先学哪个？");
+            assertThat(askEvents.get(0).options()).containsExactly("Redis 持久化", "MySQL 索引");
+        }
+
+        @Test
+        @DisplayName("等待超时返回降级提示并清理注册表")
+        void shouldReturnHintOnTimeout() {
+            properties.setAskTimeoutSeconds(0);
+            when(askRegistry.register(eq(100L), any(), anyList()))
+                .thenReturn(new CompletableFuture<>());
+
+            String result = createTools(List.of()).askLearner("先学哪个？", List.of("A", "B"));
+
+            assertThat(result).contains("超时").contains("最合理的假设");
+            verify(askRegistry).evict(eq(100L), any());
+        }
+
+        @Test
+        @DisplayName("describeArgs 从入参 JSON 提取问题")
+        void shouldDescribeArgsForAsk() {
+            String summary = LearningAgentTools.describeArgs(
+                "askLearner", "{\"question\":\"先学哪个？\"}");
+
+            assertThat(summary).contains("向学员提问").contains("先学哪个");
         }
     }
 }

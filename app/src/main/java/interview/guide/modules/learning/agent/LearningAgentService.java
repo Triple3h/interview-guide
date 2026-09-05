@@ -5,10 +5,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import interview.guide.common.ai.LlmProviderRegistry;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
+import interview.guide.modules.interview.skill.InterviewSkillService;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
 import interview.guide.modules.knowledgebase.service.KnowledgeBaseVectorService;
 import interview.guide.modules.knowledgebase.service.RagChatSessionService;
+import interview.guide.modules.learning.model.LearningPlanItemEntity;
 import interview.guide.modules.learning.model.LearningRecordEntity;
+import interview.guide.modules.learning.service.LearningPlanService;
 import interview.guide.modules.learning.service.LearningRecordService;
 import interview.guide.modules.user.model.UserEntity;
 import interview.guide.modules.user.service.UserService;
@@ -41,7 +44,9 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 /**
  * 学习帮手 Agent 编排
@@ -70,9 +75,12 @@ public class LearningAgentService {
     private final ToolCallingManager toolCallingManager;
     private final RagChatSessionService sessionService;
     private final LearningRecordService recordService;
+    private final LearningPlanService planService;
     private final UserService userService;
     private final KnowledgeBaseVectorService vectorService;
     private final KnowledgeBaseRepository knowledgeBaseRepository;
+    private final InterviewSkillService skillService;
+    private final LearningAskRegistry askRegistry;
     private final LearningAgentProperties properties;
     private final ObjectMapper objectMapper;
 
@@ -85,9 +93,12 @@ public class LearningAgentService {
                                 ToolCallingManager toolCallingManager,
                                 RagChatSessionService sessionService,
                                 LearningRecordService recordService,
+                                LearningPlanService planService,
                                 UserService userService,
                                 KnowledgeBaseVectorService vectorService,
                                 KnowledgeBaseRepository knowledgeBaseRepository,
+                                InterviewSkillService skillService,
+                                LearningAskRegistry askRegistry,
                                 LearningAgentProperties properties,
                                 ObjectMapper objectMapper,
                                 ResourceLoader resourceLoader) throws IOException {
@@ -95,9 +106,12 @@ public class LearningAgentService {
         this.toolCallingManager = toolCallingManager;
         this.sessionService = sessionService;
         this.recordService = recordService;
+        this.planService = planService;
         this.userService = userService;
         this.vectorService = vectorService;
         this.knowledgeBaseRepository = knowledgeBaseRepository;
+        this.skillService = skillService;
+        this.askRegistry = askRegistry;
         this.properties = properties;
         this.objectMapper = objectMapper;
         this.staticSystemPrompt = resourceLoader
@@ -320,7 +334,8 @@ public class LearningAgentService {
                                               Sinks.Many<AgentEvent> liveSink) {
         LearningAgentTools tools = new LearningAgentTools(
             userId, sessionId, preferredKbIds, learner,
-            vectorService, knowledgeBaseRepository, recordService, properties);
+            vectorService, knowledgeBaseRepository, recordService, properties, skillService,
+            planService, askRegistry, liveSink::tryEmitNext);
 
         ToolCallback[] rawCallbacks = MethodToolCallbackProvider.builder()
             .toolObjects(tools)
@@ -339,18 +354,67 @@ public class LearningAgentService {
 
     private String buildSystemPrompt(UserEntity learner, Long userId) {
         List<LearningRecordEntity> topics = recordService.recentTopics(userId, properties.getPromptTopicLimit());
+        List<LearningPlanItemEntity> planItems = planService.listEntities(userId);
 
         StringBuilder sb = new StringBuilder(staticSystemPrompt);
         sb.append("\n\n# 学员档案\n");
         sb.append("- 昵称: ").append(learner.getNickname()).append('\n');
         sb.append("- 职业: ").append(orDefault(learner.getOccupation())).append('\n');
         sb.append("- 学习方向: ").append(orDefault(learner.getLearningDirection())).append('\n');
+        appendSkillCatalog(sb, learner.getLearningSkillId());
         sb.append("- 当前水平: ").append(orDefault(learner.getCurrentLevel())).append('\n');
         sb.append("- 学习目标: ").append(orDefault(learner.getLearningGoal())).append('\n');
         sb.append("- 今天日期: ").append(LocalDate.now().format(DATE_FORMATTER)).append('\n');
-        sb.append("\n# 学习台账（最近 ").append(topics.size()).append(" 条）\n");
+        sb.append("\n# 学习计划（当前）\n");
+        sb.append(renderPlanItems(planItems));
+        sb.append("\n\n# 学习台账（最近 ").append(topics.size()).append(" 条）\n");
         sb.append(renderTopics(topics));
         return sb.toString();
+    }
+
+    /**
+     * 学习计划注入：Agent 每轮都知道计划进行到哪，讲解和规划要主动关联计划条目
+     */
+    private String renderPlanItems(List<LearningPlanItemEntity> planItems) {
+        if (planItems.isEmpty()) {
+            return "（暂无学习计划。学员想规划学习路径时，先结合台账和学习方向分类给出提案，"
+                + "与学员商定后再用 upsertLearningPlan 固化）";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (LearningPlanItemEntity item : planItems) {
+            sb.append("- [").append(item.getStatus().getLabel()).append("] ")
+                .append(item.getTopic());
+            if (item.getGoal() != null && !item.getGoal().isBlank()) {
+                sb.append("：").append(abbreviate(item.getGoal(), 60));
+            }
+            sb.append('\n');
+        }
+        return sb.toString().stripTrailing();
+    }
+
+    /**
+     * 学员选了预置学习方向时，列出该方向下配置了知识基线的分类，
+     * 供 loadSkillBaseline 工具按 key 加载；skill 已失效（被移除/改名）时降级为不列出
+     */
+    private void appendSkillCatalog(StringBuilder sb, String skillId) {
+        if (skillId == null || skillId.isBlank()) {
+            return;
+        }
+        try {
+            InterviewSkillService.SkillDTO skill = skillService.getSkill(skillId);
+            List<InterviewSkillService.SkillCategoryDTO> withBaseline = skill.categories().stream()
+                .filter(c -> c.ref() != null && !c.ref().isBlank())
+                .toList();
+            if (withBaseline.isEmpty()) {
+                return;
+            }
+            sb.append("- 学习方向分类: ").append(withBaseline.stream()
+                    .map(c -> c.key() + "(" + c.label() + ")")
+                    .collect(Collectors.joining("、")))
+                .append("，可用 loadSkillBaseline 工具按 key 加载对应知识基线\n");
+        } catch (BusinessException e) {
+            log.warn("学员学习方向关联的 skill 不可用，跳过分类清单: skillId={}", skillId);
+        }
     }
 
     private String renderTopics(List<LearningRecordEntity> topics) {

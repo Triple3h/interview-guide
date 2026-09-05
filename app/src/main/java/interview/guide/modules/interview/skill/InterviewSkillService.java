@@ -176,7 +176,7 @@ public class InterviewSkillService {
 
         return new SkillDTO(CUSTOM_SKILL_ID, "自定义面试（JD 解析）",
             "基于职位描述提取的面试方向", categories,
-            false, jdText, null, null);
+            false, jdText, null, null, false);
     }
 
     public List<CategoryDTO> parseJd(String jdText) {
@@ -360,6 +360,21 @@ public class InterviewSkillService {
         }
     }
 
+    /**
+     * 按全局分类 key 加载单份知识基线（学习帮手等跨模块调用方使用）。
+     * key 不区分大小写；未命中返回 null，命中但文件缺失返回空串。
+     */
+    public String loadCategoryBaseline(String categoryKey) {
+        if (categoryKey == null || categoryKey.isBlank()) {
+            return null;
+        }
+        RefMapping mapping = categoryRefIndex.get(categoryKey.trim().toUpperCase());
+        if (mapping == null) {
+            return null;
+        }
+        return loadReferenceContent(mapping.sourceSkillId(), mapping.ref(), mapping.shared());
+    }
+
     private String buildReferenceSectionInternal(SkillDTO skill,
                                                  Predicate<SkillCategoryDTO> categoryFilter,
                                                  int maxChars) {
@@ -435,6 +450,7 @@ public class InterviewSkillService {
             if (metaDef != null) {
                 definition.setDisplayName(metaDef.getDisplayName());
                 definition.setDisplay(metaDef.getDisplay());
+                definition.setInterviewOnly(metaDef.getInterviewOnly());
                 definition.setCategories(metaDef.getCategories());
             }
 
@@ -622,13 +638,15 @@ public class InterviewSkillService {
             true,
             null,
             def.getPersona(),
-            displayDTO
+            displayDTO,
+            Boolean.TRUE.equals(def.getInterviewOnly())
         );
     }
 
     public record SkillDTO(String id, String name, String description,
                            List<SkillCategoryDTO> categories,
-                           boolean isPreset, String sourceJd, String persona, DisplayDTO display) {}
+                           boolean isPreset, String sourceJd, String persona, DisplayDTO display,
+                           boolean interviewOnly) {}
 
     public record DisplayDTO(String icon, String gradient, String iconBg, String iconColor) {}
 

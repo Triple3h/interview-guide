@@ -2,7 +2,7 @@ import { request } from './request';
 import { streamSse } from './stream';
 import { CURRENT_USER_STORAGE_KEY } from '../utils/currentUser';
 import type { RagChatSession, RagChatSessionDetail } from './ragChat';
-import type { AgentStep } from '../types/learning';
+import type { AgentStep, AskLearnerPayload } from '../types/learning';
 
 export type { RagChatSession, RagChatSessionDetail };
 
@@ -10,6 +10,8 @@ export interface AgentStreamHandlers {
   onStep: (step: AgentStep) => void;
   onDelta: (text: string) => void;
   onReasoning: (text: string) => void;
+  /** Agent 发起的选项提问（askLearner 工具），回答经 answerAsk 回流 */
+  onAsk: (payload: AskLearnerPayload) => void;
   /** 首轮回答结束后后端自动生成的会话标题 */
   onTitle?: (title: string) => void;
   onComplete: () => void;
@@ -23,6 +25,8 @@ interface AgentEventPayload {
   phase?: string;
   summary?: string;
   message?: string;
+  question?: string;
+  options?: string[];
 }
 
 export const learningAgentApi = {
@@ -73,6 +77,8 @@ export const learningAgentApi = {
           handlers.onDelta(event.text);
         } else if (event.type === 'reasoning' && typeof event.text === 'string') {
           handlers.onReasoning(event.text);
+        } else if (event.type === 'ask' && typeof event.question === 'string') {
+          handlers.onAsk({ question: event.question, options: event.options ?? [] });
         } else if (event.type === 'title' && typeof event.text === 'string') {
           handlers.onTitle?.(event.text);
         } else if (event.type === 'step') {
@@ -91,5 +97,12 @@ export const learningAgentApi = {
       unescapeEscapedNewlines: false,
       dataJoiner: '',
     });
+  },
+
+  /**
+   * 提交学员对 askLearner 提问的回答（后端放行阻塞中的 Agent 工具线程）
+   */
+  async answerAsk(sessionId: number, answer: string): Promise<void> {
+    return request.post<void>(`/api/learning/sessions/${sessionId}/ask-answer`, { answer });
   },
 };

@@ -1,6 +1,8 @@
 package interview.guide.modules.learning.controller;
 
 import interview.guide.common.annotation.RateLimit;
+import interview.guide.common.exception.BusinessException;
+import interview.guide.common.exception.ErrorCode;
 import interview.guide.common.result.Result;
 import interview.guide.common.web.CurrentUser;
 import interview.guide.common.web.LoginUser;
@@ -9,6 +11,8 @@ import interview.guide.modules.knowledgebase.model.RagChatDTO.SessionDTO;
 import interview.guide.modules.knowledgebase.service.RagChatSessionService;
 import interview.guide.modules.learning.agent.AgentEvent;
 import interview.guide.modules.learning.agent.LearningAgentService;
+import interview.guide.modules.learning.agent.LearningAskRegistry;
+import interview.guide.modules.learning.model.LearningAgentDTO.AskAnswerRequest;
 import interview.guide.modules.learning.model.LearningAgentDTO.CreateLearningSessionRequest;
 import interview.guide.modules.learning.model.LearningAgentDTO.LearningAgentChatRequest;
 import interview.guide.modules.learning.service.SessionTitleService;
@@ -46,6 +50,7 @@ public class LearningAgentController {
     private final RagChatSessionService sessionService;
     private final LearningAgentService agentService;
     private final SessionTitleService sessionTitleService;
+    private final LearningAskRegistry askRegistry;
     private final SseEventWriter sseEventWriter;
 
     /**
@@ -55,6 +60,21 @@ public class LearningAgentController {
     public Result<SessionDTO> createSession(@Valid @RequestBody CreateLearningSessionRequest request,
                                             @LoginUser CurrentUser currentUser) {
         return Result.success(sessionService.createLearningSession(currentUser.id(), request.title()));
+    }
+
+    /**
+     * 学员对 askLearner 提问的应答（放行 Agent 工具线程上的阻塞等待）
+     */
+    @PostMapping("/api/learning/sessions/{sessionId}/ask-answer")
+    public Result<Void> answerAsk(@PathVariable Long sessionId,
+                                  @Valid @RequestBody AskAnswerRequest request,
+                                  @LoginUser CurrentUser currentUser) {
+        // 归属校验：不是本人的会话按不存在处理
+        sessionService.getOwnedSession(sessionId, currentUser.id());
+        if (!askRegistry.complete(sessionId, request.answer().trim())) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "当前没有等待回答的提问");
+        }
+        return Result.success(null);
     }
 
     /**

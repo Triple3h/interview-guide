@@ -1,4 +1,5 @@
 displayName: 字节后端
+interviewOnly: true
 display:
   icon: 字
   gradient: from-blue-500 to-cyan-500

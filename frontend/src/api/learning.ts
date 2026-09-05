@@ -1,5 +1,12 @@
 import { request } from './request';
-import type { LearningRecord, LearningMastery, SaveLearningRecordPayload } from '../types/learning';
+import type {
+  LearningPlanItem,
+  LearningPlanStatus,
+  LearningRecord,
+  LearningMastery,
+  SaveLearningRecordPayload,
+  SavePlanItemPayload,
+} from '../types/learning';
 
 export const learningApi = {
   /**
@@ -24,5 +31,31 @@ export const learningApi = {
 
   async delete(id: number): Promise<void> {
     return request.delete(`/api/learning/records/${id}`);
+  },
+
+  /**
+   * 我的当前学习计划（按 sortOrder 排列）
+   */
+  async listPlan(): Promise<LearningPlanItem[]> {
+    return request.get<LearningPlanItem[]>('/api/learning/plans');
+  },
+
+  async createPlanItem(payload: SavePlanItemPayload): Promise<LearningPlanItem> {
+    return request.post<LearningPlanItem>('/api/learning/plans', payload);
+  },
+
+  async updatePlanItem(
+    id: number,
+    payload: Partial<SavePlanItemPayload> & { status?: LearningPlanStatus }
+  ): Promise<LearningPlanItem> {
+    return request.put<LearningPlanItem>(`/api/learning/plans/${id}`, payload);
+  },
+
+  async updatePlanStatus(id: number, status: LearningPlanStatus): Promise<LearningPlanItem> {
+    return request.put<LearningPlanItem>(`/api/learning/plans/${id}/status`, { status });
+  },
+
+  async deletePlanItem(id: number): Promise<void> {
+    return request.delete(`/api/learning/plans/${id}`);
   },
 };

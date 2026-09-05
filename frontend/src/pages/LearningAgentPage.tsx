@@ -8,7 +8,7 @@ import {ragChatApi, type RagChatSessionListItem} from '../api/ragChat';
 import {learningAgentApi} from '../api/learningAgent';
 import {userApi} from '../api/user';
 import {getStoredUser} from '../utils/currentUser';
-import type {AgentStep} from '../types/learning';
+import type {AgentStep, AskLearnerPayload} from '../types/learning';
 import type {UserProfile} from '../types/user';
 import {formatDateOnly} from '../utils/date';
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
@@ -19,8 +19,10 @@ import {
   BookOpenCheck,
   Brain,
   Check,
+  CircleHelp,
   Edit,
   Library,
+  ListTodo,
   Loader2,
   MessageSquare,
   Pin,
@@ -35,6 +37,12 @@ interface LearningAgentPageProps {
   onUpload: () => void;
 }
 
+/** askLearner 提问卡片：answer 为学员点选结果，closed 表示已超时/会话结束 */
+interface AskCardState extends AskLearnerPayload {
+  answer?: string;
+  closed?: boolean;
+}
+
 interface Message {
   id?: number;
   type: 'user' | 'assistant';
@@ -42,6 +50,7 @@ interface Message {
   timestamp: Date;
   reasoning?: string;
   steps?: AgentStep[];
+  asks?: AskCardState[];
 }
 
 const SUGGESTIONS = [
@@ -56,6 +65,9 @@ const STEP_ICONS: Record<string, React.ComponentType<{ className?: string }>> = 
   upsertLearningRecord: BookOpenCheck,
   listLearnedTopics: Library,
   getLearnerProfile: UserRound,
+  loadSkillBaseline: BookOpenCheck,
+  upsertLearningPlan: ListTodo,
+  askLearner: CircleHelp,
 };
 
 export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageProps) {
@@ -277,7 +289,22 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
             });
           });
         },
+        onAsk: (payload) => {
+          startTransition(() => {
+            updateLastAssistant((msg) => ({
+              ...msg,
+              asks: [...(msg.asks ?? []), {...payload}],
+            }));
+          });
+        },
         onComplete: () => {
+          // 流结束：还没被回答的提问卡片按超时关闭（Agent 已按超时降级继续）
+          startTransition(() => {
+            updateLastAssistant((msg) => ({
+              ...msg,
+              asks: (msg.asks ?? []).map((a) => (a.answer ? a : {...a, closed: true})),
+            }));
+          });
           setLoading(false);
           loadSessions();
         },
@@ -326,6 +353,82 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
       return true;
     }
     return steps.slice(index + 1).some((s) => s.tool === step.tool && s.phase !== 'start');
+  };
+
+  // 学员点选提问选项：提交后端放行 Agent 等待，卡片记住所选
+  const handleAnswerAsk = async (msg: Message, askIndex: number, answer: string) => {
+    if (!currentSessionId) return;
+    const applyState = (patch: Partial<AskCardState>) => {
+      startTransition(() => {
+        setMessages((prev) => prev.map((m) => {
+          if (m !== msg) return m;
+          return {
+            ...m,
+            asks: (m.asks ?? []).map((a, i) => (i === askIndex ? {...a, ...patch} : a)),
+          };
+        }));
+      });
+    };
+    applyState({answer});
+    try {
+      await learningAgentApi.answerAsk(currentSessionId, answer);
+    } catch (err) {
+      console.error('提交回答失败', err);
+      applyState({answer: undefined, closed: true});
+    }
+  };
+
+  // Agent 的选择提问卡片：等价于成熟 Agent 的"选项弹窗"
+  const renderAskCards = (msg: Message) => {
+    if (!msg.asks || msg.asks.length === 0) {
+      return null;
+    }
+    return (
+      <div className="space-y-2.5 mb-3">
+        {msg.asks.map((ask, askIndex) => {
+          const answered = !!ask.answer;
+          return (
+            <div
+              key={askIndex}
+              className="rounded-xl border border-primary-100 dark:border-primary-900/50 bg-primary-50/60 dark:bg-primary-900/20 p-3"
+            >
+              <div className="flex items-start gap-2 mb-2.5">
+                <CircleHelp className="w-4 h-4 text-primary-500 mt-0.5 flex-shrink-0"/>
+                <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{ask.question}</p>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                {ask.options.map((option) => (
+                  <button
+                    key={option}
+                    disabled={answered || ask.closed}
+                    onClick={() => handleAnswerAsk(msg, askIndex, option)}
+                    className={`text-left text-sm px-3 py-2 rounded-lg border transition-all ${
+                      answered && ask.answer === option
+                        ? 'border-primary-500 bg-primary-500 text-white'
+                        : answered || ask.closed
+                          ? 'border-slate-200 dark:border-slate-600 text-slate-400 dark:text-slate-500 cursor-not-allowed'
+                          : 'border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-primary-400 hover:text-primary-600 dark:hover:text-primary-400 bg-white dark:bg-slate-800'
+                    }`}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+              {answered ? (
+                <p className="mt-2 text-xs text-primary-500 flex items-center gap-1">
+                  <Check className="w-3.5 h-3.5"/>
+                  已选择「{ask.answer}」
+                </p>
+              ) : ask.closed ? (
+                <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">未回答，AI 已按自己的判断继续</p>
+              ) : (
+                <p className="mt-2 text-xs text-slate-400 dark:text-slate-500 animate-pulse">等待你的选择…</p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
   };
 
   // 思维链折叠块：思考中默认展开，答案开始输出后自动收起
@@ -394,6 +497,14 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
           </p>
         </div>
         <div className="flex gap-3">
+          <motion.button
+            onClick={() => navigate('/learning/plan')}
+            className="px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-all text-sm"
+            whileHover={{scale: 1.02}}
+            whileTap={{scale: 0.98}}
+          >
+            学习计划
+          </motion.button>
           <motion.button
             onClick={() => navigate('/learning/records')}
             className="px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-all text-sm"
@@ -585,6 +696,7 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
                             <div>
                               {renderReasoning(msg, index)}
                               {renderSteps(msg.steps ?? [])}
+                              {renderAskCards(msg)}
                               <div className="prose prose-slate dark:prose-invert prose-sm max-w-none">
                                 <ReactMarkdown
                                   remarkPlugins={[remarkGfm]}

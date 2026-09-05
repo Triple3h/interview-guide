@@ -54,7 +54,7 @@ class UserServiceTest {
         void shouldThrowWhenNicknameDuplicated() {
             when(userRepository.existsByNickname("Alice")).thenReturn(true);
 
-            assertThatThrownBy(() -> userService.create(new CreateUserRequest("Alice", null, null, null, null, null)))
+            assertThatThrownBy(() -> userService.create(new CreateUserRequest("Alice", null, null, null, null, null, null)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("昵称已被使用");
         }
@@ -70,7 +70,7 @@ class UserServiceTest {
                 return entity;
             });
 
-            userService.create(new CreateUserRequest("Alice", "🦊", "工程师", "Java", "入门", "系统学习"));
+            userService.create(new CreateUserRequest("Alice", "🦊", "工程师", "Java", "java-backend", "入门", "系统学习"));
 
             ArgumentCaptor<UserCreatedEvent> captor = ArgumentCaptor.forClass(UserCreatedEvent.class);
             verify(eventPublisher).publishEvent(captor.capture());
@@ -84,7 +84,7 @@ class UserServiceTest {
             when(userRepository.count()).thenReturn(1L);
             when(userRepository.save(any(UserEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-            userService.create(new CreateUserRequest("Bob", null, null, null, null, null));
+            userService.create(new CreateUserRequest("Bob", null, null, null, null, null, null));
 
             verify(eventPublisher, never()).publishEvent(any());
         }
@@ -96,7 +96,7 @@ class UserServiceTest {
             when(userRepository.count()).thenReturn(1L);
             when(userRepository.save(any(UserEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-            userService.create(new CreateUserRequest("  Alice  ", null, null, null, null, null));
+            userService.create(new CreateUserRequest("  Alice  ", null, null, null, null, null, null));
 
             ArgumentCaptor<UserEntity> captor = ArgumentCaptor.forClass(UserEntity.class);
             verify(userRepository).save(captor.capture());
@@ -120,7 +120,7 @@ class UserServiceTest {
             when(userRepository.findById(1L)).thenReturn(Optional.of(self));
             when(userRepository.findByNickname("Bob")).thenReturn(Optional.of(other));
 
-            assertThatThrownBy(() -> userService.update(1L, new UpdateUserRequest("Bob", null, null, null, null, null)))
+            assertThatThrownBy(() -> userService.update(1L, new UpdateUserRequest("Bob", null, null, null, null, null, null)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("昵称已被使用");
         }
@@ -136,11 +136,47 @@ class UserServiceTest {
             when(userRepository.findByNickname("Alice")).thenReturn(Optional.of(self));
             when(userRepository.save(any(UserEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-            userService.update(1L, new UpdateUserRequest("Alice", "🚀", null, null, null, null));
+            userService.update(1L, new UpdateUserRequest("Alice", "🚀", null, null, null, null, null));
 
             ArgumentCaptor<UserEntity> captor = ArgumentCaptor.forClass(UserEntity.class);
             verify(userRepository).save(captor.capture());
             assertThat(captor.getValue().getAvatarEmoji()).isEqualTo("🚀");
+        }
+
+        @Test
+        @DisplayName("更新学习方向时保存关联的预置 skill id")
+        void shouldSaveLearningSkillId() {
+            UserEntity self = new UserEntity();
+            self.setId(1L);
+            self.setNickname("Alice");
+
+            when(userRepository.findById(1L)).thenReturn(Optional.of(self));
+            when(userRepository.save(any(UserEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+            userService.update(1L, new UpdateUserRequest(null, null, null, "Java 后端开发", "java-backend", null, null));
+
+            ArgumentCaptor<UserEntity> captor = ArgumentCaptor.forClass(UserEntity.class);
+            verify(userRepository).save(captor.capture());
+            assertThat(captor.getValue().getLearningDirection()).isEqualTo("Java 后端开发");
+            assertThat(captor.getValue().getLearningSkillId()).isEqualTo("java-backend");
+        }
+
+        @Test
+        @DisplayName("自定义学习方向传空串时清除关联的 skill id")
+        void shouldClearLearningSkillIdWithBlank() {
+            UserEntity self = new UserEntity();
+            self.setId(1L);
+            self.setNickname("Alice");
+            self.setLearningSkillId("java-backend");
+
+            when(userRepository.findById(1L)).thenReturn(Optional.of(self));
+            when(userRepository.save(any(UserEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+            userService.update(1L, new UpdateUserRequest(null, null, null, "英语口语", "", null, null));
+
+            ArgumentCaptor<UserEntity> captor = ArgumentCaptor.forClass(UserEntity.class);
+            verify(userRepository).save(captor.capture());
+            assertThat(captor.getValue().getLearningSkillId()).isNull();
         }
     }
 }

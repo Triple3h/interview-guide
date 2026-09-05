@@ -40,4 +40,9 @@ public class LearningAgentProperties {
      * 手动 ReAct 循环的最大工具轮数，超过后强制无工具收尾
      */
     private int maxRounds = 6;
+
+    /**
+     * askLearner 提问等待学员应答的超时秒数（需小于网关 SSE 空闲超时，当前 nginx 为 300s）
+     */
+    private int askTimeoutSeconds = 180;
 }

@@ -32,6 +32,7 @@ public final class InterviewSkillProperties {
     public static class SkillMetaDefinition {
         private String displayName;
         private DisplayDef display;
+        private Boolean interviewOnly;
         private List<CategoryDef> categories = new ArrayList<>();
     }
 
@@ -47,6 +48,7 @@ public final class InterviewSkillProperties {
         private String persona;
         private String displayName;
         private DisplayDef display;
+        private Boolean interviewOnly;
         private List<CategoryDef> categories = new ArrayList<>();
     }
 

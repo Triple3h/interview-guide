@@ -1,4 +1,5 @@
 displayName: 阿里后端
+interviewOnly: true
 display:
   icon: 阿
   gradient: from-orange-500 to-red-500

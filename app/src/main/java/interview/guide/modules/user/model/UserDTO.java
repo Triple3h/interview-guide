@@ -27,6 +27,9 @@ public class UserDTO {
         @Size(max = 100, message = "学习方向最长 100 字")
         String learningDirection,
 
+        @Size(max = 50, message = "学习方向标识过长")
+        String learningSkillId,
+
         @Size(max = 200, message = "当前水平最长 200 字")
         String currentLevel,
 
@@ -50,6 +53,9 @@ public class UserDTO {
         @Size(max = 100, message = "学习方向最长 100 字")
         String learningDirection,
 
+        @Size(max = 50, message = "学习方向标识过长")
+        String learningSkillId,
+
         @Size(max = 200, message = "当前水平最长 200 字")
         String currentLevel,
 
@@ -66,6 +72,7 @@ public class UserDTO {
         String avatarEmoji,
         String occupation,
         String learningDirection,
+        String learningSkillId,
         String currentLevel,
         String learningGoal,
         LocalDateTime createdAt

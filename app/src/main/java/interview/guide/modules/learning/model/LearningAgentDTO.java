@@ -23,4 +23,13 @@ public class LearningAgentDTO {
         @NotBlank(message = "问题不能为空")
         String question
     ) {}
+
+    /**
+     * 学员对 askLearner 提问的应答
+     */
+    public record AskAnswerRequest(
+        @NotBlank(message = "回答不能为空")
+        @Size(max = 500, message = "回答最长 500 字")
+        String answer
+    ) {}
 }

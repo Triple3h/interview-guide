@@ -49,6 +49,12 @@ public class UserEntity {
     private String learningDirection;
 
     /**
+     * 学习方向关联的预置 skill id（选预置方向时存，自定义方向为空）
+     */
+    @Column(length = 50)
+    private String learningSkillId;
+
+    /**
      * 当前水平
      */
     @Column(length = 200)

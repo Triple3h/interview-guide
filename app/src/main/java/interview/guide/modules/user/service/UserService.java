@@ -55,7 +55,8 @@ public class UserService {
         UserEntity entity = new UserEntity();
         entity.setNickname(nickname);
         applyProfile(entity, request.avatarEmoji(), request.occupation(),
-            request.learningDirection(), request.currentLevel(), request.learningGoal());
+            request.learningDirection(), request.learningSkillId(),
+            request.currentLevel(), request.learningGoal());
         entity = userRepository.save(entity);
 
         if (firstUser) {
@@ -87,7 +88,8 @@ public class UserService {
         }
 
         applyProfile(entity, request.avatarEmoji(), request.occupation(),
-            request.learningDirection(), request.currentLevel(), request.learningGoal());
+            request.learningDirection(), request.learningSkillId(),
+            request.currentLevel(), request.learningGoal());
 
         log.info("更新学习成员资料: id={}", id);
         return userMapper.toResponse(userRepository.save(entity));
@@ -99,7 +101,8 @@ public class UserService {
     }
 
     private void applyProfile(UserEntity entity, String avatarEmoji, String occupation,
-                              String learningDirection, String currentLevel, String learningGoal) {
+                              String learningDirection, String learningSkillId,
+                              String currentLevel, String learningGoal) {
         if (avatarEmoji != null) {
             entity.setAvatarEmoji(normalize(avatarEmoji, 8));
         }
@@ -108,6 +111,10 @@ public class UserService {
         }
         if (learningDirection != null) {
             entity.setLearningDirection(normalize(learningDirection, 100));
+        }
+        if (learningSkillId != null) {
+            // 前端始终随资料整体提交：选了预置方向传 skillId，自定义方向传空串以清除
+            entity.setLearningSkillId(normalize(learningSkillId, 50));
         }
         if (currentLevel != null) {
             entity.setCurrentLevel(normalize(currentLevel, 200));

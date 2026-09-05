@@ -24,6 +24,7 @@ export interface SkillDTO {
   sourceJd: string | null;
   persona?: string;
   display?: DisplayDTO;
+  interviewOnly?: boolean;
 }
 
 export const skillApi = {

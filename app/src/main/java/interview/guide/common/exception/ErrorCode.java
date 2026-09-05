@@ -87,7 +87,9 @@ public enum ErrorCode {
     USER_NOT_FOUND(12001, "用户不存在"),
     USER_NICKNAME_DUPLICATED(12002, "该昵称已被使用"),
     LEARNING_RECORD_NOT_FOUND(12003, "学习记录不存在"),
-    LEARNING_MASTERY_INVALID(12004, "掌握度取值无效");
+    LEARNING_MASTERY_INVALID(12004, "掌握度取值无效"),
+    LEARNING_PLAN_ITEM_NOT_FOUND(12005, "学习计划条目不存在"),
+    LEARNING_PLAN_STATUS_INVALID(12006, "学习计划状态取值无效");
 
     private final Integer code;
     private final String message;
