@@ -22,6 +22,9 @@ SETUP_API_KEYS.md
 CLAUDE.local.md
 GEMINI.md
 
+# Codegraph index
+/.codegraph/
+
 # Playwright MCP
 .playwright-mcp/
 frontend/test-results/

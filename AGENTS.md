@@ -65,6 +65,7 @@ docker compose -f docker-compose.dev.yml up -d
 - Redis Stream 生产/消费使用 `AbstractStreamProducer` / `AbstractStreamConsumer` 模板。
 - 异步处理前先校验实体是否存在；实体已删除时 ACK 丢弃。
 - 限流使用可重复 `@RateLimit`，不要手写散落的 Redis 限流逻辑。
+- 改动语音面试前先读 `docs/voice-interview-architecture.md`（音视频链路与异步字幕是该模块最复杂的部分）。
 
 ## Config And Data
 
@@ -89,6 +90,7 @@ docker compose -f docker-compose.dev.yml up -d
 - 集成测试使用 H2 配置；限流相关测试需要真实 Redis。
 - 改后端公共能力时至少运行 `./gradlew :app:test --no-daemon`。
 - 改前端时至少运行 `cd frontend && pnpm run build`。
+- 前端有轻量单测（`node --test`）与 Playwright e2e：单测按需运行 `pnpm run test:interview-history`、`test:question-generation`、`test:interview-capacity`、`test:interview-entry`；e2e 运行 `pnpm run test:e2e`（CI 跑 4 个单测 + build）。
 
 ## Never Do
 
