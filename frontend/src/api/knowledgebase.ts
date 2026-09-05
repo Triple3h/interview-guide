@@ -41,13 +41,74 @@ export interface UploadKnowledgeBaseResponse {
     name: string;
     category: string;
     fileSize: number;
-    contentLength: number;
   };
   storage: {
     fileKey: string;
     fileUrl: string;
   };
   duplicate: boolean;
+}
+
+// ========== 批量上传批次 ==========
+
+// 批次明细状态：PENDING/PROCESSING/COMPLETED/FAILED 与解析进度联动，DUPLICATE_SKIPPED/REJECTED 为接入阶段终态
+export type KbBatchItemStatus =
+  | 'PENDING'
+  | 'PROCESSING'
+  | 'COMPLETED'
+  | 'FAILED'
+  | 'DUPLICATE_SKIPPED'
+  | 'REJECTED';
+
+// 批次整体状态（派生值）
+export type KbBatchStatus = 'PROCESSING' | 'COMPLETED';
+
+export interface KbBatchSummary {
+  batchId: number;
+  name: string;
+  total: number;
+  pending: number;
+  processing: number;
+  completed: number;
+  failed: number;
+  duplicateSkipped: number;
+  rejected: number;
+  status: KbBatchStatus;
+  createdAt: string;
+}
+
+export interface KbBatchItem {
+  itemId: number;
+  kbId: number | null;
+  fileName: string;
+  relativePath: string | null;
+  category: string | null;
+  fileSize: number | null;
+  status: KbBatchItemStatus;
+  error: string | null;
+  createdAt: string;
+}
+
+export interface KbBatchDetail extends KbBatchSummary {
+  items: KbBatchItem[];
+}
+
+export interface CreateKbBatchResponse {
+  batchId: number;
+  name: string;
+}
+
+export interface KbBatchFileUploadResult {
+  duplicate: boolean;
+  kbId: number | null;
+  itemId: number;
+  status: string;
+}
+
+export interface UploadBatchFileOptions {
+  category?: string;
+  relativePath?: string;
+  name?: string;
 }
 
 export interface QueryRequest {
@@ -231,6 +292,63 @@ export const knowledgeBaseApi = {
    */
   async downloadKnowledgeBase(id: number): Promise<Blob> {
     return request.download(`/api/knowledgebase/${id}/download`);
+  },
+
+  // ========== 批量上传与解析进度 ==========
+
+  /**
+   * 创建上传批次（一次批量上传作为一个解析任务）
+   */
+  async createUploadBatch(name?: string): Promise<CreateKbBatchResponse> {
+    return request.post<CreateKbBatchResponse>('/api/knowledgebase/upload/batches', {
+      name: name?.trim() || null,
+    });
+  },
+
+  /**
+   * 批次内上传单个文件（前端串行调用）
+   */
+  async uploadBatchFile(
+    batchId: number,
+    file: File,
+    options?: UploadBatchFileOptions
+  ): Promise<KbBatchFileUploadResult> {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (options?.category) {
+      formData.append('category', options.category);
+    }
+    if (options?.relativePath) {
+      formData.append('relativePath', options.relativePath);
+    }
+    if (options?.name) {
+      formData.append('name', options.name);
+    }
+    return request.upload<KbBatchFileUploadResult>(
+      `/api/knowledgebase/upload/batches/${batchId}/files`,
+      formData
+    );
+  },
+
+  /**
+   * 批次列表（含聚合计数，最新在前）
+   */
+  async listUploadBatches(limit = 20): Promise<KbBatchSummary[]> {
+    return request.get<KbBatchSummary[]>(`/api/knowledgebase/upload/batches?limit=${limit}`);
+  },
+
+  /**
+   * 批次详情（含全部文件明细）
+   */
+  async getUploadBatch(batchId: number): Promise<KbBatchDetail> {
+    return request.get<KbBatchDetail>(`/api/knowledgebase/upload/batches/${batchId}`);
+  },
+
+  /**
+   * 批量更新知识库分类（category 传 null 表示设为未分类）
+   */
+  async batchUpdateCategory(ids: number[], category: string | null): Promise<number> {
+    return request.put<number>('/api/knowledgebase/batch-category', { ids, category });
   },
 
   /**

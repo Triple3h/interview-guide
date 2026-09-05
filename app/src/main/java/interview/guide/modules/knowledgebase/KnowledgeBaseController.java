@@ -2,6 +2,7 @@ package interview.guide.modules.knowledgebase;
 
 import interview.guide.common.annotation.RateLimit;
 import interview.guide.common.result.Result;
+import interview.guide.modules.knowledgebase.model.BatchUpdateKnowledgeBaseCategoryRequest;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseListItemDTO;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseStatsDTO;
 import interview.guide.modules.knowledgebase.model.QueryRequest;
@@ -142,6 +143,14 @@ public class KnowledgeBaseController {
     public Result<Void> updateCategory(@PathVariable Long id, @RequestBody Map<String, String> body) {
         listService.updateCategory(id, body.get("category"));
         return Result.success(null);
+    }
+
+    /**
+     * 批量更新知识库分类
+     */
+    @PutMapping("/api/knowledgebase/batch-category")
+    public Result<Integer> updateCategoryBatch(@Valid @RequestBody BatchUpdateKnowledgeBaseCategoryRequest request) {
+        return Result.success(listService.updateCategoryBatch(request.ids(), request.category()));
     }
 
     // ========== 上传下载 API ==========

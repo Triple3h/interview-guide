@@ -91,6 +91,16 @@ public interface KnowledgeBaseRepository extends JpaRepository<KnowledgeBaseEnti
     @Query("UPDATE KnowledgeBaseEntity k SET k.questionCount = k.questionCount + 1 WHERE k.id IN :ids")
     int incrementQuestionCountBatch(@Param("ids") List<Long> ids);
 
+    /**
+     * 批量更新知识库分类
+     * @param ids 知识库ID列表
+     * @param category 目标分类，null 表示设为未分类
+     * @return 更新的行数
+     */
+    @Modifying
+    @Query("UPDATE KnowledgeBaseEntity k SET k.category = :category WHERE k.id IN :ids")
+    int updateCategoryBatch(@Param("ids") List<Long> ids, @Param("category") String category);
+
     // ==================== 统计查询 ====================
 
     /**

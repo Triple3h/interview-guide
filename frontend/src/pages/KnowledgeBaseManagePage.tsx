@@ -1,4 +1,5 @@
-import {useCallback, useEffect, useRef, useState} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {useLocation} from 'react-router-dom';
 import {AnimatePresence, motion} from 'framer-motion';
 import {
   AlertCircle,
@@ -11,7 +12,9 @@ import {
   Edit3,
   Eye,
   FileText,
+  FolderTree,
   HardDrive,
+  ListChecks,
   Loader2,
   MessageSquare,
   RefreshCw,
@@ -20,8 +23,10 @@ import {
   Upload,
   X,
 } from 'lucide-react';
-import {knowledgeBaseApi, KnowledgeBaseItem, KnowledgeBaseStats, SortOption, VectorStatus,} from '../api/knowledgebase';
+import {knowledgeBaseApi, KnowledgeBaseItem, KnowledgeBaseStats, KbBatchSummary, SortOption, VectorStatus,} from '../api/knowledgebase';
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
+import BatchTasksDrawer from '../components/knowledgebase/BatchTasksDrawer';
+import BatchCategoryModal from '../components/knowledgebase/BatchCategoryModal';
 
 interface KnowledgeBaseManagePageProps {
   onUpload: () => void;
@@ -113,6 +118,7 @@ function StatCard({
 }
 
 export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeBaseManagePageProps) {
+  const location = useLocation();
   const [stats, setStats] = useState<KnowledgeBaseStats | null>(null);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBaseItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -122,6 +128,23 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
   const [categories, setCategories] = useState<string[]>([]);
   const [deleteItem, setDeleteItem] = useState<KnowledgeBaseItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // 批量勾选与批量分类
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [batchCategoryModalOpen, setBatchCategoryModalOpen] = useState(false);
+  const [batchCategorySaving, setBatchCategorySaving] = useState(false);
+  const [batchCategoryError, setBatchCategoryError] = useState('');
+
+  // 解析任务（批次进度）
+  const [batchDrawerOpen, setBatchDrawerOpen] = useState(false);
+  const [initialBatchId, setInitialBatchId] = useState<number | null>(
+    (location.state as { openBatchId?: number } | null)?.openBatchId ?? null
+  );
+  const [batchSummaries, setBatchSummaries] = useState<KbBatchSummary[]>([]);
+  const activeBatchCount = useMemo(
+    () => batchSummaries.filter(batch => batch.status === 'PROCESSING').length,
+    [batchSummaries]
+  );
 
   // 分类编辑状态
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
@@ -135,7 +158,7 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
   // 加载数据（不显示loading状态，用于轮询）
   const loadDataSilent = useCallback(async () => {
     try {
-      const [statsData, kbList, categoryList] = await Promise.all([
+      const [statsData, kbList, categoryList, batchList] = await Promise.all([
         knowledgeBaseApi.getStatistics(),
         searchKeyword
           ? knowledgeBaseApi.search(searchKeyword)
@@ -143,10 +166,12 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
           ? knowledgeBaseApi.getByCategory(selectedCategory)
           : knowledgeBaseApi.getAllKnowledgeBases(sortBy),
         knowledgeBaseApi.getAllCategories(),
+        knowledgeBaseApi.listUploadBatches(20),
       ]);
       setStats(statsData);
       setKnowledgeBases(kbList);
       setCategories(categoryList);
+      setBatchSummaries(batchList);
     } catch (error) {
       console.error('加载数据失败:', error);
     }
@@ -156,7 +181,7 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const [statsData, kbList, categoryList] = await Promise.all([
+      const [statsData, kbList, categoryList, batchList] = await Promise.all([
         knowledgeBaseApi.getStatistics(),
         searchKeyword
           ? knowledgeBaseApi.search(searchKeyword)
@@ -164,10 +189,12 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
           ? knowledgeBaseApi.getByCategory(selectedCategory)
           : knowledgeBaseApi.getAllKnowledgeBases(sortBy),
         knowledgeBaseApi.getAllCategories(),
+        knowledgeBaseApi.listUploadBatches(20),
       ]);
       setStats(statsData);
       setKnowledgeBases(kbList);
       setCategories(categoryList);
+      setBatchSummaries(batchList);
     } catch (error) {
       console.error('加载数据失败:', error);
     } finally {
@@ -179,20 +206,26 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
     loadData();
   }, [loadData]);
 
-  // 轮询：当有 PENDING 或 PROCESSING 状态时，每5秒刷新一次
+  // 切换筛选条件时清空勾选
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [searchKeyword, sortBy, selectedCategory]);
+
+  // 轮询：当有 PENDING/PROCESSING 状态或存在进行中批次时，每5秒刷新一次
   useEffect(() => {
     const hasPendingItems = knowledgeBases.some(
       kb => kb.vectorStatus === 'PENDING' || kb.vectorStatus === 'PROCESSING'
     );
+    const hasActiveBatches = batchSummaries.some(batch => batch.status === 'PROCESSING');
 
-    if (hasPendingItems && !loading) {
+    if ((hasPendingItems || hasActiveBatches) && !loading) {
       const timer = setInterval(() => {
         loadDataSilent();
       }, 5000);
 
       return () => clearInterval(timer);
     }
-  }, [knowledgeBases, loading, loadDataSilent]);
+  }, [knowledgeBases, batchSummaries, loading, loadDataSilent]);
 
   // 重新向量化
   const handleRevectorize = async (id: number) => {
@@ -286,6 +319,59 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
     loadData();
   };
 
+  // ========== 批量勾选与批量分类 ==========
+
+  const allDisplayedSelected = knowledgeBases.length > 0 && knowledgeBases.every(kb => selectedIds.has(kb.id));
+
+  const handleToggleAll = () => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (allDisplayedSelected) {
+        knowledgeBases.forEach(kb => next.delete(kb.id));
+      } else {
+        knowledgeBases.forEach(kb => next.add(kb.id));
+      }
+      return next;
+    });
+  };
+
+  const handleToggleSelect = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleBatchCategoryConfirm = async (category: string | null) => {
+    if (selectedIds.size === 0) return;
+    try {
+      setBatchCategorySaving(true);
+      setBatchCategoryError('');
+      await knowledgeBaseApi.batchUpdateCategory([...selectedIds], category);
+      setBatchCategoryModalOpen(false);
+      setSelectedIds(new Set());
+      await loadData();
+    } catch (error) {
+      setBatchCategoryError(error instanceof Error ? error.message : '批量分类失败，请重试');
+    } finally {
+      setBatchCategorySaving(false);
+    }
+  };
+
+  const openBatchDrawer = () => {
+    setBatchDrawerOpen(true);
+  };
+
+  const closeBatchDrawer = () => {
+    setBatchDrawerOpen(false);
+    setInitialBatchId(null);
+  };
+
   return (
     <div className="max-w-7xl mx-auto">
       {/* 页面标题 */}
@@ -304,6 +390,19 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
           >
             <Upload className="w-4 h-4" />
             上传知识库
+          </button>
+          <button
+            onClick={openBatchDrawer}
+            className="relative flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+            title="查看批量上传的解析进度"
+          >
+            <ListChecks className="w-4 h-4" />
+            解析任务
+            {activeBatchCount > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 min-w-[1.25rem] h-5 px-1 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+                {activeBatchCount}
+              </span>
+            )}
           </button>
           <button
             onClick={onChat}
@@ -419,6 +518,15 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
           <table className="w-full">
               <thead className="bg-slate-50 dark:bg-slate-700 border-b border-slate-100 dark:border-slate-600">
               <tr>
+                  <th className="w-12 px-4 py-4">
+                  <input
+                    type="checkbox"
+                    checked={allDisplayedSelected}
+                    onChange={handleToggleAll}
+                    className="w-4 h-4 rounded border-slate-300 text-primary-500 focus:ring-primary-500/30 cursor-pointer"
+                    title="全选当前列表"
+                  />
+                </th>
                   <th className="text-left px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300">
                   名称
                 </th>
@@ -451,6 +559,14 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                   transition={{ delay: index * 0.05 }}
                   className="border-b border-slate-50 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
                 >
+                  <td className="px-4 py-4">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(kb.id)}
+                      onChange={() => handleToggleSelect(kb.id)}
+                      className="w-4 h-4 rounded border-slate-300 text-primary-500 focus:ring-primary-500/30 cursor-pointer"
+                    />
+                  </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <FileText className="w-5 h-5 text-slate-400" />
@@ -597,6 +713,56 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
         loading={deleting}
         onConfirm={handleDelete}
         onCancel={() => setDeleteItem(null)}
+      />
+
+      {/* 批量勾选浮动工具条 */}
+      <AnimatePresence>
+        {selectedIds.size > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-800 dark:bg-slate-700 text-white rounded-xl shadow-2xl px-5 py-3 flex items-center gap-4"
+          >
+            <span className="text-sm whitespace-nowrap">已选 {selectedIds.size} 个知识库</span>
+            <button
+              onClick={() => {
+                setBatchCategoryError('');
+                setBatchCategoryModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-500 hover:bg-primary-600 rounded-lg text-sm transition-colors"
+            >
+              <FolderTree className="w-4 h-4" />
+              批量分类
+            </button>
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              className="p-1 text-slate-400 hover:text-white transition-colors"
+              title="取消选择"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 批量分类弹窗 */}
+      <BatchCategoryModal
+        open={batchCategoryModalOpen}
+        selectedCount={selectedIds.size}
+        categories={categories}
+        saving={batchCategorySaving}
+        error={batchCategoryError}
+        onConfirm={handleBatchCategoryConfirm}
+        onSetUncategorized={() => handleBatchCategoryConfirm(null)}
+        onClose={() => setBatchCategoryModalOpen(false)}
+      />
+
+      {/* 解析任务抽屉 */}
+      <BatchTasksDrawer
+        open={batchDrawerOpen}
+        initialBatchId={initialBatchId}
+        onClose={closeBatchDrawer}
       />
     </div>
   );

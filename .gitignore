@@ -31,3 +31,6 @@ frontend/test-results/
 frontend/playwright-report/
 /.agents
 skills-lock.json
+
+# ZCode CLI 会话缓存
+/.zcode/

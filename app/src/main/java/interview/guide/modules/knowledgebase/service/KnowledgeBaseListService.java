@@ -133,6 +133,24 @@ public class KnowledgeBaseListService {
         log.info("更新知识库分类: id={}, category={}", id, category);
     }
 
+    /**
+     * 批量更新知识库分类
+     *
+     * @param ids 知识库ID列表（非空）
+     * @param category 目标分类，空白表示设为未分类
+     * @return 更新的行数
+     */
+    @Transactional
+    public int updateCategoryBatch(List<Long> ids, String category) {
+        if (ids == null || ids.isEmpty()) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "请选择要更新的知识库");
+        }
+        String normalized = category != null && !category.isBlank() ? category.trim() : null;
+        int updated = knowledgeBaseRepository.updateCategoryBatch(ids, normalized);
+        log.info("批量更新知识库分类: count={}, category={}", updated, normalized);
+        return updated;
+    }
+
     // ========== 搜索功能 ==========
 
     /**

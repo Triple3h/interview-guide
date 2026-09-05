@@ -39,6 +39,7 @@ public class KnowledgeBaseUploadService {
     
     /**
      * 上传知识库文件
+     * 上传请求只做校验、去重、存储和入队；文本解析与向量化由消费端异步完成
      *
      * @param file 知识库文件
      * @param name 知识库名称（可选，如果为空则从文件名提取）
@@ -64,33 +65,29 @@ public class KnowledgeBaseUploadService {
             return persistenceService.handleDuplicateKnowledgeBase(existingKb.get(), fileHash);
         }
 
-        // 4. 解析知识库文本（用于向量化）
-        String content = parseService.parseContent(file);
-        if (content == null || content.trim().isEmpty()) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "无法从文件中提取文本内容，请确保文件格式正确");
-        }
-
-        // 5. 保存文件到RustFS
+        // 4. 保存文件到RustFS
         String fileKey = storageService.uploadKnowledgeBase(file);
         String fileUrl = storageService.getFileUrl(fileKey);
         log.info("知识库已存储到RustFS: {}", fileKey);
 
-        // 6. 保存知识库元数据到数据库（状态为 PENDING）
+        // 5. 保存知识库元数据到数据库（状态为 PENDING，等待异步解析）
         KnowledgeBaseEntity savedKb = persistenceService.saveKnowledgeBase(file, name, category, fileKey, fileUrl, fileHash);
 
-        // 7. 发送向量化任务到 Redis Stream（异步处理）
-        vectorizeStreamProducer.sendVectorizeTask(savedKb.getId(), content);
+        // 6. 发送解析+向量化任务到 Redis Stream（异步处理）
+        boolean sent = vectorizeStreamProducer.sendVectorizeTask(savedKb.getId());
+        if (!sent) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "解析任务入队失败，请稍后重试");
+        }
 
-        log.info("知识库上传完成，向量化任务已入队: {}, kbId={}", fileName, savedKb.getId());
+        log.info("知识库上传完成，解析任务已入队: {}, kbId={}", fileName, savedKb.getId());
 
-        // 8. 返回结果（状态为 PENDING，前端可轮询获取最新状态）
+        // 7. 返回结果（状态为 PENDING，前端可轮询获取最新状态）
         return Map.of(
             "knowledgeBase", Map.of(
                 "id", savedKb.getId(),
                 "name", savedKb.getName(),
                 "category", savedKb.getCategory() != null ? savedKb.getCategory() : "",
                 "fileSize", savedKb.getFileSize(),
-                "contentLength", content.length(),
                 "vectorStatus", VectorStatus.PENDING.name()
             ),
             "storage", Map.of(
@@ -116,7 +113,7 @@ public class KnowledgeBaseUploadService {
     
     /**
      * 重新向量化知识库（手动重试）
-     * 从 RustFS 重新下载文件并发送向量化任务
+     * 解析与向量化由消费端异步完成，这里只负责重置状态并重新入队
      *
      * @param kbId 知识库ID
      */
@@ -124,21 +121,22 @@ public class KnowledgeBaseUploadService {
         KnowledgeBaseEntity kb = knowledgeBaseRepository.findById(kbId)
             .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "知识库不存在"));
 
-        log.info("开始重新向量化知识库: kbId={}, name={}", kbId, kb.getName());
-
-        // 1. 下载文件并解析内容
-        String content = parseService.downloadAndParseContent(kb.getStorageKey(), kb.getOriginalFilename());
-        if (content == null || content.trim().isEmpty()) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "无法从文件中提取文本内容");
+        if (kb.getStorageKey() == null || kb.getStorageKey().isBlank()) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "文件存储信息缺失，无法重新解析");
         }
 
-        // 2. 更新状态为 PENDING（通过单独的 Service 保证事务生效）
+        log.info("开始重新解析知识库: kbId={}, name={}", kbId, kb.getName());
+
+        // 1. 更新状态为 PENDING（通过单独的 Service 保证事务生效）
         persistenceService.updateVectorStatusToPending(kbId);
 
-        // 3. 发送向量化任务到 Stream
-        vectorizeStreamProducer.sendVectorizeTask(kbId, content);
+        // 2. 发送解析+向量化任务到 Stream
+        boolean sent = vectorizeStreamProducer.sendVectorizeTask(kbId);
+        if (!sent) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "解析任务入队失败，请稍后重试");
+        }
 
-        log.info("重新向量化任务已发送: kbId={}", kbId);
+        log.info("重新解析任务已发送: kbId={}", kbId);
     }
 }
 

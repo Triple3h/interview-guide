@@ -13,6 +13,7 @@ import java.util.Map;
 /**
  * 向量化任务生产者
  * 负责发送向量化任务到 Redis Stream
+ * 消息只携带 kbId，文件下载与解析由消费端完成
  */
 @Slf4j
 @Component
@@ -20,7 +21,7 @@ public class VectorizeStreamProducer extends AbstractStreamProducer<VectorizeStr
 
     private final KnowledgeBaseRepository knowledgeBaseRepository;
 
-    record VectorizeTaskPayload(Long kbId, String content) {}
+    record VectorizeTaskPayload(Long kbId) {}
 
     public VectorizeStreamProducer(RedisService redisService, KnowledgeBaseRepository knowledgeBaseRepository) {
         super(redisService);
@@ -30,11 +31,11 @@ public class VectorizeStreamProducer extends AbstractStreamProducer<VectorizeStr
     /**
      * 发送向量化任务到 Redis Stream
      *
-     * @param kbId    知识库ID
-     * @param content 文档内容
+     * @param kbId 知识库ID
+     * @return 是否入队成功
      */
-    public void sendVectorizeTask(Long kbId, String content) {
-        sendTask(new VectorizeTaskPayload(kbId, content));
+    public boolean sendVectorizeTask(Long kbId) {
+        return sendTask(new VectorizeTaskPayload(kbId));
     }
 
     @Override
@@ -51,7 +52,6 @@ public class VectorizeStreamProducer extends AbstractStreamProducer<VectorizeStr
     protected Map<String, String> buildMessage(VectorizeTaskPayload payload) {
         return Map.of(
             AsyncTaskStreamConstants.FIELD_KB_ID, payload.kbId().toString(),
-            AsyncTaskStreamConstants.FIELD_CONTENT, payload.content(),
             AsyncTaskStreamConstants.FIELD_RETRY_COUNT, "0"
         );
     }

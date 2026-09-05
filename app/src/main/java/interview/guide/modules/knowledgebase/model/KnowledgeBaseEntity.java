@@ -99,7 +99,11 @@ public class KnowledgeBaseEntity {
     private Integer questionGenSkippedCount = 0;
 
     private LocalDateTime questionGenUpdatedAt;
-    
+
+    // 批量上传批次ID（单个上传时为空）
+    @Column(name = "batch_id")
+    private Long batchId;
+
     @PrePersist
     protected void onCreate() {
         uploadedAt = LocalDateTime.now();
@@ -308,5 +312,13 @@ public class KnowledgeBaseEntity {
 
     public void setQuestionGenUpdatedAt(LocalDateTime questionGenUpdatedAt) {
         this.questionGenUpdatedAt = questionGenUpdatedAt;
+    }
+
+    public Long getBatchId() {
+        return batchId;
+    }
+
+    public void setBatchId(Long batchId) {
+        this.batchId = batchId;
     }
 }
