@@ -1,10 +1,53 @@
-import type { InterviewFollowUpCapacity } from '../../api/knowledgebase';
+import type {
+  InterviewCategoryCapacity,
+  InterviewFollowUpCapacity,
+} from '../../api/knowledgebase';
+
+export interface CategoryQuotaPreview {
+  category: string;
+  questionCount: number;
+}
 
 export function getSelectedCapacity(
   options: InterviewFollowUpCapacity[],
   followUpCount: number
 ): InterviewFollowUpCapacity | null {
   return options.find(option => option.followUpCount === followUpCount) ?? null;
+}
+
+/**
+ * 模拟后端"按组轮转均衡抽题"的名额分配：每轮给每个未耗尽的组取 1 题名额，
+ * 直到凑满 mainQuestionCount。用于开考前预览每个方向/知识库预计被抽到几题。
+ */
+export function previewCategoryQuotas(
+  categories: InterviewCategoryCapacity[],
+  mainQuestionCount: number
+): CategoryQuotaPreview[] {
+  if (mainQuestionCount <= 0 || categories.length === 0) {
+    return [];
+  }
+  const remaining = categories.map(category => category.availableQuestionCount);
+  const quotas = categories.map(() => 0);
+  let need = mainQuestionCount;
+  let pickedInPass = true;
+  while (need > 0 && pickedInPass) {
+    pickedInPass = false;
+    for (let i = 0; i < categories.length && need > 0; i += 1) {
+      if (remaining[i] > 0) {
+        remaining[i] -= 1;
+        quotas[i] += 1;
+        need -= 1;
+        pickedInPass = true;
+      }
+    }
+  }
+  return categories
+    .map((category, index) => ({ category: category.category, questionCount: quotas[index] }))
+    .filter(item => item.questionCount > 0);
+}
+
+export function formatCategoryQuotaPreview(previews: CategoryQuotaPreview[]): string {
+  return previews.map(item => `${item.category} ${item.questionCount} 题`).join('、');
 }
 
 export function getStrictCapacityMessage(

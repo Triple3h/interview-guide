@@ -523,8 +523,8 @@ class QuestionGenerationAsyncTest {
       verify(structuredOutputInvoker).invoke(
           eq(chatClient), anyString(), userPrompt.capture(), any(),
           any(), anyString(), anyString(), any());
-      assertThat(userPrompt.getValue()).contains("JVM（5 题）");
-      assertThat(userPrompt.getValue()).contains("Spring（3 题）");
+      assertThat(userPrompt.getValue()).contains("JVM（已有 5 题）");
+      assertThat(userPrompt.getValue()).contains("Spring（已有 3 题）");
       assertThat(userPrompt.getValue()).contains("已有的 JVM 问题");
     }
   }

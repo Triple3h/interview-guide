@@ -6,7 +6,10 @@ import interview.guide.common.exception.ErrorCode;
 import interview.guide.modules.interview.model.InterviewQuestionDTO;
 import interview.guide.modules.interview.model.InterviewSessionDTO;
 import interview.guide.modules.interview.service.InterviewSessionService;
+import interview.guide.modules.knowledgebase.model.CreateKnowledgeBaseBatchInterviewRequest;
 import interview.guide.modules.knowledgebase.model.CreateKnowledgeBaseInterviewRequest;
+import interview.guide.modules.knowledgebase.model.KnowledgeBaseBatchCapacityRequest;
+import interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseInterviewCapacityResponse;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseInterviewCapacityResponse.CategoryOption;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseInterviewCapacityResponse.FollowUpOption;
@@ -29,7 +32,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.Function;
 import java.util.stream.IntStream;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -78,10 +83,11 @@ public class KnowledgeBaseInterviewService {
       );
     }
 
-    List<QuestionSource> selected = new ArrayList<>(candidates);
-    Collections.shuffle(selected);
+    List<QuestionSource> selected = selectBalancedByGroup(
+        candidates, mainCount, source -> normalizeGroupKey(source.question().getCategory()));
     List<InterviewQuestionDTO> questions =
-        buildQuestions(selected.subList(0, mainCount), followUpCount);
+        buildQuestions(selected, followUpCount,
+            source -> source.question().getCategory());
 
     log.info("创建知识库面试: kbId={}, category={}, difficulty={}, mainQuestions={}, totalQuestions={}",
         request.knowledgeBaseId(), category, difficulty, mainCount, questions.size());
@@ -101,21 +107,28 @@ public class KnowledgeBaseInterviewService {
       Long knowledgeBaseId,
       String category,
       String difficulty,
-      int mainQuestionCount
+      int mainQuestionCount,
+      int followUpCount
   ) {
     knowledgeBaseRepository.findById(knowledgeBaseId)
         .orElseThrow(() -> new BusinessException(ErrorCode.KNOWLEDGE_BASE_NOT_FOUND));
 
     String normalizedCategory = trimToNull(category);
     String normalizedDifficulty = normalizeDifficulty(difficulty);
+    int normalizedFollowUpCount = Math.max(0, followUpCount);
     List<QuestionSource> allSources = toQuestionSources(selectActiveQuestions(
         knowledgeBaseId, null, normalizedDifficulty));
+    // 方向容量按"满足追问数要求的主问题"统计，供前端预览各方向预计抽题数
+    List<QuestionSource> usableSources = allSources.stream()
+        .filter(source -> source.followUps().size() >= normalizedFollowUpCount)
+        .toList();
     List<QuestionSource> scopedSources = allSources.stream()
         .filter(source -> normalizedCategory == null
             || normalizedCategory.equals(source.question().getCategory()))
         .toList();
 
-    List<CategoryOption> categories = calculateCategoryOptions(allSources);
+    List<CategoryOption> categories = calculateGroupOptions(
+        usableSources, source -> source.question().getCategory());
     List<FollowUpOption> followUpOptions = IntStream.rangeClosed(0, MAX_FOLLOW_UP_COUNT)
         .mapToObj(count -> {
           int availableCount = (int) scopedSources.stream()
@@ -140,6 +153,107 @@ public class KnowledgeBaseInterviewService {
   }
 
   /**
+   * 跨知识库容量：按知识库统计满足追问要求的主问题数，追问档位统计整个选题池。
+   */
+  public KnowledgeBaseInterviewCapacityResponse getBatchCapacity(
+      KnowledgeBaseBatchCapacityRequest request) {
+    List<Long> knowledgeBaseIds = request.knowledgeBaseIds().stream().distinct().toList();
+    List<KnowledgeBaseEntity> knowledgeBases = knowledgeBaseRepository.findAllById(knowledgeBaseIds);
+    if (knowledgeBases.size() < knowledgeBaseIds.size()) {
+      throw new BusinessException(ErrorCode.KNOWLEDGE_BASE_NOT_FOUND, "部分知识库不存在，请刷新后重试");
+    }
+    Map<Long, String> kbNames = knowledgeBases.stream()
+        .collect(Collectors.toMap(KnowledgeBaseEntity::getId, KnowledgeBaseEntity::getName,
+            (first, second) -> first));
+
+    String normalizedDifficulty = normalizeDifficulty(request.difficulty());
+    int normalizedFollowUpCount = Math.max(0, request.followUpCount());
+    List<QuestionSource> allSources = toQuestionSources(
+        questionRepository.findByKnowledgeBase_IdInAndDifficultyAndStatusOrderByUpdatedAtDesc(
+            knowledgeBaseIds, normalizedDifficulty, KnowledgeBaseQuestionStatus.ACTIVE));
+    List<QuestionSource> usableSources = allSources.stream()
+        .filter(source -> source.followUps().size() >= normalizedFollowUpCount)
+        .toList();
+
+    List<CategoryOption> categories = calculateGroupOptions(
+        usableSources,
+        source -> kbNames.getOrDefault(resolveKbId(source.question()), "未知知识库"));
+    List<FollowUpOption> followUpOptions = IntStream.rangeClosed(0, MAX_FOLLOW_UP_COUNT)
+        .mapToObj(count -> {
+          int availableCount = (int) allSources.stream()
+              .filter(source -> source.followUps().size() >= count)
+              .count();
+          return new FollowUpOption(
+              count,
+              availableCount,
+              request.mainQuestionCount() > 0 && availableCount >= request.mainQuestionCount()
+          );
+        })
+        .toList();
+
+    return new KnowledgeBaseInterviewCapacityResponse(
+        null,
+        null,
+        normalizedDifficulty,
+        request.mainQuestionCount(),
+        categories,
+        followUpOptions
+    );
+  }
+
+  /**
+   * 跨知识库整体开始面试：把每个知识库当作一个分组，按知识库均衡抽题、同库题目连续作答。
+   * 题目的 category 统一标记为来源知识库名，便于面试与报告中按库展示。
+   */
+  public InterviewSessionDTO createBatchSession(CreateKnowledgeBaseBatchInterviewRequest request) {
+    List<Long> knowledgeBaseIds = request.knowledgeBaseIds().stream().distinct().toList();
+    List<KnowledgeBaseEntity> knowledgeBases = knowledgeBaseRepository.findAllById(knowledgeBaseIds);
+    if (knowledgeBases.size() < knowledgeBaseIds.size()) {
+      throw new BusinessException(ErrorCode.KNOWLEDGE_BASE_NOT_FOUND, "部分知识库不存在，请刷新后重试");
+    }
+    Map<Long, String> kbNames = knowledgeBases.stream()
+        .collect(Collectors.toMap(KnowledgeBaseEntity::getId, KnowledgeBaseEntity::getName,
+            (first, second) -> first));
+
+    String difficulty = normalizeDifficulty(request.difficulty());
+    int mainCount = request.mainQuestionCount();
+    int followUpCount = request.followUpCount();
+
+    List<QuestionSource> candidates = toQuestionSources(
+        questionRepository.findByKnowledgeBase_IdInAndDifficultyAndStatusOrderByUpdatedAtDesc(
+            knowledgeBaseIds, difficulty, KnowledgeBaseQuestionStatus.ACTIVE)).stream()
+        .filter(source -> source.followUps().size() >= followUpCount)
+        .toList();
+
+    if (candidates.size() < mainCount) {
+      throw new BusinessException(
+          ErrorCode.INTERVIEW_QUESTION_INSUFFICIENT,
+          "需要 " + mainCount + " 道主问题，但所选 " + knowledgeBaseIds.size()
+              + " 个知识库在难度=" + difficulty + "、每题至少 " + followUpCount
+              + " 个追问的条件下只有 " + candidates.size() + " 道"
+      );
+    }
+
+    List<QuestionSource> selected = selectBalancedByGroup(
+        candidates, mainCount, source -> kbNames.get(resolveKbId(source.question())));
+    List<InterviewQuestionDTO> questions = buildQuestions(
+        selected, followUpCount,
+        source -> kbNames.getOrDefault(resolveKbId(source.question()), "知识库"));
+
+    log.info("创建跨知识库面试: kbCount={}, kbIds={}, difficulty={}, mainQuestions={}, totalQuestions={}",
+        knowledgeBaseIds.size(), knowledgeBaseIds, difficulty, mainCount, questions.size());
+
+    return interviewSessionService.createSessionFromQuestions(
+        questions,
+        request.llmProvider(),
+        KnowledgeBaseQuestionEntity.DEFAULT_SKILL_ID,
+        difficulty,
+        null,
+        null
+    );
+  }
+
+  /**
    * 按 category 过滤候选题。
    * category 为空时跨所有方向筛选。
    */
@@ -153,16 +267,87 @@ public class KnowledgeBaseInterviewService {
         knowledgeBaseId, difficulty, category, KnowledgeBaseQuestionStatus.ACTIVE);
   }
 
-  private List<InterviewQuestionDTO> buildQuestions(List<QuestionSource> selected, int followUpCount) {
+  /**
+   * 按 groupKey 分组均衡抽题：
+   * - 组内洗牌、组间顺序随机，保留抽题的随机性；
+   * - 按轮次给每个组分配名额，各组主问题数量尽量均衡（容量不足的组除外）；
+   * - 输出按组聚合，保证同组题目在面试中连续作答。
+   * 单库面试按方向分组，跨库面试按知识库分组；只有一个组时退化为组内随机抽题。
+   */
+  private List<QuestionSource> selectBalancedByGroup(
+      List<QuestionSource> candidates, int mainCount, Function<QuestionSource, String> groupKey) {
+    Map<String, List<QuestionSource>> groups = new LinkedHashMap<>();
+    for (QuestionSource source : candidates) {
+      groups.computeIfAbsent(normalizeGroupKey(groupKey.apply(source)), key -> new ArrayList<>())
+          .add(source);
+    }
+    List<List<QuestionSource>> shuffledGroups = groups.values().stream()
+        .map(group -> {
+          List<QuestionSource> shuffled = new ArrayList<>(group);
+          Collections.shuffle(shuffled);
+          return shuffled;
+        })
+        .collect(Collectors.toCollection(ArrayList::new));
+    Collections.shuffle(shuffledGroups);
+
+    // 轮转分配名额：每轮给每个未耗尽的组取 1 题，直到凑满 mainCount
+    List<List<QuestionSource>> picksPerGroup = new ArrayList<>(shuffledGroups.size());
+    for (int i = 0; i < shuffledGroups.size(); i += 1) {
+      picksPerGroup.add(new ArrayList<>());
+    }
+    int remaining = mainCount;
+    boolean pickedInPass = true;
+    while (remaining > 0 && pickedInPass) {
+      pickedInPass = false;
+      for (int i = 0; i < shuffledGroups.size() && remaining > 0; i += 1) {
+        List<QuestionSource> group = shuffledGroups.get(i);
+        List<QuestionSource> picks = picksPerGroup.get(i);
+        if (picks.size() < group.size()) {
+          picks.add(group.get(picks.size()));
+          remaining -= 1;
+          pickedInPass = true;
+        }
+      }
+    }
+
+    List<QuestionSource> selected = new ArrayList<>();
+    for (List<QuestionSource> picks : picksPerGroup) {
+      selected.addAll(picks);
+    }
+    return selected;
+  }
+
+  private String normalizeGroupKey(String value) {
+    String trimmed = trimToNull(value);
+    return trimmed == null ? "未分类" : trimmed;
+  }
+
+  /**
+   * 解析题目所属知识库 ID：优先关联实体（测试与 save 场景可信），FK 只读列兜底。
+   * 与 KnowledgeBaseQuestionService#toDTO 的取值策略保持一致。
+   */
+  private Long resolveKbId(KnowledgeBaseQuestionEntity question) {
+    if (question.getKnowledgeBase() != null && question.getKnowledgeBase().getId() != null) {
+      return question.getKnowledgeBase().getId();
+    }
+    return question.getKnowledgeBaseId();
+  }
+
+  private List<InterviewQuestionDTO> buildQuestions(
+      List<QuestionSource> selected,
+      int followUpCount,
+      Function<QuestionSource, String> categoryResolver
+  ) {
     List<InterviewQuestionDTO> questions = new ArrayList<>();
     for (QuestionSource source : selected) {
       KnowledgeBaseQuestionEntity entity = source.question();
+      String rawCategory = categoryResolver.apply(source);
       int mainIndex = questions.size();
       questions.add(InterviewQuestionDTO.fromQuestionBank(
           mainIndex,
           entity.getQuestion(),
           defaultString(entity.getType(), "KNOWLEDGE_BASE"),
-          defaultString(entity.getCategory(), "知识库"),
+          defaultString(rawCategory, "知识库"),
           entity.getTopicSummary(),
           entity.getReferenceAnswer(),
           source.keyPoints(),
@@ -177,7 +362,7 @@ public class KnowledgeBaseInterviewService {
             questions.size(),
             followUp.question(),
             defaultString(entity.getType(), "KNOWLEDGE_BASE"),
-            defaultString(entity.getCategory(), "知识库追问"),
+            defaultString(rawCategory, "知识库追问"),
             entity.getTopicSummary(),
             null,
             null,
@@ -234,12 +419,13 @@ public class KnowledgeBaseInterviewService {
         .toList();
   }
 
-  private List<CategoryOption> calculateCategoryOptions(List<QuestionSource> sources) {
+  private List<CategoryOption> calculateGroupOptions(
+      List<QuestionSource> sources, Function<QuestionSource, String> groupKey) {
     Map<String, Integer> counts = new LinkedHashMap<>();
     for (QuestionSource source : sources) {
-      String category = trimToNull(source.question().getCategory());
-      if (category != null) {
-        counts.merge(category, 1, Integer::sum);
+      String key = trimToNull(groupKey.apply(source));
+      if (key != null) {
+        counts.merge(key, 1, Integer::sum);
       }
     }
     return counts.entrySet().stream()

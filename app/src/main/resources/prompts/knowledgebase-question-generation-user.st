@@ -6,6 +6,11 @@ difficulty: {difficulty}
 # Existing Categories
 {existingCategories}
 
+# Category Coverage
+- 将 {questionCount} 道题整体均衡分配到 # Existing Categories 列出的已有方向上，各方向题量尽量接近。
+- 若 {questionCount} 少于已有方向数量，优先为已有题量最少的方向补题，此时无需强行覆盖全部方向。
+- 仅当知识库内容明显超出已有方向覆盖范围时才新增方向；新增方向不超过 {categoryLimit} 个。
+
 # Existing Questions
 以下题目已经出过，请从不同知识点或不同考察角度出题，避免题面或考察点重复：
 {existingQuestions}
@@ -14,7 +19,7 @@ difficulty: {difficulty}
 {context}
 
 # Output Requirements
-- category: 面试方向，遵循 system prompt 中的方向归类规则（最多 {categoryLimit} 个不同方向，优先复用已有）
+- category: 面试方向，遵循 # Category Coverage 的分配规则
 - question: 主问题题干
 - type: 可选的技术分类 key，例如 JVM、REDIS、SPRING；不需要时可留空
 - topicSummary: 不超过 80 字的知识点摘要

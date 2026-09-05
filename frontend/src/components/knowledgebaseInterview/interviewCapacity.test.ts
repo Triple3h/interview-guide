@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  formatCategoryQuotaPreview,
   getFollowUpQualityWarning,
   getSelectedCapacity,
   getStrictCapacityMessage,
+  previewCategoryQuotas,
 } from './interviewCapacity.ts';
 
 const options = [
@@ -44,4 +46,58 @@ test('最近生成目标只对追问不足的题目显示质量警告', () => {
   assert.equal(getFollowUpQualityWarning(2, 2), null);
   assert.equal(getFollowUpQualityWarning(3, 2), null);
   assert.equal(getFollowUpQualityWarning(0, null), null);
+});
+
+test('跨组名额按轮转均衡分配且容量不足的组少分配', () => {
+  const categories = [
+    { category: 'Redis', availableQuestionCount: 4 },
+    { category: 'MySQL', availableQuestionCount: 3 },
+    { category: 'JVM', availableQuestionCount: 1 },
+  ];
+  assert.deepEqual(previewCategoryQuotas(categories, 5), [
+    { category: 'Redis', questionCount: 2 },
+    { category: 'MySQL', questionCount: 2 },
+    { category: 'JVM', questionCount: 1 },
+  ]);
+  // 题量不足的组把名额让给其他组
+  assert.deepEqual(previewCategoryQuotas(categories, 8), [
+    { category: 'Redis', questionCount: 4 },
+    { category: 'MySQL', questionCount: 3 },
+    { category: 'JVM', questionCount: 1 },
+  ]);
+});
+
+test('题量少于组数时名额优先给题量多的组', () => {
+  const categories = [
+    { category: 'Redis', availableQuestionCount: 3 },
+    { category: 'MySQL', availableQuestionCount: 2 },
+    { category: 'JVM', availableQuestionCount: 1 },
+  ];
+  assert.deepEqual(previewCategoryQuotas(categories, 2), [
+    { category: 'Redis', questionCount: 1 },
+    { category: 'MySQL', questionCount: 1 },
+  ]);
+});
+
+test('名额为 0 的组不返回，入参非法时返回空数组', () => {
+  const categories = [
+    { category: 'Redis', availableQuestionCount: 2 },
+    { category: 'JVM', availableQuestionCount: 0 },
+  ];
+  assert.deepEqual(previewCategoryQuotas(categories, 1), [
+    { category: 'Redis', questionCount: 1 },
+  ]);
+  assert.deepEqual(previewCategoryQuotas([], 5), []);
+  assert.deepEqual(previewCategoryQuotas(categories, 0), []);
+});
+
+test('名额预览格式化为可读文案', () => {
+  assert.equal(
+    formatCategoryQuotaPreview([
+      { category: 'Redis', questionCount: 2 },
+      { category: 'MySQL', questionCount: 1 },
+    ]),
+    'Redis 2 题、MySQL 1 题'
+  );
+  assert.equal(formatCategoryQuotaPreview([]), '');
 });

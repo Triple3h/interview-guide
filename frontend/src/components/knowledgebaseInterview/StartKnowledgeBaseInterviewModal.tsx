@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { AlertCircle, Loader2, Play, X } from 'lucide-react';
 import type {
@@ -14,12 +14,14 @@ import {
   MAIN_QUESTION_COUNT_OPTIONS,
 } from '../../constants/knowledgebaseInterview';
 import {
+  formatCategoryQuotaPreview,
   getSelectedCapacity,
   getStrictCapacityMessage,
+  previewCategoryQuotas,
 } from './interviewCapacity';
 
 export interface StartInterviewConfig {
-  category: string;  // 空字符串表示覆盖全部方向
+  category: string;  // 空字符串表示覆盖全部方向（多库模式下忽略）
   difficulty: string;
   mainQuestionCount: number;
   followUpCount: number;
@@ -27,7 +29,8 @@ export interface StartInterviewConfig {
 
 interface StartKnowledgeBaseInterviewModalProps {
   open: boolean;
-  knowledgeBase: KnowledgeBaseItem | null;
+  /** 单库开考传 1 个，跨库整体开考传多个 */
+  knowledgeBases: KnowledgeBaseItem[];
   defaultDifficulty?: string;
   starting: boolean;
   error: string;
@@ -37,7 +40,7 @@ interface StartKnowledgeBaseInterviewModalProps {
 
 export default function StartKnowledgeBaseInterviewModal({
   open,
-  knowledgeBase,
+  knowledgeBases,
   defaultDifficulty = DEFAULT_DIFFICULTY,
   starting,
   error,
@@ -53,8 +56,11 @@ export default function StartKnowledgeBaseInterviewModal({
   const [loadingCapacity, setLoadingCapacity] = useState(false);
   const [loadError, setLoadError] = useState('');
 
+  const isBatch = knowledgeBases.length > 1;
+  const knowledgeBaseIdsKey = knowledgeBases.map(kb => kb.id).join(',');
+
   useEffect(() => {
-    if (!open || !knowledgeBase) {
+    if (!open || knowledgeBases.length === 0) {
       setCapacity(null);
       setLoadError('');
       return;
@@ -63,23 +69,30 @@ export default function StartKnowledgeBaseInterviewModal({
     setDifficulty(defaultDifficulty);
     setMainQuestionCount(5);
     setFollowUpCount(1);
-  }, [open, knowledgeBase, defaultDifficulty]);
+  }, [open, knowledgeBaseIdsKey, defaultDifficulty, knowledgeBases.length]);
 
   useEffect(() => {
-    if (!open || !knowledgeBase) return;
+    if (!open || knowledgeBases.length === 0) return;
     let cancelled = false;
     setLoadingCapacity(true);
     setCapacity(null);
     setLoadError('');
-    knowledgeBaseApi
-      .getInterviewCapacity(knowledgeBase.id, {
-        category: category || undefined,
-        difficulty,
-        mainQuestionCount,
-      })
+    const request = isBatch
+      ? knowledgeBaseApi.getBatchInterviewCapacity({
+          knowledgeBaseIds: knowledgeBases.map(kb => kb.id),
+          difficulty,
+          mainQuestionCount,
+          followUpCount,
+        })
+      : knowledgeBaseApi.getInterviewCapacity(knowledgeBases[0].id, {
+          category: category || undefined,
+          difficulty,
+          mainQuestionCount,
+          followUpCount,
+        });
+    request
       .then(result => {
-        if (cancelled) return;
-        setCapacity(result);
+        if (!cancelled) setCapacity(result);
       })
       .catch(err => {
         if (!cancelled) {
@@ -92,15 +105,24 @@ export default function StartKnowledgeBaseInterviewModal({
     return () => {
       cancelled = true;
     };
-  }, [open, knowledgeBase, category, difficulty, mainQuestionCount]);
+  }, [open, isBatch, knowledgeBaseIdsKey, category, difficulty, mainQuestionCount, followUpCount, knowledgeBases]);
 
   const followUpOptions = capacity?.followUpOptions ?? [];
   const selectedCapacity = getSelectedCapacity(followUpOptions, followUpCount);
   const availableCount = selectedCapacity?.availableQuestionCount ?? 0;
   const canStart = selectedCapacity?.selectable === true && !loadingCapacity;
   const categoryOptions = capacity?.categories ?? [];
-  const selectedCategoryMissing = category
+  const selectedCategoryMissing = !isBatch && category
     && !categoryOptions.some(option => option.category === category);
+  // 跨库/全部方向时按组轮转分配名额，预览每个组预计被抽到几题
+  const quotaPreviewText = useMemo(() => {
+    if (!isBatch || loadingCapacity || !capacity) return '';
+    return formatCategoryQuotaPreview(previewCategoryQuotas(categoryOptions, mainQuestionCount));
+  }, [isBatch, loadingCapacity, capacity, categoryOptions, mainQuestionCount]);
+
+  const targetLabel = isBatch
+    ? `${knowledgeBases.length} 个知识库`
+    : knowledgeBases[0]?.name || '';
 
   return (
     <AnimatePresence>
@@ -125,9 +147,13 @@ export default function StartKnowledgeBaseInterviewModal({
                 <div className="flex items-center gap-2">
                   <Play className="w-5 h-5 text-primary-500" />
                   <div>
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">开始知识库面试</h3>
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                      {isBatch ? '跨知识库面试' : '开始知识库面试'}
+                    </h3>
                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                      仅从 <span className="font-medium">{knowledgeBase?.name}</span> 的已启用题目抽题
+                      {isBatch
+                        ? <>从 <span className="font-medium">{targetLabel}</span> 的已启用题目中按库均衡抽题，同库题目连续作答</>
+                        : <>仅从 <span className="font-medium">{targetLabel}</span> 的已启用题目抽题</>}
                     </p>
                   </div>
                 </div>
@@ -142,25 +168,27 @@ export default function StartKnowledgeBaseInterviewModal({
               </div>
 
               <div className="px-6 py-5 space-y-4">
-                <label className="block">
-                  <span className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">面试方向</span>
-                  <select
-                    value={category}
-                    onChange={event => setCategory(event.target.value)}
-                    className={INPUT_CLASS}
-                    disabled={loadingCapacity}
-                  >
-                    <option value="">全部方向</option>
-                    {selectedCategoryMissing && (
-                      <option value={category}>{category}（当前难度 0 题）</option>
-                    )}
-                    {categoryOptions.map(item => (
-                      <option key={item.category} value={item.category}>
-                        {item.category}（{item.availableQuestionCount} 题）
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                {!isBatch && (
+                  <label className="block">
+                    <span className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">面试方向</span>
+                    <select
+                      value={category}
+                      onChange={event => setCategory(event.target.value)}
+                      className={INPUT_CLASS}
+                      disabled={loadingCapacity}
+                    >
+                      <option value="">全部方向（按方向均衡抽题）</option>
+                      {selectedCategoryMissing && (
+                        <option value={category}>{category}（当前难度 0 题）</option>
+                      )}
+                      {categoryOptions.map(item => (
+                        <option key={item.category} value={item.category}>
+                          {item.category}（{item.availableQuestionCount} 题）
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
 
                 <div className="grid grid-cols-3 gap-3">
                   <label className="block">
@@ -236,6 +264,11 @@ export default function StartKnowledgeBaseInterviewModal({
                       )}
                     </>
                   )}
+                  {isBatch && quotaPreviewText && (
+                    <span className="block mt-1 text-xs text-slate-500 dark:text-slate-400">
+                      预计名额：{quotaPreviewText}（以实际抽题为准）
+                    </span>
+                  )}
                   {loadError && <p className="mt-1 text-xs text-red-500">{loadError}</p>}
                 </div>
 
@@ -265,7 +298,7 @@ export default function StartKnowledgeBaseInterviewModal({
                   className="px-5 py-2.5 inline-flex items-center gap-2 text-white rounded-xl font-semibold shadow-lg bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {starting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-                  {starting ? '创建中…' : '开始面试'}
+                  {starting ? '创建中…' : isBatch ? '开始跨库面试' : '开始面试'}
                 </motion.button>
               </div>
             </motion.div>

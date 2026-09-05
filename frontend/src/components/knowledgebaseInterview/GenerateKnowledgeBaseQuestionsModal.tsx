@@ -21,6 +21,8 @@ export interface GenerateQuestionsConfig {
 interface GenerateKnowledgeBaseQuestionsModalProps {
   open: boolean;
   knowledgeBaseName: string;
+  /** 批量模式：为多个知识库分别提交生成任务 */
+  batch?: boolean;
   defaultDifficulty?: string;
   defaultCategoryLimit?: number;
   initialConfig?: GenerateQuestionsConfig | null;
@@ -33,6 +35,7 @@ interface GenerateKnowledgeBaseQuestionsModalProps {
 export default function GenerateKnowledgeBaseQuestionsModal({
   open,
   knowledgeBaseName,
+  batch = false,
   defaultDifficulty = DEFAULT_DIFFICULTY,
   defaultCategoryLimit = DEFAULT_CATEGORY_LIMIT,
   initialConfig,
@@ -91,8 +94,17 @@ export default function GenerateKnowledgeBaseQuestionsModal({
 
               <div className="px-6 py-5 space-y-4">
                 <p className="text-sm text-slate-500 dark:text-slate-400">
-                  基于知识库 <span className="font-semibold text-slate-700 dark:text-slate-200">{knowledgeBaseName}</span> 的内容，
-                  按难度和方向生成草稿题。面试方向由模型基于知识库内容自动归类，并优先复用已有方向。
+                  {batch ? (
+                    <>
+                      将为所选 <span className="font-semibold text-slate-700 dark:text-slate-200">{knowledgeBaseName}</span>{' '}
+                      分别提交生成任务：每个知识库独立生成并替换自身题库，生成时按该库已有方向整体均衡分配题量。
+                    </>
+                  ) : (
+                    <>
+                      基于知识库 <span className="font-semibold text-slate-700 dark:text-slate-200">{knowledgeBaseName}</span> 的内容，
+                      按难度生成草稿题。生成时按知识库已有方向整体均衡分配题量，仅当内容超出已有方向覆盖范围时才新增方向。
+                    </>
+                  )}
                 </p>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -125,7 +137,7 @@ export default function GenerateKnowledgeBaseQuestionsModal({
                 <div className="grid grid-cols-2 gap-3">
                   <label className="block">
                     <span className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">
-                      方向上限
+                      新增方向上限
                     </span>
                     <select
                       value={categoryLimit}

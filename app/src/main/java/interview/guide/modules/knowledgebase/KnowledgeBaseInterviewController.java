@@ -3,9 +3,13 @@ package interview.guide.modules.knowledgebase;
 import interview.guide.common.annotation.RateLimit;
 import interview.guide.common.result.Result;
 import interview.guide.modules.interview.model.InterviewSessionDTO;
+import interview.guide.modules.knowledgebase.model.BatchGenerateKnowledgeBaseQuestionsRequest;
+import interview.guide.modules.knowledgebase.model.CreateKnowledgeBaseBatchInterviewRequest;
 import interview.guide.modules.knowledgebase.model.CreateKnowledgeBaseInterviewRequest;
 import interview.guide.modules.knowledgebase.model.CreateKnowledgeBaseQuestionRequest;
 import interview.guide.modules.knowledgebase.model.GenerateKnowledgeBaseQuestionsRequest;
+import interview.guide.modules.knowledgebase.model.KnowledgeBaseBatchCapacityRequest;
+import interview.guide.modules.knowledgebase.model.KnowledgeBaseBatchGenerateResultItem;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseInterviewCapacityResponse;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseQuestionDTO;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseQuestionStatus;
@@ -63,6 +67,14 @@ public class KnowledgeBaseInterviewController {
     return Result.success(questionService.submitGenerationTask(id, request));
   }
 
+  @PostMapping("/api/knowledgebase/questions/generate/batch")
+  @RateLimit(dimension = RateLimit.Dimension.GLOBAL, count = 3, interval = 1, timeUnit = RateLimit.TimeUnit.MINUTES)
+  @RateLimit(dimension = RateLimit.Dimension.IP, count = 3, interval = 1, timeUnit = RateLimit.TimeUnit.MINUTES)
+  public Result<List<KnowledgeBaseBatchGenerateResultItem>> batchGenerateQuestions(
+      @Valid @RequestBody BatchGenerateKnowledgeBaseQuestionsRequest request) {
+    return Result.success(questionService.batchSubmitGenerationTasks(request));
+  }
+
   @GetMapping("/api/knowledgebase/{id}/questions/generation-status")
   public Result<QuestionGenStatusResponse> getQuestionGenerationStatus(@PathVariable Long id) {
     return Result.success(questionService.getGenerationStatus(id));
@@ -101,6 +113,18 @@ public class KnowledgeBaseInterviewController {
     return Result.success(interviewService.createSession(request));
   }
 
+  @PostMapping("/api/knowledgebase-interviews/sessions/batch")
+  public Result<InterviewSessionDTO> createBatchInterviewSession(
+      @Valid @RequestBody CreateKnowledgeBaseBatchInterviewRequest request) {
+    return Result.success(interviewService.createBatchSession(request));
+  }
+
+  @PostMapping("/api/knowledgebase-interviews/batch-capacity")
+  public Result<KnowledgeBaseInterviewCapacityResponse> getBatchInterviewCapacity(
+      @Valid @RequestBody KnowledgeBaseBatchCapacityRequest request) {
+    return Result.success(interviewService.getBatchCapacity(request));
+  }
+
   @GetMapping("/api/knowledgebase/{id}/interview-capacity")
   public Result<KnowledgeBaseInterviewCapacityResponse> getInterviewCapacity(
       @PathVariable Long id,
@@ -109,8 +133,12 @@ public class KnowledgeBaseInterviewController {
       @RequestParam(value = "mainQuestionCount", defaultValue = "5")
       @Min(value = 1, message = "主问题数量最少1题")
       @Max(value = 20, message = "主问题数量最多20题")
-      int mainQuestionCount) {
+      int mainQuestionCount,
+      @RequestParam(value = "followUpCount", defaultValue = "0")
+      @Min(value = 0, message = "追问数量不能小于0")
+      @Max(value = 5, message = "每题追问最多5个")
+      int followUpCount) {
     return Result.success(
-        interviewService.getCapacity(id, category, difficulty, mainQuestionCount));
+        interviewService.getCapacity(id, category, difficulty, mainQuestionCount, followUpCount));
   }
 }

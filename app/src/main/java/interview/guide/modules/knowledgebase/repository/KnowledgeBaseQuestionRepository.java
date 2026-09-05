@@ -58,6 +58,15 @@ public interface KnowledgeBaseQuestionRepository extends JpaRepository<Knowledge
   );
 
   /**
+   * 跨知识库 + 难度下的已启用题目，用于跨知识库整体开始面试抽题。
+   */
+  List<KnowledgeBaseQuestionEntity> findByKnowledgeBase_IdInAndDifficultyAndStatusOrderByUpdatedAtDesc(
+      List<Long> knowledgeBaseIds,
+      String difficulty,
+      KnowledgeBaseQuestionStatus status
+  );
+
+  /**
    * 列出某知识库下出现过的方向（含计数），用于前端下拉。
    * 只统计有非空 category 的题目，按出现次数降序。
    */

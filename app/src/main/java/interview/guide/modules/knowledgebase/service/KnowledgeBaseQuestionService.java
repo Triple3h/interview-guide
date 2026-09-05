@@ -4,8 +4,10 @@ import interview.guide.common.constant.CommonConstants.InterviewDefaults;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.modules.knowledgebase.listener.QuestionGenStreamProducer;
+import interview.guide.modules.knowledgebase.model.BatchGenerateKnowledgeBaseQuestionsRequest;
 import interview.guide.modules.knowledgebase.model.CreateKnowledgeBaseQuestionRequest;
 import interview.guide.modules.knowledgebase.model.GenerateKnowledgeBaseQuestionsRequest;
+import interview.guide.modules.knowledgebase.model.KnowledgeBaseBatchGenerateResultItem;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseQuestionDTO;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseQuestionEntity;
@@ -25,6 +27,7 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
@@ -155,25 +158,70 @@ public class KnowledgeBaseQuestionService {
   public QuestionGenStatusResponse submitGenerationTask(
       Long knowledgeBaseId,
       GenerateKnowledgeBaseQuestionsRequest request) {
-    String difficulty = normalizeDifficulty(request.difficulty());
-    int followUpCount = request.followUpCount() == null
-        ? DEFAULT_FOLLOW_UP_COUNT
-        : Math.max(0, Math.min(request.followUpCount(), 5));
-    int categoryLimit = request.categoryLimit() == null
-        ? DEFAULT_CATEGORY_LIMIT
-        : Math.max(1, Math.min(request.categoryLimit(), 5));
-    QuestionGenerationConfig config = new QuestionGenerationConfig(
-        difficulty,
-        Math.max(1, request.questionCount()),
-        followUpCount,
-        categoryLimit,
-        trimToNull(request.llmProvider())
+    QuestionGenerationConfig config = buildGenerationConfig(
+        request.difficulty(),
+        request.questionCount(),
+        request.followUpCount(),
+        request.categoryLimit(),
+        request.llmProvider()
     );
     QuestionGenStatusResponse response =
         questionGenerationStateService.createTask(knowledgeBaseId, config);
     boolean sent = questionGenStreamProducer.sendGenerateTask(
         knowledgeBaseId, response.questionGenTaskId());
     return sent ? response : questionGenerationStateService.getStatus(knowledgeBaseId);
+  }
+
+  /**
+   * 批量提交生成任务：为每个知识库独立走一遍单库提交流程（含正在生成/未向量化守卫），
+   * 单库失败不影响其他库，逐库返回提交结果。
+   */
+  public List<KnowledgeBaseBatchGenerateResultItem> batchSubmitGenerationTasks(
+      BatchGenerateKnowledgeBaseQuestionsRequest request) {
+    QuestionGenerationConfig config = buildGenerationConfig(
+        request.difficulty(),
+        request.questionCount(),
+        request.followUpCount(),
+        request.categoryLimit(),
+        request.llmProvider()
+    );
+    List<KnowledgeBaseBatchGenerateResultItem> results = new ArrayList<>();
+    for (Long knowledgeBaseId : request.knowledgeBaseIds().stream().distinct().toList()) {
+      try {
+        QuestionGenStatusResponse response =
+            questionGenerationStateService.createTask(knowledgeBaseId, config);
+        boolean sent = questionGenStreamProducer.sendGenerateTask(
+            knowledgeBaseId, response.questionGenTaskId());
+        results.add(new KnowledgeBaseBatchGenerateResultItem(
+            knowledgeBaseId, sent, sent ? "已提交生成任务" : "任务投递失败，请稍后重试"));
+      } catch (BusinessException e) {
+        results.add(new KnowledgeBaseBatchGenerateResultItem(knowledgeBaseId, false, e.getMessage()));
+      }
+    }
+    return results;
+  }
+
+  private QuestionGenerationConfig buildGenerationConfig(
+      String difficulty,
+      int questionCount,
+      Integer followUpCount,
+      Integer categoryLimit,
+      String llmProvider
+  ) {
+    String normalizedDifficulty = normalizeDifficulty(difficulty);
+    int normalizedFollowUpCount = followUpCount == null
+        ? DEFAULT_FOLLOW_UP_COUNT
+        : Math.max(0, Math.min(followUpCount, 5));
+    int normalizedCategoryLimit = categoryLimit == null
+        ? DEFAULT_CATEGORY_LIMIT
+        : Math.max(1, Math.min(categoryLimit, 5));
+    return new QuestionGenerationConfig(
+        normalizedDifficulty,
+        Math.max(1, questionCount),
+        normalizedFollowUpCount,
+        normalizedCategoryLimit,
+        trimToNull(llmProvider)
+    );
   }
 
   @Transactional(readOnly = true)

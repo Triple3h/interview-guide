@@ -177,6 +177,37 @@ export interface GetKnowledgeBaseInterviewCapacityParams {
   category?: string;
   difficulty: string;
   mainQuestionCount: number;
+  followUpCount?: number;
+}
+
+export interface BatchGenerateKnowledgeBaseQuestionsRequest {
+  knowledgeBaseIds: number[];
+  difficulty: string;
+  questionCount: number;
+  followUpCount?: number;
+  categoryLimit: number;
+  llmProvider?: string;
+}
+
+export interface KnowledgeBaseBatchGenerateResultItem {
+  knowledgeBaseId: number;
+  submitted: boolean;
+  message: string;
+}
+
+export interface KnowledgeBaseBatchCapacityRequest {
+  knowledgeBaseIds: number[];
+  difficulty: string;
+  mainQuestionCount: number;
+  followUpCount: number;
+}
+
+export interface CreateKnowledgeBaseBatchInterviewRequest {
+  knowledgeBaseIds: number[];
+  difficulty: string;
+  mainQuestionCount: number;
+  followUpCount: number;
+  llmProvider?: string;
 }
 
 export const knowledgeBaseApi = {
@@ -366,8 +397,36 @@ export const knowledgeBaseApi = {
     if (params.category?.trim()) {
       searchParams.set('category', params.category.trim());
     }
+    if (params.followUpCount !== undefined) {
+      searchParams.set('followUpCount', String(params.followUpCount));
+    }
     return request.get<KnowledgeBaseInterviewCapacityResponse>(
       `/api/knowledgebase/${id}/interview-capacity?${searchParams.toString()}`
+    );
+  },
+
+  async getBatchInterviewCapacity(
+    req: KnowledgeBaseBatchCapacityRequest
+  ): Promise<KnowledgeBaseInterviewCapacityResponse> {
+    return request.post<KnowledgeBaseInterviewCapacityResponse>(
+      '/api/knowledgebase-interviews/batch-capacity',
+      req
+    );
+  },
+
+  async createBatchInterviewSession(
+    req: CreateKnowledgeBaseBatchInterviewRequest
+  ): Promise<InterviewSession> {
+    return request.post<InterviewSession>('/api/knowledgebase-interviews/sessions/batch', req);
+  },
+
+  async generateQuestionsBatch(
+    req: BatchGenerateKnowledgeBaseQuestionsRequest
+  ): Promise<KnowledgeBaseBatchGenerateResultItem[]> {
+    return request.post<KnowledgeBaseBatchGenerateResultItem[]>(
+      '/api/knowledgebase/questions/generate/batch',
+      req,
+      { timeout: 120000 }
     );
   },
 

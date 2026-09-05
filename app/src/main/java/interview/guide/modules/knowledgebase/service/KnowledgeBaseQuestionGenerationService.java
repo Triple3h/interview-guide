@@ -279,11 +279,11 @@ public class KnowledgeBaseQuestionGenerationService {
   private String buildExistingCategorySection(Long knowledgeBaseId) {
     List<CategoryCount> categories = questionRepository.findCategoryCounts(knowledgeBaseId);
     if (categories.isEmpty()) {
-      return "暂无已有方向";
+      return "暂无已有方向，请基于知识库内容归纳方向（不超过 user prompt 给出的新增方向上限）";
     }
     return categories.stream()
-        .limit(10)
-        .map(c -> "- " + c.getCategory() + "（" + c.getCount() + " 题）")
+        .limit(30)
+        .map(c -> "- " + c.getCategory() + "（已有 " + c.getCount() + " 题）")
         .collect(Collectors.joining("\n"));
   }
 
