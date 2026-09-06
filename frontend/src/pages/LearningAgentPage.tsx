@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState, useTransition} from 'react';
+import {Fragment, useEffect, useRef, useState, useTransition} from 'react';
 import {AnimatePresence, motion} from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -7,14 +7,14 @@ import {useNavigate} from 'react-router-dom';
 import {ragChatApi, type RagChatSessionListItem} from '../api/ragChat';
 import {learningAgentApi} from '../api/learningAgent';
 import {userApi} from '../api/user';
-import {getStoredUser} from '../utils/currentUser';
+import {getStoredUser, storeUser} from '../utils/currentUser';
 import type {AgentStep, AskLearnerPayload} from '../types/learning';
 import type {UserProfile} from '../types/user';
 import {formatDateOnly} from '../utils/date';
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
 import CodeBlock from '../components/CodeBlock';
+import UserMenu from '../components/UserMenu';
 import ToolStepsPanel from '../components/learning/ToolStepsPanel';
-import UserProfileModal from '../components/UserProfileModal';
 import {
   Brain,
   Check,
@@ -33,6 +33,10 @@ interface LearningAgentPageProps {
 
 /** askLearner 提问卡片：answer 为学员点选结果，closed 表示已超时/会话结束 */
 interface AskCardState extends AskLearnerPayload {
+  /** 会话内自增 id，弹窗与正文回答框按它定位卡片 */
+  askId: number;
+  /** 收到提问时已流出的正文字符数，回答后回答框按此位置插回正文中间 */
+  atOffset: number;
   answer?: string;
   closed?: boolean;
 }
@@ -54,6 +58,22 @@ const SUGGESTIONS = [
   '总结一下我的薄弱环节',
 ];
 
+/** 回答框：学员点选后插回正文中间，小字问题 + 高亮所选答案 */
+function AskAnswerCard({ask}: {ask: AskCardState}) {
+  return (
+    <div className="my-3 rounded-xl border border-primary-200/70 dark:border-primary-900/60 bg-primary-50/70 dark:bg-primary-900/20 p-3">
+      <p className="flex items-start gap-1.5 text-xs leading-relaxed text-slate-400 dark:text-slate-500 mb-1.5">
+        <CircleHelp className="w-3.5 h-3.5 mt-0.5 flex-shrink-0"/>
+        <span>{ask.question}</span>
+      </p>
+      <p className="flex items-start gap-1.5 text-sm font-medium leading-relaxed text-primary-600 dark:text-primary-400">
+        <Check className="w-4 h-4 mt-0.5 flex-shrink-0"/>
+        <span>{ask.answer}</span>
+      </p>
+    </div>
+  );
+}
+
 export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageProps) {
   const navigate = useNavigate();
 
@@ -70,16 +90,33 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
   const [question, setQuestion] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
+  /** 等待学员回答的提问卡片 id：选项弹窗锚在输入框上方 */
+  const [pendingAskId, setPendingAskId] = useState<number | null>(null);
+  const askSeq = useRef(0);
 
   // 当前成员
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [profileModalOpen, setProfileModalOpen] = useState(false);
 
   // refs
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const rafRef = useRef<number>();
 
   const [, startTransition] = useTransition();
+
+  // 待回答提问：按 id 从消息里派生，回答/超时后弹窗自动消失
+  const pendingAsk = (() => {
+    if (pendingAskId == null) {
+      return null;
+    }
+    for (const m of messages) {
+      const found = m.asks?.find((a) => a.askId === pendingAskId);
+      if (found) {
+        return found;
+      }
+    }
+    return null;
+  })();
+  const askPopupOpen = !!pendingAsk && !pendingAsk.answer && !pendingAsk.closed;
 
   useEffect(() => {
     loadSessions();
@@ -115,6 +152,14 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
     setCurrentSessionId(null);
     setCurrentSessionTitle('');
     setMessages([]);
+  };
+
+  // 切换学习成员（含新建后自动进入）：本地身份先生效（请求层实时读），再按新成员重载本页
+  const handleSwitchMember = (user: UserProfile) => {
+    storeUser(user);
+    setProfile(user);
+    handleNewSession();
+    loadSessions();
   };
 
   const handleLoadSession = async (sessionId: number) => {
@@ -212,10 +257,19 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
   };
 
   const handleSubmitQuestion = async (preset?: string) => {
-    const raw = preset ?? question;
-    if (!raw.trim() || loading) return;
+    const raw = (preset ?? question).trim();
 
-    const userQuestion = raw.trim();
+    // 有待回答提问时，输入框提交的是该题的自定义回答（等价于选项之外的"其他"）
+    if (pendingAsk && !pendingAsk.answer && !pendingAsk.closed) {
+      if (!raw) return;
+      setQuestion('');
+      await handleAnswerAsk(pendingAsk.askId, raw);
+      return;
+    }
+
+    if (!raw || loading) return;
+
+    const userQuestion = raw;
     setQuestion('');
     setLoading(true);
 
@@ -274,21 +328,25 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
           });
         },
         onAsk: (payload) => {
+          const askId = ++askSeq.current;
+          const atOffset = fullContent.length;
           startTransition(() => {
             updateLastAssistant((msg) => ({
               ...msg,
-              asks: [...(msg.asks ?? []), {...payload}],
+              asks: [...(msg.asks ?? []), {...payload, askId, atOffset}],
             }));
           });
+          setPendingAskId(askId);
         },
         onComplete: () => {
-          // 流结束：还没被回答的提问卡片按超时关闭（Agent 已按超时降级继续）
+          // 流结束：还没被回答的提问卡片按超时关闭（Agent 已按超时降级继续），弹窗随之消失
           startTransition(() => {
             updateLastAssistant((msg) => ({
               ...msg,
               asks: (msg.asks ?? []).map((a) => (a.answer ? a : {...a, closed: true})),
             }));
           });
+          setPendingAskId(null);
           setLoading(false);
           loadSessions();
         },
@@ -298,10 +356,14 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
         },
         onError: (error: Error) => {
           console.error('学习帮手回答失败:', error);
-          updateLastAssistant((msg) => ({
-            ...msg,
-            content: fullContent || `回答失败：${error.message || '请重试'}`,
-          }));
+          startTransition(() => {
+            updateLastAssistant((msg) => ({
+              ...msg,
+              content: fullContent || `回答失败：${error.message || '请重试'}`,
+              asks: (msg.asks ?? []).map((a) => (a.answer ? a : {...a, closed: true})),
+            }));
+          });
+          setPendingAskId(null);
           setLoading(false);
         },
       });
@@ -330,80 +392,108 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
     return formatDateOnly(dateStr);
   };
 
-  // 学员点选提问选项：提交后端放行 Agent 等待，卡片记住所选
-  const handleAnswerAsk = async (msg: Message, askIndex: number, answer: string) => {
+  // 学员回答 askLearner 提问：先在卡片上记下所选，再提交后端放行阻塞中的 Agent
+  const handleAnswerAsk = async (askId: number, answer: string) => {
     if (!currentSessionId) return;
-    const applyState = (patch: Partial<AskCardState>) => {
+    const patchAsk = (patch: Partial<AskCardState>) => {
       startTransition(() => {
         setMessages((prev) => prev.map((m) => {
-          if (m !== msg) return m;
+          if (!m.asks?.some((a) => a.askId === askId)) return m;
           return {
             ...m,
-            asks: (m.asks ?? []).map((a, i) => (i === askIndex ? {...a, ...patch} : a)),
+            asks: m.asks.map((a) => (a.askId === askId ? {...a, ...patch} : a)),
           };
         }));
       });
     };
-    applyState({answer});
+    patchAsk({answer});
     try {
       await learningAgentApi.answerAsk(currentSessionId, answer);
     } catch (err) {
       console.error('提交回答失败', err);
-      applyState({answer: undefined, closed: true});
+      patchAsk({answer: undefined, closed: true});
     }
   };
 
-  // Agent 的选择提问卡片：等价于成熟 Agent 的"选项弹窗"
-  const renderAskCards = (msg: Message) => {
-    if (!msg.asks || msg.asks.length === 0) {
-      return null;
+  // 弹窗打开时数字键 1-4 快捷点选（输入框打字时不抢占）
+  useEffect(() => {
+    if (!pendingAsk || pendingAsk.answer || pendingAsk.closed) {
+      return;
     }
-    return (
-      <div className="space-y-2.5 mb-3">
-        {msg.asks.map((ask, askIndex) => {
-          const answered = !!ask.answer;
-          return (
-            <div
-              key={askIndex}
-              className="rounded-xl border border-primary-100 dark:border-primary-900/50 bg-primary-50/60 dark:bg-primary-900/20 p-3"
-            >
-              <div className="flex items-start gap-2 mb-2.5">
-                <CircleHelp className="w-4 h-4 text-primary-500 mt-0.5 flex-shrink-0"/>
-                <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{ask.question}</p>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                {ask.options.map((option) => (
-                  <button
-                    key={option}
-                    disabled={answered || ask.closed}
-                    onClick={() => handleAnswerAsk(msg, askIndex, option)}
-                    className={`text-left text-sm px-3 py-2 rounded-lg border transition-all ${
-                      answered && ask.answer === option
-                        ? 'border-primary-500 bg-primary-500 text-white'
-                        : answered || ask.closed
-                          ? 'border-slate-200 dark:border-slate-600 text-slate-400 dark:text-slate-500 cursor-not-allowed'
-                          : 'border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-primary-400 hover:text-primary-600 dark:hover:text-primary-400 bg-white dark:bg-slate-800'
-                    }`}
-                  >
-                    {option}
-                  </button>
-                ))}
-              </div>
-              {answered ? (
-                <p className="mt-2 text-xs text-primary-500 flex items-center gap-1">
-                  <Check className="w-3.5 h-3.5"/>
-                  已选择「{ask.answer}」
-                </p>
-              ) : ask.closed ? (
-                <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">未回答，AI 已按自己的判断继续</p>
-              ) : (
-                <p className="mt-2 text-xs text-slate-400 dark:text-slate-500 animate-pulse">等待你的选择…</p>
-              )}
-            </div>
-          );
-        })}
-      </div>
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+      const index = Number(e.key) - 1;
+      if (index >= 0 && index < pendingAsk.options.length) {
+        handleAnswerAsk(pendingAsk.askId, pendingAsk.options[index]);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingAsk?.askId, pendingAsk?.answer, pendingAsk?.closed]);
+
+  const renderMarkdownBody = (text: string, streaming: boolean) => (
+    <div className="prose prose-slate dark:prose-invert prose-sm max-w-none">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          code: ({className, children}) => {
+            const match = /language-(\w+)/.exec(className || '');
+            const isInline = !match;
+
+            if (isInline) {
+              return (
+                <code
+                  className="bg-slate-100 dark:bg-slate-600 text-primary-600 dark:text-primary-400 px-1.5 py-0.5 rounded-md text-sm font-normal">
+                  {children}
+                </code>
+              );
+            }
+
+            return (
+              <CodeBlock language={match[1]}>
+                {String(children).replace(/\n$/, '')}
+              </CodeBlock>
+            );
+          },
+          pre: ({children}) => <>{children}</>,
+        }}
+      >
+        {formatMarkdown(text)}
+      </ReactMarkdown>
+      {streaming && (
+        <span className="inline-block w-0.5 h-5 bg-primary-500 ml-1 animate-pulse"/>
+      )}
+    </div>
+  );
+
+  // 正文渲染：回答过的提问框按提问时刻的正文位置插回中间；未回答/超时的不占正文
+  const renderAssistantBody = (msg: Message, index: number) => {
+    const streaming = loading && index === messages.length - 1;
+    const answeredAsks = (msg.asks ?? [])
+      .filter((a) => a.answer)
+      .sort((a, b) => a.atOffset - b.atOffset);
+    if (answeredAsks.length === 0) {
+      return renderMarkdownBody(msg.content, streaming);
+    }
+    const parts: React.ReactNode[] = [];
+    let cursor = 0;
+    answeredAsks.forEach((ask, i) => {
+      const at = Math.min(Math.max(ask.atOffset, cursor), msg.content.length);
+      // 对齐到行首切分，避免把一行 markdown 拆成两半
+      const split = Math.max(msg.content.lastIndexOf('\n', at) + 1, cursor);
+      parts.push(
+        <Fragment key={`seg-${i}`}>{renderMarkdownBody(msg.content.slice(cursor, split), false)}</Fragment>,
+      );
+      parts.push(<AskAnswerCard key={`ask-${ask.askId}`} ask={ask}/>);
+      cursor = split;
+    });
+    parts.push(
+      <Fragment key="seg-tail">{renderMarkdownBody(msg.content.slice(cursor), streaming)}</Fragment>,
     );
+    return <>{parts}</>;
   };
 
   // 思维链折叠块：思考中默认展开，答案开始输出后自动收起
@@ -568,26 +658,14 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
         {/* 中间：聊天区域 */}
         <div className="flex-1 min-w-0">
           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm flex flex-col h-full border border-slate-100 dark:border-slate-700">
-            {/* 会话头部：学习成员是主体，会话标题为附属信息 */}
+            {/* 会话头部：学习成员是主体（点开头像出成员菜单），会话标题为附属信息 */}
             <div className="flex items-center gap-3 p-4 border-b border-slate-200 dark:border-slate-600">
-              <button
-                onClick={() => setProfileModalOpen(true)}
-                className="group flex items-center gap-3 flex-shrink-0"
-                title="编辑我的学习资料"
-              >
-                <span className="w-10 h-10 rounded-xl bg-primary-600/10 dark:bg-primary-400/15 ring-1 ring-primary-600/20 dark:ring-primary-400/30 flex items-center justify-center text-xl leading-none group-hover:ring-primary-500/50 transition-all">
-                  {profile?.avatarEmoji || '🙂'}
-                </span>
-                <span className="text-left">
-                  <span className="flex items-center gap-1.5">
-                    <span className="text-base font-semibold text-slate-900 dark:text-slate-50 truncate max-w-32">
-                      {profile?.nickname || '学员'}
-                    </span>
-                    <Edit className="w-3.5 h-3.5 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"/>
-                  </span>
-                  <span className="block text-xs text-slate-400 dark:text-slate-500">学习成员 · 点击编辑资料</span>
-                </span>
-              </button>
+              <UserMenu
+                current={profile}
+                locked={loading}
+                onSwitch={handleSwitchMember}
+                onProfileSaved={setProfile}
+              />
 
               <div className="h-8 w-px bg-slate-200 dark:bg-slate-700 flex-shrink-0"/>
 
@@ -658,39 +736,7 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
                                 steps={msg.steps ?? []}
                                 running={loading && index === messages.length - 1}
                               />
-                              {renderAskCards(msg)}
-                              <div className="prose prose-slate dark:prose-invert prose-sm max-w-none">
-                                <ReactMarkdown
-                                  remarkPlugins={[remarkGfm]}
-                                  components={{
-                                    code: ({className, children}) => {
-                                      const match = /language-(\w+)/.exec(className || '');
-                                      const isInline = !match;
-
-                                      if (isInline) {
-                                        return (
-                                          <code
-                                            className="bg-slate-100 dark:bg-slate-600 text-primary-600 dark:text-primary-400 px-1.5 py-0.5 rounded-md text-sm font-normal">
-                                            {children}
-                                          </code>
-                                        );
-                                      }
-
-                                      return (
-                                        <CodeBlock language={match[1]}>
-                                          {String(children).replace(/\n$/, '')}
-                                        </CodeBlock>
-                                      );
-                                    },
-                                    pre: ({children}) => <>{children}</>,
-                                  }}
-                                >
-                                  {formatMarkdown(msg.content)}
-                                </ReactMarkdown>
-                                {loading && index === messages.length - 1 && (
-                                  <span className="inline-block w-0.5 h-5 bg-primary-500 ml-1 animate-pulse"/>
-                                )}
-                              </div>
+                              {renderAssistantBody(msg, index)}
                             </div>
                           )}
                         </div>
@@ -701,24 +747,65 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
               )}
             </div>
 
-            {/* 输入区域 */}
-            <div className="p-4 border-t border-slate-200 dark:border-slate-600">
+            {/* 输入区域：有待回答提问时，选项面板从输入框上方弹出（回答后移入正文） */}
+            <div className="relative p-4 border-t border-slate-200 dark:border-slate-600">
+              <AnimatePresence>
+                {askPopupOpen && pendingAsk && (
+                  <motion.div
+                    initial={{opacity: 0, y: 16, scale: 0.98}}
+                    animate={{opacity: 1, y: 0, scale: 1}}
+                    exit={{opacity: 0, y: 12, scale: 0.98}}
+                    transition={{duration: 0.18, ease: 'easeOut'}}
+                    className="absolute bottom-full left-4 right-4 z-30 mb-3 rounded-2xl border border-primary-100 dark:border-primary-900/60 bg-white dark:bg-slate-800 shadow-xl shadow-slate-900/10 p-4"
+                  >
+                    <div className="flex items-start gap-2 mb-3">
+                      <CircleHelp className="w-4 h-4 text-primary-500 mt-0.5 flex-shrink-0 animate-pulse"/>
+                      <p className="text-sm font-medium text-slate-700 dark:text-slate-200 leading-relaxed">
+                        {pendingAsk.question}
+                      </p>
+                    </div>
+                    {pendingAsk.options.length > 0 ? (
+                      <>
+                        <div className="flex flex-col gap-1.5">
+                          {pendingAsk.options.map((option, i) => (
+                            <button
+                              key={option}
+                              onClick={() => handleAnswerAsk(pendingAsk.askId, option)}
+                              className="group flex w-full items-center gap-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700/60 px-3.5 py-2.5 text-left text-sm text-slate-600 dark:text-slate-200 transition-all hover:border-primary-400 hover:bg-primary-50/60 dark:hover:border-primary-500/60 dark:hover:bg-primary-900/30 hover:text-primary-600 dark:hover:text-primary-300"
+                            >
+                              <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md bg-slate-100 dark:bg-slate-600 text-xs font-medium text-slate-400 dark:text-slate-300 group-hover:bg-primary-500 group-hover:text-white transition-colors">
+                                {i + 1}
+                              </span>
+                              <span className="leading-relaxed">{option}</span>
+                            </button>
+                          ))}
+                        </div>
+                        <p className="mt-2.5 text-xs text-slate-400 dark:text-slate-500">
+                          点击选项或按数字键回答，也可以在下方输入其他回答
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-xs text-slate-400 dark:text-slate-500">在下方输入你的回答，回车提交</p>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
               <div className="flex gap-3">
                 <input
                   type="text"
                   value={question}
                   onChange={(e) => setQuestion(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSubmitQuestion()}
-                  placeholder="问点什么，比如：帮我入门 Redis…"
+                  placeholder={askPopupOpen ? '输入其他回答，回车提交…' : '问点什么，比如：帮我入门 Redis…'}
                   className="flex-1 px-4 py-2.5 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
-                  disabled={loading}
+                  disabled={loading && !askPopupOpen}
                 />
                 <motion.button
                   onClick={() => handleSubmitQuestion()}
-                  disabled={!question.trim() || loading}
+                  disabled={!question.trim() || (loading && !askPopupOpen)}
                   className="px-5 py-2.5 bg-primary-500 text-white rounded-xl font-medium hover:bg-primary-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-                  whileHover={{scale: loading ? 1 : 1.02}}
-                  whileTap={{scale: loading ? 1 : 0.98}}
+                  whileHover={{scale: loading && !askPopupOpen ? 1 : 1.02}}
+                  whileTap={{scale: loading && !askPopupOpen ? 1 : 0.98}}
                 >
                   发送
                 </motion.button>
@@ -792,18 +879,6 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
           </>
         )}
       </AnimatePresence>
-
-      {/* 学习资料编辑弹窗 */}
-      <UserProfileModal
-        open={profileModalOpen}
-        mode="edit"
-        initial={profile}
-        onClose={() => setProfileModalOpen(false)}
-        onSaved={(saved) => {
-          setProfile(saved);
-          setProfileModalOpen(false);
-        }}
-      />
     </div>
   );
 }
