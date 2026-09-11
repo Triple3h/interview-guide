@@ -25,6 +25,7 @@ paths:
 
 ## UI
 
+- UI/UX 细则以 `.codebuddy/rules/frontend-ui/RULE.mdc` 为准（色板槽位、圆角/阴影/动效、页面骨架、组件用法、加载-空-错三态、反模式黑名单），改前端样式前先读；本条只留总纲。
 - 延续现有 React + TailwindCSS 4 风格，不引入新的 UI 框架。
 - 下拉框统一使用 `frontend/src/components/ui/Select.tsx`（`form` / `filter` / `compact` / `mini` 四种变体），不要手写原生 `<select>` 样式；知识库级联分类下拉 `CategoryFilterSelect` 是唯一例外。
 - 操作按钮优先使用 `lucide-react` 图标加清晰文本或 tooltip。

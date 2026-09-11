@@ -26,6 +26,9 @@ GEMINI.md
 # Codegraph index
 /.codegraph/
 
+# CodeBuddy AI 记忆与项目规则（本地保留，不提交）
+/.codebuddy/
+
 # Playwright MCP
 .playwright-mcp/
 frontend/test-results/

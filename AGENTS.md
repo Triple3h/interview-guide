@@ -82,6 +82,7 @@ docker compose -f docker-compose.dev.yml up -d
 - 页面放在 `frontend/src/pages/`，可复用 UI 放在 `frontend/src/components/`。
 - 路由常量放在 `frontend/src/constants/routes.ts`。
 - 组件交互优先使用现有设计语言和 `lucide-react` 图标。
+- **改前端 UI 前先读 `.codebuddy/rules/frontend-ui/RULE.mdc`**：色板槽位、圆角/阴影/动效、页面骨架、`Select`/`ConfirmDialog` 用法、加载-空-错三态写法与反模式黑名单都在那里，新代码必须与现有界面视觉零差异。
 
 ## Testing
 
@@ -109,4 +110,5 @@ docker compose -f docker-compose.dev.yml up -d
 - 后端 Java 细则：`.claude/rules/backend.md`
 - AI、限流、异步细则：`.claude/rules/ai-and-async.md`
 - 前端细则：`.claude/rules/frontend.md`
+- 前端 UI/UX 规则（CodeBuddy 项目规则）：`.codebuddy/rules/frontend-ui/RULE.mdc`
 - 云服务器部署手册（rsync 同步 + Compose 构建，含已知坑）：`docs/deploy-tc-cloud.md`
