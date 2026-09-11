@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Check, ChevronDown, FolderTree } from 'lucide-react';
 import type { CategoryTreeNode } from '../../api/knowledgebase';
+import { DROPDOWN_LIST_CLASS, DROPDOWN_PANEL_CLASS } from '../ui/dropdownStyles';
 
 interface CategoryFilterSelectProps {
   tree: CategoryTreeNode[];
@@ -127,9 +128,9 @@ export default function CategoryFilterSelect({ tree, value, onChange }: Category
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -4, scale: 0.98 }}
             transition={{ duration: 0.12 }}
-            className="absolute left-0 top-full z-50 mt-2 w-64 origin-top overflow-hidden rounded-xl border border-slate-100 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-800"
+            className={`absolute left-0 top-full mt-2 w-64 origin-top ${DROPDOWN_PANEL_CLASS}`}
           >
-            <ul role="listbox" className="max-h-72 overflow-y-auto py-1.5">
+            <ul role="listbox" className={DROPDOWN_LIST_CLASS}>
               <li>
                 <OptionRow selected={value === ''} label="全部分类" onClick={() => select('')} />
               </li>
