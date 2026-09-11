@@ -28,6 +28,7 @@ import {
 } from '../constants/knowledgebaseInterview';
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
 import Select from '../components/ui/Select';
+import Pagination from '../components/ui/Pagination';
 import QuestionFormDrawer, {
   type QuestionFormState,
   buildQuestionPayload,
@@ -667,7 +668,7 @@ export default function KnowledgeBaseInterviewQuestionsPage() {
               page={safePage}
               pageSize={pageSize}
               total={questions.length}
-              totalPages={totalPages}
+              unit="道"
               onPageChange={setPage}
               onPageSizeChange={size => {
                 setPageSize(size);
@@ -733,104 +734,4 @@ export default function KnowledgeBaseInterviewQuestionsPage() {
   );
 }
 
-const PAGE_SIZE_OPTIONS = [10, 20, 50];
 
-interface PaginationProps {
-  page: number;
-  pageSize: number;
-  total: number;
-  totalPages: number;
-  onPageChange: (page: number) => void;
-  onPageSizeChange: (size: number) => void;
-}
-
-function Pagination({
-  page,
-  pageSize,
-  total,
-  totalPages,
-  onPageChange,
-  onPageSizeChange,
-}: PaginationProps) {
-  if (total === 0) return null;
-  const from = page * pageSize + 1;
-  const to = Math.min((page + 1) * pageSize, total);
-
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3 mt-4 px-1 text-sm">
-      <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
-        <span>
-          第 <span className="font-semibold text-slate-700 dark:text-slate-200">{from}-{to}</span> /
-          共 <span className="font-semibold text-slate-700 dark:text-slate-200">{total}</span> 道
-        </span>
-        <span className="text-slate-300 dark:text-slate-600">|</span>
-        <span>每页</span>
-        <Select
-          variant="mini"
-          value={pageSize}
-          onChange={event => onPageSizeChange(parseInt(event.target.value, 10))}
-        >
-          {PAGE_SIZE_OPTIONS.map(size => (
-            <option key={size} value={size}>{size}</option>
-          ))}
-        </Select>
-      </div>
-      <div className="flex items-center gap-1">
-        <PaginationButton
-          disabled={page === 0}
-          onClick={() => onPageChange(0)}
-          title="第一页"
-        >
-          «
-        </PaginationButton>
-        <PaginationButton
-          disabled={page === 0}
-          onClick={() => onPageChange(page - 1)}
-          title="上一页"
-        >
-          ‹
-        </PaginationButton>
-        <span className="px-3 text-slate-700 dark:text-slate-200">
-          {page + 1} / {totalPages}
-        </span>
-        <PaginationButton
-          disabled={page >= totalPages - 1}
-          onClick={() => onPageChange(page + 1)}
-          title="下一页"
-        >
-          ›
-        </PaginationButton>
-        <PaginationButton
-          disabled={page >= totalPages - 1}
-          onClick={() => onPageChange(totalPages - 1)}
-          title="最后一页"
-        >
-          »
-        </PaginationButton>
-      </div>
-    </div>
-  );
-}
-
-function PaginationButton({
-  children,
-  disabled,
-  onClick,
-  title,
-}: {
-  children: React.ReactNode;
-  disabled: boolean;
-  onClick: () => void;
-  title: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      title={title}
-      className="w-9 h-9 inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed"
-    >
-      {children}
-    </button>
-  );
-}

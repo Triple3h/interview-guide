@@ -27,7 +27,9 @@ const VARIANT_STYLES: Record<SelectVariant, { wrapper: string; trigger: string; 
   },
   filter: {
     wrapper: 'relative',
-    trigger: 'pl-3.5 pr-3 py-2 rounded-lg text-sm',
+    // w-full：让外层传入的宽度类（如 sm:w-40）真正作用到触发器，避免按钮按内容宽
+    // 度收缩、在工具栏里留出一段看不见的空白
+    trigger: 'w-full pl-3.5 pr-3 py-2 rounded-lg text-sm',
     icon: 'w-4 h-4',
   },
   compact: {

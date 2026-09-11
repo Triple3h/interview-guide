@@ -5,6 +5,7 @@ import interview.guide.infrastructure.file.FileStorageService;
 import interview.guide.infrastructure.mapper.KnowledgeBaseMapper;
 import interview.guide.modules.knowledgebase.model.CategoryTreeNode;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity;
+import interview.guide.modules.knowledgebase.model.KnowledgeBasePageDTO;
 import interview.guide.modules.knowledgebase.model.VectorStatus;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
 import interview.guide.modules.knowledgebase.repository.RagChatMessageRepository;
@@ -17,6 +18,7 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
 import java.util.List;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -167,6 +169,84 @@ class KnowledgeBaseListServiceTest {
     }
 
     @Nested
+    @DisplayName("分页查询")
+    class PageKnowledgeBases {
+
+        @Test
+        @DisplayName("按页切片返回，total 为过滤后的总数")
+        void shouldSliceByPage() {
+            when(knowledgeBaseRepository.findAllByOrderByUploadedAtDesc()).thenReturn(
+                IntStream.rangeClosed(1, 14)
+                    .mapToObj(i -> knowledgeBase((long) i, VectorStatus.COMPLETED))
+                    .toList()
+            );
+            when(knowledgeBaseMapper.toListItemDTOList(anyList())).thenReturn(List.of());
+
+            KnowledgeBasePageDTO result = listService.pageKnowledgeBases(null, null, null, "time", 1, 5);
+
+            assertThat(result.total()).isEqualTo(14);
+            assertThat(result.page()).isEqualTo(1);
+            assertThat(result.size()).isEqualTo(5);
+            ArgumentCaptor<List<KnowledgeBaseEntity>> captor = ArgumentCaptor.forClass(List.class);
+            verify(knowledgeBaseMapper).toListItemDTOList(captor.capture());
+            assertThat(captor.getValue())
+                .extracting(KnowledgeBaseEntity::getId)
+                .containsExactly(6L, 7L, 8L, 9L, 10L);
+        }
+
+        @Test
+        @DisplayName("关键词、状态、分类前缀与排序可组合，先过滤排序再分页")
+        void shouldCombineFiltersAndSort() {
+            when(knowledgeBaseRepository.findAllByOrderByUploadedAtDesc()).thenReturn(List.of(
+                knowledgeBase(1L, "Java 并发编程", "java/concurrency", VectorStatus.COMPLETED, 100L),
+                knowledgeBase(2L, "Java 集合源码", "java/collection", VectorStatus.FAILED, 500L),
+                knowledgeBase(3L, "Java 虚拟机调优", "java/jvm", VectorStatus.COMPLETED, 300L),
+                knowledgeBase(4L, "MySQL 索引原理", "db/mysql", VectorStatus.COMPLETED, 900L)
+            ));
+            when(knowledgeBaseMapper.toListItemDTOList(anyList())).thenReturn(List.of());
+
+            // 关键词 java 命中 1/2/3，分类 java 前缀命中 1/2/3，状态 COMPLETED 命中 1/3，按大小降序为 3 → 1
+            KnowledgeBasePageDTO result = listService.pageKnowledgeBases("java", "java", VectorStatus.COMPLETED, "size", 0, 10);
+
+            assertThat(result.total()).isEqualTo(2);
+            ArgumentCaptor<List<KnowledgeBaseEntity>> captor = ArgumentCaptor.forClass(List.class);
+            verify(knowledgeBaseMapper).toListItemDTOList(captor.capture());
+            assertThat(captor.getValue())
+                .extracting(KnowledgeBaseEntity::getId)
+                .containsExactly(3L, 1L);
+        }
+
+        @Test
+        @DisplayName("页码越界返回空 items，total 仍为真实总数")
+        void shouldReturnEmptyItemsWhenPageOutOfRange() {
+            when(knowledgeBaseRepository.findAllByOrderByUploadedAtDesc()).thenReturn(
+                IntStream.rangeClosed(1, 6)
+                    .mapToObj(i -> knowledgeBase((long) i, VectorStatus.COMPLETED))
+                    .toList()
+            );
+            when(knowledgeBaseMapper.toListItemDTOList(anyList())).thenReturn(List.of());
+
+            KnowledgeBasePageDTO result = listService.pageKnowledgeBases(null, null, null, null, 9, 5);
+
+            assertThat(result.items()).isEmpty();
+            assertThat(result.total()).isEqualTo(6);
+            assertThat(result.page()).isEqualTo(9);
+        }
+
+        @Test
+        @DisplayName("页码负数归零，每页条数超上限时钳制到 200")
+        void shouldClampPageAndSize() {
+            when(knowledgeBaseRepository.findAllByOrderByUploadedAtDesc()).thenReturn(List.of());
+            when(knowledgeBaseMapper.toListItemDTOList(anyList())).thenReturn(List.of());
+
+            KnowledgeBasePageDTO result = listService.pageKnowledgeBases(null, null, null, null, -3, 500);
+
+            assertThat(result.page()).isZero();
+            assertThat(result.size()).isEqualTo(200);
+        }
+    }
+
+    @Nested
     @DisplayName("分类树")
     class CategoryTree {
 
@@ -191,6 +271,16 @@ class KnowledgeBaseListServiceTest {
         KnowledgeBaseEntity entity = new KnowledgeBaseEntity();
         entity.setId(id);
         entity.setVectorStatus(status);
+        return entity;
+    }
+
+    private KnowledgeBaseEntity knowledgeBase(Long id, String name, String category,
+                                              VectorStatus status, long fileSize) {
+        KnowledgeBaseEntity entity = knowledgeBase(id, status);
+        entity.setName(name);
+        entity.setCategory(category);
+        entity.setOriginalFilename(name + ".pdf");
+        entity.setFileSize(fileSize);
         return entity;
     }
 }

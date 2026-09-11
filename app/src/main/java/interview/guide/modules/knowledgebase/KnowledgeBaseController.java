@@ -7,6 +7,7 @@ import interview.guide.modules.knowledgebase.model.BatchDeleteKnowledgeBaseResul
 import interview.guide.modules.knowledgebase.model.BatchUpdateKnowledgeBaseCategoryRequest;
 import interview.guide.modules.knowledgebase.model.CategoryTreeNode;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseListItemDTO;
+import interview.guide.modules.knowledgebase.model.KnowledgeBasePageDTO;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseStatsDTO;
 import interview.guide.modules.knowledgebase.model.QueryRequest;
 import interview.guide.modules.knowledgebase.model.QueryResponse;
@@ -59,17 +60,46 @@ public class KnowledgeBaseController {
     public Result<List<KnowledgeBaseListItemDTO>> getAllKnowledgeBases(
             @RequestParam(value = "sortBy", required = false) String sortBy,
             @RequestParam(value = "vectorStatus", required = false) String vectorStatus) {
-        
-        VectorStatus status = null;
-        if (vectorStatus != null && !vectorStatus.isBlank()) {
-            try {
-                status = VectorStatus.valueOf(vectorStatus.toUpperCase());
-            } catch (IllegalArgumentException e) {
-                return Result.error("无效的向量化状态: " + vectorStatus);
-            }
+        VectorStatus status;
+        try {
+            status = parseVectorStatus(vectorStatus);
+        } catch (IllegalArgumentException e) {
+            return Result.error("无效的向量化状态: " + vectorStatus);
         }
-        
         return Result.success(listService.listKnowledgeBases(status, sortBy));
+    }
+
+    /**
+     * 分页获取知识库列表（管理页）
+     *
+     * <p>keyword / category / vectorStatus 可自由组合；category 为前缀匹配
+     * （选中某一层会命中该层及其下全部层级）。
+     */
+    @GetMapping("/api/knowledgebase/page")
+    public Result<KnowledgeBasePageDTO> getKnowledgeBasePage(
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "20") int size,
+            @RequestParam(value = "sortBy", required = false) String sortBy,
+            @RequestParam(value = "vectorStatus", required = false) String vectorStatus,
+            @RequestParam(value = "keyword", required = false) String keyword,
+            @RequestParam(value = "category", required = false) String category) {
+        VectorStatus status;
+        try {
+            status = parseVectorStatus(vectorStatus);
+        } catch (IllegalArgumentException e) {
+            return Result.error("无效的向量化状态: " + vectorStatus);
+        }
+        return Result.success(listService.pageKnowledgeBases(keyword, category, status, sortBy, page, size));
+    }
+
+    /**
+     * 解析向量化状态参数：空白返回 null（不过滤），非法值抛 IllegalArgumentException 由调用方转错误响应
+     */
+    private static VectorStatus parseVectorStatus(String vectorStatus) {
+        if (vectorStatus == null || vectorStatus.isBlank()) {
+            return null;
+        }
+        return VectorStatus.valueOf(vectorStatus.toUpperCase());
     }
 
     /**

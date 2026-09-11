@@ -1,4 +1,4 @@
-import {Fragment, useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useLocation} from 'react-router-dom';
 import {AnimatePresence, motion} from 'framer-motion';
 import {
@@ -22,12 +22,16 @@ import {
   Upload,
   X,
 } from 'lucide-react';
-import {knowledgeBaseApi, CategoryTreeNode, KnowledgeBaseItem, KnowledgeBaseStats, KbBatchSummary, SortOption, VectorStatus,} from '../api/knowledgebase';
+import {knowledgeBaseApi, CategoryTreeNode, KnowledgeBaseItem, KnowledgeBasePage, KnowledgeBaseStats, KbBatchSummary, SortOption, VectorStatus,} from '../api/knowledgebase';
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
 import BatchTasksDrawer from '../components/knowledgebase/BatchTasksDrawer';
 import BatchCategoryModal from '../components/knowledgebase/BatchCategoryModal';
 import CategoryFilterSelect from '../components/knowledgebase/CategoryFilterSelect';
 import Select from '../components/ui/Select';
+import Pagination from '../components/ui/Pagination';
+import { stripCategoryPrefix } from '../utils/knowledgeBase';
+// 复用批量上传的限流识别与退避序列（服务端限流文案与重试节奏全站一致）
+import { getUploadRetryDelay, isRateLimitError } from './knowledgeBaseBatchUpload';
 
 interface KnowledgeBaseManagePageProps {
   onUpload: () => void;
@@ -55,19 +59,41 @@ function formatDate(dateStr: string): string {
   });
 }
 
+// 重新向量化接口限流为 GLOBAL/IP 各 2 次/秒，批量提交按最小间隔串行，控制在该阈值内
+const REVECTORIZE_MIN_INTERVAL_MS = 600;
+
+// 管理页每页条数候选：列表行较轻，默认 20 起步
+const PAGE_SIZE_OPTIONS = [20, 50, 100, 200];
+
+const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
+// 单条重新向量化：命中限流按 1s → 2.5s → 5s 退避重试，序列耗尽或非限流错误则返回 false
+async function revectorizeWithRetry(id: number): Promise<boolean> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await knowledgeBaseApi.revectorize(id);
+      return true;
+    } catch (error) {
+      const delay = isRateLimitError(error) ? getUploadRetryDelay(attempt) : null;
+      if (delay === null) return false;
+      await sleep(delay);
+    }
+  }
+}
+
 // 状态图标组件
 function StatusIcon({ status }: { status: VectorStatus }) {
   switch (status) {
     case 'COMPLETED':
-      return <CheckCircle className="w-4 h-4 text-green-500" />;
+      return <CheckCircle className="w-4 h-4 shrink-0 text-green-500" />;
     case 'PROCESSING':
-      return <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />;
+      return <Loader2 className="w-4 h-4 shrink-0 text-blue-500 animate-spin" />;
     case 'PENDING':
-      return <Clock className="w-4 h-4 text-yellow-500" />;
+      return <Clock className="w-4 h-4 shrink-0 text-yellow-500" />;
     case 'FAILED':
-      return <AlertCircle className="w-4 h-4 text-red-500" />;
+      return <AlertCircle className="w-4 h-4 shrink-0 text-red-500" />;
     default:
-      return <CheckCircle className="w-4 h-4 text-green-500" />;
+      return <CheckCircle className="w-4 h-4 shrink-0 text-green-500" />;
   }
 }
 
@@ -87,25 +113,24 @@ function getStatusText(status: VectorStatus): string {
   }
 }
 
-// 分类徽标：category 按斜杠分段（一级/二级/三级），逐级渲染徽章，一级为灰底、其余为强调色
+// 分类徽标：category 按斜杠分段（一级/二级/三级）逐级渲染徽章，一级为灰底、其余为强调色；
+// 徽章固定横排单行不换行，列宽不足时从尾部裁切，完整分类名通过 title 悬浮查看
 function CategoryBadge({ category }: { category: string }) {
   const parts = category.split('/').filter(Boolean);
   if (parts.length === 0) return null;
   return (
-    <span className="inline-flex items-center gap-1 whitespace-nowrap">
+    <span className="inline-flex min-w-0 items-center gap-1 overflow-hidden" title={category}>
       {parts.map((part, index) => (
-        <Fragment key={`${part}-${index}`}>
-          {index > 0 && <span className="text-slate-300 dark:text-slate-600 text-sm">/</span>}
-          <span
-            className={`px-2 py-1 rounded text-sm ${
-              index === 0
-                ? 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
-                : 'bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400'
-            }`}
-          >
-            {part}
-          </span>
-        </Fragment>
+        <span
+          key={`${part}-${index}`}
+          className={`px-1 py-0.5 rounded text-xs whitespace-nowrap ${
+            index === 0
+              ? 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+              : 'bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400'
+          }`}
+        >
+          {part}
+        </span>
       ))}
     </span>
   );
@@ -146,6 +171,10 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
   const location = useLocation();
   const [stats, setStats] = useState<KnowledgeBaseStats | null>(null);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBaseItem[]>([]);
+  // 服务端分页：total 为当前筛选条件下的总条数，knowledgeBases 仅为当前页数据
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(20);
   const [loading, setLoading] = useState(true);
   const [searchKeyword, setSearchKeyword] = useState('');
   const [sortBy, setSortBy] = useState<SortOption>('time');
@@ -153,6 +182,8 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
   // 分类筛选：单下拉承载分类树，值为 ''（全部）/ '一级' / '一级/二级'
   const [categoryTree, setCategoryTree] = useState<CategoryTreeNode[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('');
+  // 状态筛选（前端过滤）：方便筛出失败项后全选批量重新向量化
+  const [statusFilter, setStatusFilter] = useState<'' | VectorStatus>('');
   const [deleteItem, setDeleteItem] = useState<KnowledgeBaseItem | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -161,6 +192,11 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
   const [batchCategoryModalOpen, setBatchCategoryModalOpen] = useState(false);
   const [batchCategorySaving, setBatchCategorySaving] = useState(false);
   const [batchCategoryError, setBatchCategoryError] = useState('');
+
+  // 批量重新向量化（失败项重试）
+  const [batchRevectorizing, setBatchRevectorizing] = useState(false);
+  const [revectorizeProgress, setRevectorizeProgress] = useState<{ done: number; total: number } | null>(null);
+  const [batchNotice, setBatchNotice] = useState('');
 
   // 批量删除
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
@@ -188,47 +224,66 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
   // 重新向量化状态
   const [revectorizing, setRevectorizing] = useState<number | null>(null);
 
+  // 分页查询参数：关键词 / 分类前缀 / 状态 / 排序全部下沉到后端，筛选变化时重置页码见下方 effect
+  const listParams = useMemo(
+    () => ({
+      page,
+      size: pageSize,
+      sortBy,
+      vectorStatus: statusFilter || undefined,
+      keyword: searchKeyword,
+      category: selectedCategory,
+    }),
+    [page, pageSize, sortBy, statusFilter, searchKeyword, selectedCategory]
+  );
+
+  // 应用分页结果：删除/筛选导致页码越界时回退到最后一页并触发重新加载
+  const applyListPage = useCallback(
+    (data: KnowledgeBasePage) => {
+      setTotal(data.total);
+      const totalPages = Math.max(1, Math.ceil(data.total / data.size));
+      if (page > totalPages - 1) {
+        setPage(totalPages - 1);
+        return;
+      }
+      setKnowledgeBases(data.items);
+    },
+    [page]
+  );
+
   // 加载数据（不显示loading状态，用于轮询）
   const loadDataSilent = useCallback(async () => {
     try {
-      const [statsData, kbList, categoryList, tree, batchList] = await Promise.all([
+      const [statsData, listPage, categoryList, tree, batchList] = await Promise.all([
         knowledgeBaseApi.getStatistics(),
-        searchKeyword
-          ? knowledgeBaseApi.search(searchKeyword)
-          : selectedCategory
-          ? knowledgeBaseApi.getByCategory(selectedCategory)
-          : knowledgeBaseApi.getAllKnowledgeBases(sortBy),
+        knowledgeBaseApi.listKnowledgeBasesPage(listParams),
         knowledgeBaseApi.getAllCategories(),
         knowledgeBaseApi.getCategoryTree().catch(() => [] as CategoryTreeNode[]),
         knowledgeBaseApi.listUploadBatches(20),
       ]);
       setStats(statsData);
-      setKnowledgeBases(kbList);
+      applyListPage(listPage);
       setCategories(categoryList);
       setCategoryTree(tree);
       setBatchSummaries(batchList);
     } catch (error) {
       console.error('加载数据失败:', error);
     }
-  }, [searchKeyword, sortBy, selectedCategory]);
+  }, [listParams, applyListPage]);
 
   // 加载数据
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const [statsData, kbList, categoryList, tree, batchList] = await Promise.all([
+      const [statsData, listPage, categoryList, tree, batchList] = await Promise.all([
         knowledgeBaseApi.getStatistics(),
-        searchKeyword
-          ? knowledgeBaseApi.search(searchKeyword)
-          : selectedCategory
-          ? knowledgeBaseApi.getByCategory(selectedCategory)
-          : knowledgeBaseApi.getAllKnowledgeBases(sortBy),
+        knowledgeBaseApi.listKnowledgeBasesPage(listParams),
         knowledgeBaseApi.getAllCategories(),
         knowledgeBaseApi.getCategoryTree().catch(() => [] as CategoryTreeNode[]),
         knowledgeBaseApi.listUploadBatches(20),
       ]);
       setStats(statsData);
-      setKnowledgeBases(kbList);
+      applyListPage(listPage);
       setCategories(categoryList);
       setCategoryTree(tree);
       setBatchSummaries(batchList);
@@ -237,32 +292,37 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
     } finally {
       setLoading(false);
     }
-  }, [searchKeyword, sortBy, selectedCategory]);
+  }, [listParams, applyListPage]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  // 切换筛选条件时清空勾选
-  useEffect(() => {
-    setSelectedIds(new Set());
-  }, [searchKeyword, sortBy, selectedCategory]);
+  // 是否存在筛选条件：用于空态区分「一条都没有」与「筛选无结果」
+  const hasActiveFilter = Boolean(searchKeyword || selectedCategory || statusFilter);
 
-  // 轮询：当有 PENDING/PROCESSING 状态或存在进行中批次时，每5秒刷新一次
+  // 切换筛选条件时回到第一页并清空勾选
+  useEffect(() => {
+    setPage(0);
+    setSelectedIds(new Set());
+  }, [searchKeyword, sortBy, selectedCategory, statusFilter]);
+
+  // 轮询：当前页或全局存在进行中任务时，每5秒刷新一次（processingCount 覆盖不在当前页的在处理项）
   useEffect(() => {
     const hasPendingItems = knowledgeBases.some(
       kb => kb.vectorStatus === 'PENDING' || kb.vectorStatus === 'PROCESSING'
     );
     const hasActiveBatches = batchSummaries.some(batch => batch.status === 'PROCESSING');
+    const hasProcessingAnywhere = (stats?.processingCount ?? 0) > 0;
 
-    if ((hasPendingItems || hasActiveBatches) && !loading) {
+    if ((hasPendingItems || hasActiveBatches || hasProcessingAnywhere) && !loading) {
       const timer = setInterval(() => {
         loadDataSilent();
       }, 5000);
 
       return () => clearInterval(timer);
     }
-  }, [knowledgeBases, batchSummaries, loading, loadDataSilent]);
+  }, [knowledgeBases, batchSummaries, stats?.processingCount, loading, loadDataSilent]);
 
   // 重新向量化
   const handleRevectorize = async (id: number) => {
@@ -275,6 +335,41 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
     } finally {
       setRevectorizing(null);
     }
+  };
+
+  // 批量重新向量化：只处理失败项，串行提交并展示进度
+  const handleBatchRevectorize = async () => {
+    const targets = knowledgeBases.filter(kb => selectedIds.has(kb.id) && kb.vectorStatus === 'FAILED');
+    if (targets.length === 0) {
+      setBatchNotice('所选知识库中没有失败项，无需重新向量化');
+      return;
+    }
+    setBatchRevectorizing(true);
+    setBatchNotice('');
+    setRevectorizeProgress({ done: 0, total: targets.length });
+    let success = 0;
+    let failed = 0;
+    for (let index = 0; index < targets.length; index += 1) {
+      setRevectorizeProgress({ done: index, total: targets.length });
+      const ok = await revectorizeWithRetry(targets[index].id);
+      if (ok) {
+        success += 1;
+      } else {
+        failed += 1;
+      }
+      if (index < targets.length - 1) {
+        await sleep(REVECTORIZE_MIN_INTERVAL_MS);
+      }
+    }
+    setRevectorizeProgress(null);
+    setBatchRevectorizing(false);
+    setSelectedIds(new Set());
+    await loadDataSilent();
+    setBatchNotice(
+      failed > 0
+        ? `已提交 ${success} 个重新向量化任务，${failed} 个失败，请重试`
+        : `已提交 ${success} 个重新向量化任务`
+    );
   };
 
   // 删除知识库
@@ -358,7 +453,8 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
 
   // ========== 批量勾选与批量分类 ==========
 
-  const allDisplayedSelected = knowledgeBases.length > 0 && knowledgeBases.every(kb => selectedIds.has(kb.id));
+  const allDisplayedSelected =
+    knowledgeBases.length > 0 && knowledgeBases.every(kb => selectedIds.has(kb.id));
 
   const handleToggleAll = () => {
     setSelectedIds(prev => {
@@ -531,6 +627,20 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
             <option value="question">按提问排序</option>
           </Select>
 
+          {/* 状态筛选：前端过滤，筛出失败项后可全选批量重新向量化 */}
+          <Select
+            variant="filter"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as '' | VectorStatus)}
+            title="按向量化状态筛选"
+          >
+            <option value="">全部状态</option>
+            <option value="FAILED">失败</option>
+            <option value="PROCESSING">处理中</option>
+            <option value="PENDING">待处理</option>
+            <option value="COMPLETED">已完成</option>
+          </Select>
+
           {/* 分类筛选：一级/二级合并为单个下拉（有二级时缩进展示，值为「一级/二级」） */}
           <CategoryFilterSelect
             tree={categoryTree}
@@ -551,56 +661,92 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
         </div>
       )}
 
-      {/* 知识库列表 */}
+      {/* 批量向量化结果提示 */}
+      {batchNotice && (
+        <div className="flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400 mb-3">
+          <RefreshCw className="w-4 h-4" />
+          {batchNotice}
+        </div>
+      )}
+
+      {/* 知识库列表：窄窗口兜底为横向滚动，避免右侧操作列被裁掉 */}
         <div
-            className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
+            className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-x-auto">
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="w-8 h-8 text-primary-500 animate-spin" />
           </div>
-        ) : knowledgeBases.length === 0 ? (
-          <div className="text-center py-20">
-            <HardDrive className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+        ) : total === 0 ? (
+          hasActiveFilter ? (
+            <div className="text-center py-20">
+              <Database className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+              <p className="text-slate-500 dark:text-slate-400">当前筛选条件下没有知识库</p>
+              <button
+                onClick={() => {
+                  setStatusFilter('');
+                  setSearchKeyword('');
+                  setSelectedCategory('');
+                }}
+                className="mt-4 text-primary-500 hover:text-primary-600"
+              >
+                清除筛选条件
+              </button>
+            </div>
+          ) : (
+            <div className="text-center py-20">
+              <HardDrive className="w-16 h-16 text-slate-300 mx-auto mb-4" />
               <p className="text-slate-500 dark:text-slate-400">暂无知识库</p>
-            <button
-              onClick={onUpload}
-              className="mt-4 text-primary-500 hover:text-primary-600"
-            >
-              上传第一个知识库
-            </button>
-          </div>
+              <button
+                onClick={onUpload}
+                className="mt-4 text-primary-500 hover:text-primary-600"
+              >
+                上传第一个知识库
+              </button>
+            </div>
+          )
         ) : (
-          <table className="w-full">
+          <table className="w-full min-w-[900px] table-fixed">
+              {/* 固定列宽：名称列定宽（超长截断），剩余宽度全部让给分类列，保证徽章横排一行 */}
+              <colgroup>
+                <col className="w-11" />
+                <col className="w-[260px]" />
+                <col />
+                <col className="w-[76px]" />
+                <col className="w-[88px]" />
+                <col className="w-[52px]" />
+                <col className="w-[148px]" />
+                <col className="w-[136px]" />
+              </colgroup>
               <thead className="bg-slate-50 dark:bg-slate-700 border-b border-slate-100 dark:border-slate-600">
               <tr>
-                  <th className="w-12 px-4 py-4">
+                  <th className="w-12 px-3 py-4">
                   <input
                     type="checkbox"
                     checked={allDisplayedSelected}
                     onChange={handleToggleAll}
                     className="w-4 h-4 rounded border-slate-300 text-primary-500 focus:ring-primary-500/30 cursor-pointer"
-                    title="全选当前列表"
+                    title="全选本页"
                   />
                 </th>
-                  <th className="text-left px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                  <th className="text-left px-3 py-4 text-sm font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
                   名称
                 </th>
-                  <th className="text-left px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                  <th className="text-left px-3 py-4 text-sm font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
                   分类
                 </th>
-                  <th className="text-left px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                  <th className="text-left px-3 py-4 text-sm font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
                   大小
                 </th>
-                  <th className="text-left px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                  <th className="text-left px-3 py-4 text-sm font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
                   状态
                 </th>
-                  <th className="text-left px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                  <th className="text-left px-3 py-4 text-sm font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
                   提问
                 </th>
-                  <th className="text-left px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                  <th className="text-left px-3 py-4 text-sm font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
                   上传时间
                 </th>
-                  <th className="text-right px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                  <th className="text-right px-3 py-4 text-sm font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
                   操作
                 </th>
               </tr>
@@ -611,10 +757,10 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                   key={kb.id}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.05 }}
+                  transition={{ delay: Math.min(index, 10) * 0.05 }}
                   className="border-b border-slate-50 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
                 >
-                  <td className="px-4 py-4">
+                  <td className="px-3 py-4">
                     <input
                       type="checkbox"
                       checked={selectedIds.has(kb.id)}
@@ -622,16 +768,21 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                       className="w-4 h-4 rounded border-slate-300 text-primary-500 focus:ring-primary-500/30 cursor-pointer"
                     />
                   </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <FileText className="w-5 h-5 text-slate-400" />
-                      <div>
-                          <p className="font-medium text-slate-800 dark:text-white">{kb.name}</p>
-                          <p className="text-xs text-slate-400 dark:text-slate-500">{kb.originalFilename}</p>
+                  <td className="px-3 py-4">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <FileText className="w-5 h-5 shrink-0 text-slate-400" />
+                      <div className="min-w-0">
+                          {/* 名称与文件名去掉与分类列重复的前缀（如 system-design/framework/mybatis/），完整值悬浮可见 */}
+                          <p className="truncate font-medium text-slate-800 dark:text-white" title={kb.name}>
+                            {stripCategoryPrefix(kb.category, kb.name)}
+                          </p>
+                          <p className="truncate text-xs text-slate-400 dark:text-slate-500" title={kb.originalFilename}>
+                            {stripCategoryPrefix(kb.category, kb.originalFilename)}
+                          </p>
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-3 py-4">
                     <AnimatePresence mode="wait">
                       {editingCategoryId === kb.id ? (
                         <motion.div
@@ -639,7 +790,7 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
                           exit={{ opacity: 0 }}
-                          className="flex items-center gap-2"
+                          className="flex min-w-0 items-center gap-2"
                         >
                           <input
                             ref={categoryInputRef}
@@ -649,7 +800,8 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                             onKeyDown={(e) => handleCategoryKeyDown(e, kb.id)}
                             placeholder="输入分类名称"
                             list="category-suggestions"
-                            className="w-40 px-2 py-1 text-sm border border-primary-300 dark:border-primary-600 rounded focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+                            title={editingCategoryValue}
+                            className="min-w-0 flex-1 px-2 py-1 text-sm border border-primary-300 dark:border-primary-600 rounded focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
                             disabled={savingCategory}
                           />
                           <datalist id="category-suggestions">
@@ -660,7 +812,7 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                           <button
                             onClick={() => handleSaveCategory(kb.id)}
                             disabled={savingCategory}
-                            className="p-1 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 rounded transition-colors disabled:opacity-50"
+                            className="p-1 shrink-0 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 rounded transition-colors disabled:opacity-50"
                             title="保存"
                           >
                             {savingCategory ? (
@@ -672,7 +824,7 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                           <button
                             onClick={handleCancelEditCategory}
                             disabled={savingCategory}
-                            className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 rounded transition-colors disabled:opacity-50"
+                            className="p-1 shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 rounded transition-colors disabled:opacity-50"
                             title="取消"
                           >
                             <X className="w-4 h-4" />
@@ -684,16 +836,16 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
                           exit={{ opacity: 0 }}
-                          className="flex items-center gap-2 group/category"
+                          className="flex min-w-0 items-center gap-2 group/category"
                         >
                           {kb.category ? (
                             <CategoryBadge category={kb.category} />
                           ) : (
-                              <span className="text-slate-400 dark:text-slate-500 text-sm whitespace-nowrap">未分类</span>
+                              <span className="text-slate-400 dark:text-slate-500 text-xs whitespace-nowrap">未分类</span>
                           )}
                           <button
                             onClick={() => handleStartEditCategory(kb)}
-                            className="p-1 text-slate-400 hover:text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/30 rounded opacity-0 group-hover/category:opacity-100 transition-all"
+                            className="p-1 shrink-0 text-slate-400 hover:text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/30 rounded opacity-0 group-hover/category:opacity-100 transition-all"
                             title="编辑分类"
                           >
                             <Edit3 className="w-3.5 h-3.5" />
@@ -702,24 +854,34 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                       )}
                     </AnimatePresence>
                   </td>
-                    <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                    {formatFileSize(kb.fileSize)}
+                    <td className="px-3 py-4 text-sm text-slate-600 dark:text-slate-300">
+                    <div className="truncate">{formatFileSize(kb.fileSize)}</div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center gap-2">
+                  <td className="px-3 py-4">
+                    {/* 失败态悬停展示向量化失败原因（后端 vectorError），未记录原因时给兜底文案 */}
+                    <div
+                      className={`flex min-w-0 items-center gap-2 ${
+                        kb.vectorStatus === 'FAILED' ? 'cursor-help' : ''
+                      }`}
+                      title={
+                        kb.vectorStatus === 'FAILED'
+                          ? `失败原因：${kb.vectorError?.trim() || '未记录具体原因，可尝试重新向量化'}`
+                          : undefined
+                      }
+                    >
                       <StatusIcon status={kb.vectorStatus} />
-                        <span className="text-sm text-slate-600 dark:text-slate-300">
+                        <span className="truncate text-sm text-slate-600 dark:text-slate-300">
                         {getStatusText(kb.vectorStatus)}
                       </span>
                     </div>
                   </td>
-                    <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                    {kb.questionCount}
+                    <td className="px-3 py-4 text-sm text-slate-600 dark:text-slate-300">
+                    <div className="truncate">{kb.questionCount}</div>
                   </td>
-                    <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                    {formatDate(kb.uploadedAt)}
+                    <td className="px-3 py-4 text-sm text-slate-500 dark:text-slate-400">
+                    <div className="truncate">{formatDate(kb.uploadedAt)}</div>
                   </td>
-                  <td className="px-6 py-4 text-right">
+                  <td className="px-3 py-4 text-right">
                     <div className="flex items-center justify-end gap-1">
                       {/* 下载按钮 */}
                       <button
@@ -757,6 +919,26 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
         )}
       </div>
 
+      {/* 分页条：放在表格卡片外，表格横向滚动时不受影响 */}
+      {!loading && (
+        <Pagination
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          unit="个"
+          pageSizeOptions={PAGE_SIZE_OPTIONS}
+          onPageChange={(nextPage) => {
+            setPage(nextPage);
+            setSelectedIds(new Set());
+          }}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setPage(0);
+            setSelectedIds(new Set());
+          }}
+        />
+      )}
+
       {/* 删除确认对话框 */}
       <DeleteConfirmDialog
         open={deleteItem !== null}
@@ -782,17 +964,34 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                 setBatchCategoryError('');
                 setBatchCategoryModalOpen(true);
               }}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-500 hover:bg-primary-600 rounded-lg text-sm transition-colors"
+              disabled={batchRevectorizing}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-500 hover:bg-primary-600 rounded-lg text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <FolderTree className="w-4 h-4" />
               批量分类
+            </button>
+            <button
+              onClick={handleBatchRevectorize}
+              disabled={batchRevectorizing}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 rounded-lg text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="对所选知识库中向量化失败的项目重新向量化"
+            >
+              {batchRevectorizing ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )}
+              {batchRevectorizing && revectorizeProgress
+                ? `向量化中 ${revectorizeProgress.done + 1}/${revectorizeProgress.total}`
+                : '批量向量化'}
             </button>
             <button
               onClick={() => {
                 setBatchDeleteError('');
                 setBatchDeleteOpen(true);
               }}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm transition-colors"
+              disabled={batchRevectorizing}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Trash2 className="w-4 h-4" />
               批量删除

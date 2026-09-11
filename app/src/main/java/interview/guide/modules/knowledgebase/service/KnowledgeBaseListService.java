@@ -7,6 +7,7 @@ import interview.guide.infrastructure.mapper.KnowledgeBaseMapper;
 import interview.guide.modules.knowledgebase.model.CategoryTreeNode;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseListItemDTO;
+import interview.guide.modules.knowledgebase.model.KnowledgeBasePageDTO;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseStatsDTO;
 import interview.guide.modules.knowledgebase.model.RagChatMessageEntity.MessageType;
 import interview.guide.modules.knowledgebase.model.VectorStatus;
@@ -36,6 +37,9 @@ public class KnowledgeBaseListService {
 
     /** 分类树的根键：真实分类不会是空字符串，取空串不会与任何分类冲突 */
     private static final String ROOT_CATEGORY_KEY = "";
+
+    /** 分页每页条数上限：防止前端传入超大值把整表拉回去，分页失去意义 */
+    private static final int MAX_PAGE_SIZE = 200;
 
     private final KnowledgeBaseRepository knowledgeBaseRepository;
     private final RagChatMessageRepository ragChatMessageRepository;
@@ -74,6 +78,69 @@ public class KnowledgeBaseListService {
      */
     public List<KnowledgeBaseListItemDTO> listKnowledgeBases() {
         return listKnowledgeBases(null, null);
+    }
+
+    /**
+     * 分页查询知识库列表（管理页专用）
+     *
+     * <p>keyword / category / vectorStatus 三个筛选维度可自由组合，语义与各自单独的查询口径一致：
+     * keyword 匹配名称或原始文件名（忽略大小写）；category 为前缀匹配（选中某一层会命中该层及其下全部层级）。
+     * 排序沿用 {@link #sortEntities}（access / question / size / status 无法直接下推到数据库），
+     * 排序后再切片分页；页码越界返回空 items，total 仍为过滤后的真实总数。
+     *
+     * @param keyword      关键词，空白表示不过滤
+     * @param category     分类前缀，空白表示不过滤
+     * @param vectorStatus 向量化状态，null 表示不过滤
+     * @param sortBy       排序字段，见 {@link #sortEntities}
+     * @param page         页码（从 0 开始，负数按 0 处理）
+     * @param size         每页条数（限制在 1 ~ {@value #MAX_PAGE_SIZE}）
+     */
+    public KnowledgeBasePageDTO pageKnowledgeBases(String keyword, String category,
+                                                   VectorStatus vectorStatus, String sortBy,
+                                                   int page, int size) {
+        int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
+        int safePage = Math.max(page, 0);
+
+        List<KnowledgeBaseEntity> filtered = knowledgeBaseRepository.findAllByOrderByUploadedAtDesc().stream()
+            .filter(entity -> matchesStatus(entity, vectorStatus))
+            .filter(entity -> matchesKeyword(entity, keyword))
+            .filter(entity -> matchesCategory(entity, category))
+            .toList();
+
+        List<KnowledgeBaseEntity> sorted = (sortBy != null && !sortBy.isBlank() && !sortBy.equalsIgnoreCase("time"))
+            ? sortEntities(filtered, sortBy)
+            : filtered;
+
+        int total = sorted.size();
+        int from = Math.min(safePage * safeSize, total);
+        int to = Math.min(from + safeSize, total);
+        List<KnowledgeBaseListItemDTO> items = knowledgeBaseMapper.toListItemDTOList(sorted.subList(from, to));
+        return new KnowledgeBasePageDTO(items, total, safePage, safeSize);
+    }
+
+    private static boolean matchesStatus(KnowledgeBaseEntity entity, VectorStatus status) {
+        return status == null || entity.getVectorStatus() == status;
+    }
+
+    private static boolean matchesKeyword(KnowledgeBaseEntity entity, String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return true;
+        }
+        String needle = keyword.trim().toLowerCase();
+        return containsIgnoreCase(entity.getName(), needle)
+            || containsIgnoreCase(entity.getOriginalFilename(), needle);
+    }
+
+    private static boolean containsIgnoreCase(String value, String lowerCaseNeedle) {
+        return value != null && value.toLowerCase().contains(lowerCaseNeedle);
+    }
+
+    private static boolean matchesCategory(KnowledgeBaseEntity entity, String category) {
+        if (category == null || category.isBlank()) {
+            return true;
+        }
+        String value = entity.getCategory();
+        return value != null && (value.equals(category) || value.startsWith(category + "/"));
     }
 
     /**

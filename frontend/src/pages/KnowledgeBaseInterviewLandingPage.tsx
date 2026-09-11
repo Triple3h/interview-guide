@@ -35,6 +35,7 @@ import CategoryFilterSelect, {
 } from '../components/knowledgebase/CategoryFilterSelect';
 import KnowledgeBaseCard from '../components/knowledgebaseInterview/KnowledgeBaseCard';
 import QuestionGenerationQueueDrawer from '../components/knowledgebaseInterview/QuestionGenerationQueueDrawer';
+import { categorySegments, stripCategoryPrefix } from '../utils/knowledgeBase';
 import { isQuestionGenerationActive } from './questionGenerationStatus';
 
 type SortKey = 'time' | 'name' | 'question';
@@ -47,14 +48,6 @@ const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
 
 /** 未分类在分组与筛选里的显示名 */
 const UNCATEGORIZED_LABEL = '未分类';
-
-/** 分类按斜杠分段（一级/二级/三级），去掉空段与首尾空格 */
-function categorySegments(category?: string | null): string[] {
-  return (category || '')
-    .split('/')
-    .map(part => part.trim())
-    .filter(Boolean);
-}
 
 /** 分类筛选：'' 为全部；选中某层即匹配该层及其下全部；未分类只匹配没有分类的知识库 */
 function matchesCategoryFilter(kb: KnowledgeBaseItem, filter: string): boolean {
@@ -429,10 +422,14 @@ export default function KnowledgeBaseInterviewLandingPage() {
     }
   };
 
+  // 分组视图内去掉与分组头重复的分类前缀（如 ai/agent 组下的 ai/agent/loop-engineering → loop-engineering），
+  // 完整名称仍通过 title 悬浮可见
   const renderKbCard = (kb: KnowledgeBaseItem) => (
     <KnowledgeBaseCard
       key={kb.id}
       kb={kb}
+      displayName={stripCategoryPrefix(kb.category, kb.name)}
+      displayFilename={stripCategoryPrefix(kb.category, kb.originalFilename || '')}
       selected={selectedIds.has(kb.id)}
       onToggleSelect={toggleSelect}
       onStart={handleStart}
@@ -455,7 +452,7 @@ export default function KnowledgeBaseInterviewLandingPage() {
         className={
           isRoot
             ? 'space-y-4'
-            : 'ml-5 border-l border-slate-100 dark:border-slate-700 pl-4 space-y-4'
+            : 'ml-4 border-l border-slate-100 dark:border-slate-700 pl-3 space-y-4'
         }
       >
         <div className={`flex flex-wrap items-center ${isRoot ? 'gap-3' : 'gap-2'}`}>
@@ -493,7 +490,7 @@ export default function KnowledgeBaseInterviewLandingPage() {
           >
             {isGroupFullySelected(node.kbs) ? '取消全选本组' : '全选本组'}
           </button>
-          <div className="ml-auto flex gap-2">
+          <div className="ml-auto flex shrink-0 gap-2">
             <button
               type="button"
               onClick={() => handleGroupGenerate(node.kbs)}

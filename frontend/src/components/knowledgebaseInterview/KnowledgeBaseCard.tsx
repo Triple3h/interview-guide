@@ -38,6 +38,10 @@ function reduceStats(questions: KnowledgeBaseQuestion[]): KbStats {
 
 interface KnowledgeBaseCardProps {
   kb: KnowledgeBaseItem;
+  /** 分组视图内的展示名（去掉与分组头重复的分类前缀），缺省用 kb.name */
+  displayName?: string;
+  /** 分组视图内的展示文件名（同上），缺省用 kb.originalFilename */
+  displayFilename?: string;
   selected?: boolean;
   onToggleSelect?: (kb: KnowledgeBaseItem) => void;
   onStart: (kb: KnowledgeBaseItem) => void;
@@ -48,6 +52,8 @@ interface KnowledgeBaseCardProps {
 /** 单行布局的知识库条目：勾选 + 名称/文件名 + 统计 + 操作按钮 */
 export default function KnowledgeBaseCard({
   kb,
+  displayName,
+  displayFilename,
   selected = false,
   onToggleSelect,
   onStart,
@@ -139,7 +145,9 @@ export default function KnowledgeBaseCard({
 
       <div className="min-w-0 flex-1 basis-48">
         <div className="flex items-center gap-2">
-          <h3 className="font-semibold text-sm text-slate-900 dark:text-white truncate">{kb.name}</h3>
+          <h3 className="font-semibold text-sm text-slate-900 dark:text-white truncate" title={kb.name}>
+            {displayName ?? kb.name}
+          </h3>
           <span className={`shrink-0 px-1.5 py-0.5 rounded text-[11px] font-medium ${
             generating
               ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400'
@@ -152,7 +160,9 @@ export default function KnowledgeBaseCard({
               : loading ? '统计中' : startable ? '可面试' : '未启用'}
           </span>
         </div>
-        <p className="text-xs text-slate-400 truncate mt-0.5">{kb.originalFilename}</p>
+        <p className="text-xs text-slate-400 truncate mt-0.5" title={kb.originalFilename}>
+          {displayFilename ?? kb.originalFilename}
+        </p>
       </div>
 
       <div className="flex items-center gap-4 shrink-0">

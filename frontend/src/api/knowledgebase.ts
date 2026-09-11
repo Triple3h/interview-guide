@@ -36,6 +36,24 @@ export interface KnowledgeBaseStats {
 // status：按向量化状态排序（失败 → 处理中 → 待处理 → 已完成）
 export type SortOption = 'time' | 'size' | 'access' | 'question' | 'status';
 
+// 分页查询参数：关键词 / 分类前缀 / 向量化状态可自由组合
+export interface ListKnowledgeBasesPageParams {
+  page?: number;
+  size?: number;
+  sortBy?: SortOption;
+  vectorStatus?: VectorStatus;
+  keyword?: string;
+  category?: string;
+}
+
+// 分页结果：items 为当前页数据，total 为过滤后的总条数
+export interface KnowledgeBasePage {
+  items: KnowledgeBaseItem[];
+  total: number;
+  page: number;
+  size: number;
+}
+
 // 批量删除结果：后端逐条删除并隔离失败，返回成功与失败数量
 export interface BatchDeleteKnowledgeBaseResult {
   successCount: number;
@@ -377,6 +395,32 @@ export const knowledgeBaseApi = {
     }
     const queryString = params.toString();
     return request.get<KnowledgeBaseItem[]>(`/api/knowledgebase/list${queryString ? `?${queryString}` : ''}`);
+  },
+
+  /**
+   * 分页查询知识库（管理页）：keyword / category / vectorStatus 可自由组合
+   */
+  async listKnowledgeBasesPage(params: ListKnowledgeBasesPageParams = {}): Promise<KnowledgeBasePage> {
+    const searchParams = new URLSearchParams();
+    if (params.page !== undefined) {
+      searchParams.set('page', String(params.page));
+    }
+    if (params.size !== undefined) {
+      searchParams.set('size', String(params.size));
+    }
+    if (params.sortBy) {
+      searchParams.set('sortBy', params.sortBy);
+    }
+    if (params.vectorStatus) {
+      searchParams.set('vectorStatus', params.vectorStatus);
+    }
+    if (params.keyword?.trim()) {
+      searchParams.set('keyword', params.keyword.trim());
+    }
+    if (params.category?.trim()) {
+      searchParams.set('category', params.category.trim());
+    }
+    return request.get<KnowledgeBasePage>(`/api/knowledgebase/page?${searchParams.toString()}`);
   },
 
   /**
