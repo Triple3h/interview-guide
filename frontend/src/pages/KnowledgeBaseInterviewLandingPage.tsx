@@ -7,6 +7,7 @@ import {
   ChevronRight,
   Database,
   Folder,
+  FolderTree,
   Layers,
   Loader2,
   Plus,
@@ -28,6 +29,9 @@ import GenerateKnowledgeBaseQuestionsModal, {
   type GenerateQuestionsConfig,
 } from '../components/knowledgebaseInterview/GenerateKnowledgeBaseQuestionsModal';
 import Select from '../components/ui/Select';
+import CategoryFilterSelect, {
+  UNCATEGORIZED_FILTER_VALUE,
+} from '../components/knowledgebase/CategoryFilterSelect';
 import KnowledgeBaseCard from '../components/knowledgebaseInterview/KnowledgeBaseCard';
 import QuestionGenerationQueueDrawer from '../components/knowledgebaseInterview/QuestionGenerationQueueDrawer';
 import { isQuestionGenerationActive } from './questionGenerationStatus';
@@ -40,12 +44,54 @@ const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
   { value: 'question', label: '按题目数' },
 ];
 
+/** 未分类在分组与筛选里的显示名 */
+const UNCATEGORIZED_LABEL = '未分类';
+
+/** 分类约定「一级/二级」（最多两级），只有第一个斜杠有层级含义，与后端 getCategoryTree 一致 */
+function splitCategory(category?: string | null): { parent: string; child: string } {
+  const value = (category || '').trim();
+  const slash = value.indexOf('/');
+  if (slash <= 0) {
+    return { parent: value, child: '' };
+  }
+  return { parent: value.slice(0, slash), child: value.slice(slash + 1) };
+}
+
+/** 分类筛选：'' 为全部；'一级' 含其下二级；'一级/二级' 精确匹配；未分类只匹配没有分类的知识库 */
+function matchesCategoryFilter(kb: KnowledgeBaseItem, filter: string): boolean {
+  if (!filter) return true;
+  const { parent, child } = splitCategory(kb.category);
+  if (filter === UNCATEGORIZED_FILTER_VALUE) return !parent;
+  if (filter.includes('/')) return !!parent && `${parent}/${child}` === filter;
+  return parent === filter;
+}
+
+interface CategorySubGroup {
+  /** 二级分类名，如 agent */
+  name: string;
+  /** 完整分类值，如 ai/agent，同时用作折叠状态 key */
+  fullName: string;
+  kbs: KnowledgeBaseItem[];
+}
+
+interface CategoryGroup {
+  /** 一级分类名（未分类时为「未分类」），同时用作折叠状态 key */
+  parent: string;
+  /** 一级分组内全部知识库，即一级「整组」操作的作用域 */
+  kbs: KnowledgeBaseItem[];
+  /** 直接属于一级、没有二级分类的知识库 */
+  directKbs: KnowledgeBaseItem[];
+  subGroups: CategorySubGroup[];
+}
+
 export default function KnowledgeBaseInterviewLandingPage() {
   const navigate = useNavigate();
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBaseItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [keyword, setKeyword] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('time');
+  // '' 全部 / '一级'（含其下二级）/ '一级/二级' / UNCATEGORIZED_FILTER_VALUE 未分类
+  const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
   const [startTargets, setStartTargets] = useState<KnowledgeBaseItem[]>([]);
@@ -103,14 +149,32 @@ export default function KnowledgeBaseInterviewLandingPage() {
     };
   }, [hasActiveGeneration, sortKey]);
 
+  // 分类树从当前已加载列表反推（只含已完成知识库），保证筛选项都有结果
+  const categoryTree = useMemo(() => {
+    const childrenByParent = new Map<string, Set<string>>();
+    for (const kb of knowledgeBases) {
+      const { parent, child } = splitCategory(kb.category);
+      if (!parent) continue;
+      const children = childrenByParent.get(parent) ?? new Set<string>();
+      if (child) children.add(child);
+      childrenByParent.set(parent, children);
+    }
+    return [...childrenByParent.entries()]
+      .sort(([a], [b]) => a.localeCompare(b, 'zh'))
+      .map(([name, children]) => ({
+        name,
+        children: [...children].sort((a, b) => a.localeCompare(b, 'zh')),
+      }));
+  }, [knowledgeBases]);
+
   const filteredAndSorted = useMemo(() => {
     const trimmed = keyword.trim().toLowerCase();
-    const list = trimmed
-      ? knowledgeBases.filter(kb =>
-          kb.name.toLowerCase().includes(trimmed)
-          || (kb.originalFilename || '').toLowerCase().includes(trimmed)
-        )
-      : [...knowledgeBases];
+    const list = knowledgeBases.filter(kb => {
+      const matchesKeyword = !trimmed
+        || kb.name.toLowerCase().includes(trimmed)
+        || (kb.originalFilename || '').toLowerCase().includes(trimmed);
+      return matchesKeyword && matchesCategoryFilter(kb, selectedCategory);
+    });
 
     switch (sortKey) {
       case 'name':
@@ -125,7 +189,7 @@ export default function KnowledgeBaseInterviewLandingPage() {
         break;
     }
     return list;
-  }, [knowledgeBases, keyword, sortKey]);
+  }, [knowledgeBases, keyword, sortKey, selectedCategory]);
 
   const selectedKbs = useMemo(
     () => knowledgeBases.filter(kb => selectedIds.has(kb.id)),
@@ -150,25 +214,50 @@ export default function KnowledgeBaseInterviewLandingPage() {
     [knowledgeBases]
   );
 
-  // 按知识库分类分组展示，组内沿用搜索/排序结果，未分类放最后
-  const groupedKbs = useMemo(() => {
-    const map = new Map<string, KnowledgeBaseItem[]>();
+  // 按一级分类分组，组内再按二级分类分子小节；组内沿用搜索/排序结果，未分类放最后
+  const groupedKbs = useMemo<CategoryGroup[]>(() => {
+    const groups = new Map<string, {
+      kbs: KnowledgeBaseItem[];
+      directKbs: KnowledgeBaseItem[];
+      subGroups: Map<string, KnowledgeBaseItem[]>;
+    }>();
+
     for (const kb of filteredAndSorted) {
-      const key = kb.category?.trim() || '未分类';
-      const list = map.get(key);
-      if (list) {
-        list.push(kb);
+      const { parent, child } = splitCategory(kb.category);
+      const key = parent || UNCATEGORIZED_LABEL;
+      const group = groups.get(key) ?? {
+        kbs: [],
+        directKbs: [],
+        subGroups: new Map<string, KnowledgeBaseItem[]>(),
+      };
+      group.kbs.push(kb);
+      if (child) {
+        const list = group.subGroups.get(child);
+        if (list) {
+          list.push(kb);
+        } else {
+          group.subGroups.set(child, [kb]);
+        }
       } else {
-        map.set(key, [kb]);
+        group.directKbs.push(kb);
       }
+      groups.set(key, group);
     }
-    return [...map.entries()]
+
+    return [...groups.entries()]
       .sort(([a], [b]) => {
-        if (a === '未分类') return 1;
-        if (b === '未分类') return -1;
+        if (a === UNCATEGORIZED_LABEL) return 1;
+        if (b === UNCATEGORIZED_LABEL) return -1;
         return a.localeCompare(b, 'zh');
       })
-      .map(([category, kbs]) => ({ category, kbs }));
+      .map(([parent, group]) => ({
+        parent,
+        kbs: group.kbs,
+        directKbs: group.directKbs,
+        subGroups: [...group.subGroups.entries()]
+          .sort(([a], [b]) => a.localeCompare(b, 'zh'))
+          .map(([name, kbs]) => ({ name, fullName: `${parent}/${name}`, kbs })),
+      }));
   }, [filteredAndSorted]);
 
   const isGroupFullySelected = (kbs: KnowledgeBaseItem[]) =>
@@ -215,6 +304,22 @@ export default function KnowledgeBaseInterviewLandingPage() {
   };
 
   const clearSelection = () => setSelectedIds(new Set());
+
+  // 切换分类筛选时展开命中的一级分组，避免结果被折叠状态挡住
+  const handleCategoryChange = (next: string) => {
+    setSelectedCategory(next);
+    if (!next) return;
+    const hitParents = new Set(
+      knowledgeBases
+        .filter(kb => matchesCategoryFilter(kb, next))
+        .map(kb => splitCategory(kb.category).parent || UNCATEGORIZED_LABEL)
+    );
+    setCollapsedGroups(prev => {
+      const updated = new Set(prev);
+      hitParents.forEach(parent => updated.delete(parent));
+      return updated;
+    });
+  };
 
   const handleStart = (kb: KnowledgeBaseItem) => {
     setStartTargets([kb]);
@@ -324,6 +429,18 @@ export default function KnowledgeBaseInterviewLandingPage() {
     }
   };
 
+  const renderKbCard = (kb: KnowledgeBaseItem) => (
+    <KnowledgeBaseCard
+      key={kb.id}
+      kb={kb}
+      selected={selectedIds.has(kb.id)}
+      onToggleSelect={toggleSelect}
+      onStart={handleStart}
+      onGenerate={handleGenerate}
+      onManage={handleManage}
+    />
+  );
+
   return (
     <div className="max-w-[1400px] mx-auto">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between mb-6">
@@ -396,6 +513,12 @@ export default function KnowledgeBaseInterviewLandingPage() {
             ))}
           </Select>
         </div>
+        <CategoryFilterSelect
+          tree={categoryTree}
+          value={selectedCategory}
+          onChange={handleCategoryChange}
+          includeUncategorized
+        />
       </div>
 
       {selectedIds.size > 0 && (
@@ -491,19 +614,21 @@ export default function KnowledgeBaseInterviewLandingPage() {
         <div className="flex flex-col items-center justify-center min-h-[320px] rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 text-slate-400 gap-3">
           <Database className="w-10 h-10" />
           <p className="text-sm">
-            {keyword.trim() ? '没有匹配的知识库' : '暂无已完成知识库，先上传并等待向量化完成'}
+            {keyword.trim() || selectedCategory
+              ? '没有匹配的知识库'
+              : '暂无已完成知识库，先上传并等待向量化完成'}
           </p>
         </div>
       ) : (
         <div className="space-y-8">
           {groupedKbs.map(group => {
-            const collapsed = collapsedGroups.has(group.category);
+            const collapsed = collapsedGroups.has(group.parent);
             return (
-              <section key={group.category}>
+              <section key={group.parent}>
                 <div className="flex flex-wrap items-center gap-3 mb-3">
                   <button
                     type="button"
-                    onClick={() => toggleGroupCollapse(group.category)}
+                    onClick={() => toggleGroupCollapse(group.parent)}
                     className="flex items-center gap-2 text-left group/header min-w-0"
                     aria-expanded={!collapsed}
                   >
@@ -512,7 +637,7 @@ export default function KnowledgeBaseInterviewLandingPage() {
                       : <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />}
                     <Folder className="w-5 h-5 text-primary-500 shrink-0" />
                     <h2 className="text-lg font-bold text-slate-900 dark:text-white truncate group-hover/header:text-primary-600 dark:group-hover/header:text-primary-400">
-                      {group.category}
+                      {group.parent}
                     </h2>
                   </button>
                   <span className="text-xs text-slate-400 shrink-0">
@@ -545,18 +670,73 @@ export default function KnowledgeBaseInterviewLandingPage() {
                   </div>
                 </div>
                 {!collapsed && (
-                  <div className="space-y-2">
-                    {group.kbs.map(kb => (
-                      <KnowledgeBaseCard
-                        key={kb.id}
-                        kb={kb}
-                        selected={selectedIds.has(kb.id)}
-                        onToggleSelect={toggleSelect}
-                        onStart={handleStart}
-                        onGenerate={handleGenerate}
-                        onManage={handleManage}
-                      />
-                    ))}
+                  <div className="space-y-4">
+                    {/* 直接属于一级、没有二级分类的知识库 */}
+                    {group.directKbs.length > 0 && (
+                      <div className="space-y-2">
+                        {group.directKbs.map(renderKbCard)}
+                      </div>
+                    )}
+                    {/* 二级分类小节：折叠 / 全选 / 整组操作与一级对齐 */}
+                    {group.subGroups.map(subGroup => {
+                      const subCollapsed = collapsedGroups.has(subGroup.fullName);
+                      return (
+                        <div
+                          key={subGroup.fullName}
+                          className="ml-6 border-l border-slate-100 dark:border-slate-700 pl-4"
+                        >
+                          <div className="flex flex-wrap items-center gap-2 mb-2">
+                            <button
+                              type="button"
+                              onClick={() => toggleGroupCollapse(subGroup.fullName)}
+                              className="flex items-center gap-1.5 text-left group/subheader min-w-0"
+                              aria-expanded={!subCollapsed}
+                            >
+                              {subCollapsed
+                                ? <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                : <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
+                              <FolderTree className="w-4 h-4 text-primary-500 shrink-0" />
+                              <h3 className="text-sm font-semibold text-slate-900 dark:text-white truncate group-hover/subheader:text-primary-600 dark:group-hover/subheader:text-primary-400">
+                                {subGroup.name}
+                              </h3>
+                            </button>
+                            <span className="text-xs text-slate-400 shrink-0">
+                              {subGroup.kbs.length} 个知识库{subCollapsed ? ' · 已收起' : ''}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => toggleGroupSelection(subGroup.kbs)}
+                              className="text-xs font-medium text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 shrink-0"
+                            >
+                              {isGroupFullySelected(subGroup.kbs) ? '取消全选本组' : '全选本组'}
+                            </button>
+                            <div className="ml-auto flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleGroupGenerate(subGroup.kbs)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-xs font-medium hover:bg-slate-50 dark:hover:bg-slate-700 whitespace-nowrap"
+                              >
+                                <Sparkles className="w-3.5 h-3.5" />
+                                整组生成题目
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleGroupStart(subGroup.kbs)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary-500 text-white text-xs font-semibold hover:bg-primary-600 whitespace-nowrap"
+                              >
+                                <Layers className="w-3.5 h-3.5" />
+                                整组开始面试
+                              </button>
+                            </div>
+                          </div>
+                          {!subCollapsed && (
+                            <div className="space-y-2">
+                              {subGroup.kbs.map(renderKbCard)}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </section>

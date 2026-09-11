@@ -2,6 +2,8 @@ package interview.guide.modules.knowledgebase;
 
 import interview.guide.common.annotation.RateLimit;
 import interview.guide.common.result.Result;
+import interview.guide.modules.knowledgebase.model.BatchDeleteKnowledgeBaseRequest;
+import interview.guide.modules.knowledgebase.model.BatchDeleteKnowledgeBaseResult;
 import interview.guide.modules.knowledgebase.model.BatchUpdateKnowledgeBaseCategoryRequest;
 import interview.guide.modules.knowledgebase.model.CategoryTreeNode;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseListItemDTO;
@@ -87,6 +89,15 @@ public class KnowledgeBaseController {
     public Result<Void> deleteKnowledgeBase(@PathVariable Long id) {
         deleteService.deleteKnowledgeBase(id);
         return Result.success(null);
+    }
+
+    /**
+     * 批量删除知识库
+     */
+    @PostMapping("/api/knowledgebase/batch-delete")
+    public Result<BatchDeleteKnowledgeBaseResult> deleteKnowledgeBasesBatch(
+            @Valid @RequestBody BatchDeleteKnowledgeBaseRequest request) {
+        return Result.success(deleteService.deleteKnowledgeBasesBatch(request.ids()));
     }
 
     /**

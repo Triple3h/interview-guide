@@ -4,11 +4,16 @@ import { Check, ChevronDown, FolderTree } from 'lucide-react';
 import type { CategoryTreeNode } from '../../api/knowledgebase';
 import { DROPDOWN_LIST_CLASS, DROPDOWN_PANEL_CLASS } from '../ui/dropdownStyles';
 
+/** 「未分类」筛选项的值：用双下划线包裹与真实分类名区分 */
+export const UNCATEGORIZED_FILTER_VALUE = '__uncategorized__';
+
 interface CategoryFilterSelectProps {
   tree: CategoryTreeNode[];
-  /** '' 表示全部分类；'ai' 为一级分类；'ai/agent' 为二级分类 */
+  /** '' 表示全部分类；'ai' 为一级分类；'ai/agent' 为二级分类；UNCATEGORIZED_FILTER_VALUE 为未分类 */
   value: string;
   onChange: (value: string) => void;
+  /** 是否在树末尾追加「未分类」选项（默认不展示） */
+  includeUncategorized?: boolean;
 }
 
 interface OptionRowProps {
@@ -63,7 +68,12 @@ function OptionRow({ selected, label, onClick, indent = false, suffix, showFolde
  * 知识库分类筛选下拉：一棵分类树收敛到一个下拉框，
  * 一级分类直接可选，存在二级时在下方缩进展示，选中二级时值为「一级/二级」
  */
-export default function CategoryFilterSelect({ tree, value, onChange }: CategoryFilterSelectProps) {
+export default function CategoryFilterSelect({
+  tree,
+  value,
+  onChange,
+  includeUncategorized = false,
+}: CategoryFilterSelectProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -102,7 +112,9 @@ export default function CategoryFilterSelect({ tree, value, onChange }: Category
         className="flex min-w-[9.5rem] cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white py-2 pl-4 pr-3 text-sm text-slate-900 transition-colors hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white dark:hover:border-slate-500"
       >
         <span className="flex flex-1 items-center gap-1 truncate">
-          {value ? (
+          {value === UNCATEGORIZED_FILTER_VALUE ? (
+            <span className="truncate">未分类</span>
+          ) : value ? (
             <>
               <span className="truncate">{parent}</span>
               {child && (
@@ -162,7 +174,16 @@ export default function CategoryFilterSelect({ tree, value, onChange }: Category
                   )}
                 </li>
               ))}
-              {tree.length === 0 && (
+              {includeUncategorized && (
+                <li>
+                  <OptionRow
+                    selected={value === UNCATEGORIZED_FILTER_VALUE}
+                    label="未分类"
+                    onClick={() => select(UNCATEGORIZED_FILTER_VALUE)}
+                  />
+                </li>
+              )}
+              {tree.length === 0 && !includeUncategorized && (
                 <li className="px-3 py-2 text-xs text-slate-400 dark:text-slate-500">暂无分类</li>
               )}
             </ul>

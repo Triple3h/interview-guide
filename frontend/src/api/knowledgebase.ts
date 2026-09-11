@@ -35,6 +35,12 @@ export interface KnowledgeBaseStats {
 
 export type SortOption = 'time' | 'size' | 'access' | 'question';
 
+// 批量删除结果：后端逐条删除并隔离失败，返回成功与失败数量
+export interface BatchDeleteKnowledgeBaseResult {
+  successCount: number;
+  failedCount: number;
+}
+
 // 分类树节点：一级分类 + 其下二级分类（category 约定为 "一级/二级"，斜杠分隔，最多两级）
 export interface CategoryTreeNode {
   name: string;
@@ -384,6 +390,13 @@ export const knowledgeBaseApi = {
    */
   async deleteKnowledgeBase(id: number): Promise<void> {
     return request.delete(`/api/knowledgebase/${id}`);
+  },
+
+  /**
+   * 批量删除知识库
+   */
+  async batchDeleteKnowledgeBases(ids: number[]): Promise<BatchDeleteKnowledgeBaseResult> {
+    return request.post<BatchDeleteKnowledgeBaseResult>('/api/knowledgebase/batch-delete', { ids });
   },
 
   // ========== 分类管理 ==========

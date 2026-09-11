@@ -92,7 +92,7 @@ function CategoryBadge({ category }: { category: string }) {
   const slash = category.indexOf('/');
   if (slash <= 0) {
     return (
-      <span className="px-2 py-1 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded text-sm">
+      <span className="inline-block whitespace-nowrap px-2 py-1 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded text-sm">
         {category}
       </span>
     );
@@ -100,7 +100,7 @@ function CategoryBadge({ category }: { category: string }) {
   const parent = category.slice(0, slash);
   const child = category.slice(slash + 1);
   return (
-    <span className="flex items-center gap-1">
+    <span className="inline-flex items-center gap-1 whitespace-nowrap">
       <span className="px-2 py-1 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded text-sm">
         {parent}
       </span>
@@ -162,6 +162,12 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
   const [batchCategoryModalOpen, setBatchCategoryModalOpen] = useState(false);
   const [batchCategorySaving, setBatchCategorySaving] = useState(false);
   const [batchCategoryError, setBatchCategoryError] = useState('');
+
+  // 批量删除
+  const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
+  const [batchDeleting, setBatchDeleting] = useState(false);
+  const [batchDeleteError, setBatchDeleteError] = useState('');
+  const [batchDeleteNotice, setBatchDeleteNotice] = useState('');
 
   // 解析任务（批次进度）
   const [batchDrawerOpen, setBatchDrawerOpen] = useState(false);
@@ -395,6 +401,28 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
     }
   };
 
+  // 批量删除：一次请求交给后端逐条删除，部分失败时给出提示
+  const handleBatchDeleteConfirm = async () => {
+    if (selectedIds.size === 0) return;
+    try {
+      setBatchDeleting(true);
+      setBatchDeleteError('');
+      const result = await knowledgeBaseApi.batchDeleteKnowledgeBases([...selectedIds]);
+      setSelectedIds(new Set());
+      setBatchDeleteOpen(false);
+      await loadData();
+      setBatchDeleteNotice(
+        result.failedCount > 0
+          ? `已删除 ${result.successCount} 个知识库，${result.failedCount} 个删除失败，请重试`
+          : ''
+      );
+    } catch (error) {
+      setBatchDeleteError(error instanceof Error ? error.message : '批量删除失败，请重试');
+    } finally {
+      setBatchDeleting(false);
+    }
+  };
+
   const openBatchDrawer = () => {
     setBatchDrawerOpen(true);
   };
@@ -405,7 +433,7 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
   };
 
   return (
-    <div className="max-w-7xl mx-auto">
+    <div className="max-w-[1400px] mx-auto">
       {/* 页面标题 */}
       <div className="flex items-center justify-between mb-8">
         <div>
@@ -514,6 +542,14 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
           />
         </div>
       </div>
+
+      {/* 批量删除结果提示 */}
+      {batchDeleteNotice && (
+        <div className="flex items-center gap-1.5 text-sm text-red-500 mb-3">
+          <AlertCircle className="w-4 h-4" />
+          {batchDeleteNotice}
+        </div>
+      )}
 
       {/* 知识库列表 */}
         <div
@@ -752,6 +788,16 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
               批量分类
             </button>
             <button
+              onClick={() => {
+                setBatchDeleteError('');
+                setBatchDeleteOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
+              批量删除
+            </button>
+            <button
               onClick={() => setSelectedIds(new Set())}
               className="p-1 text-slate-400 hover:text-white transition-colors"
               title="取消选择"
@@ -772,6 +818,25 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
         onConfirm={handleBatchCategoryConfirm}
         onSetUncategorized={() => handleBatchCategoryConfirm(null)}
         onClose={() => setBatchCategoryModalOpen(false)}
+      />
+
+      {/* 批量删除确认弹窗 */}
+      <DeleteConfirmDialog
+        open={batchDeleteOpen}
+        item={null}
+        itemType="知识库"
+        loading={batchDeleting}
+        customMessage={
+          batchDeleteError ? (
+            <span className="text-red-500">{batchDeleteError}</span>
+          ) : (
+            <span>
+              确定要删除已选的 <strong>{selectedIds.size}</strong> 个知识库吗？删除后无法恢复。
+            </span>
+          )
+        }
+        onConfirm={handleBatchDeleteConfirm}
+        onCancel={() => setBatchDeleteOpen(false)}
       />
 
       {/* 解析任务抽屉 */}
