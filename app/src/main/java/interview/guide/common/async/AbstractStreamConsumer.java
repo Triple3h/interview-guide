@@ -150,7 +150,7 @@ public abstract class AbstractStreamConsumer<T> {
                 retryMessage(payload, retryCount + 1);
             } else {
                 markFailed(payload, truncateError(
-                    taskDisplayName() + " failed after retry " + retryCount + ": " + e.getMessage()
+                    taskDisplayName() + "重试 " + retryCount + " 次后仍失败：" + e.getMessage()
                 ));
             }
             ackMessage(messageId);
@@ -194,8 +194,7 @@ public abstract class AbstractStreamConsumer<T> {
         } catch (TimeoutException e) {
             future.cancel(true);
             throw new IllegalStateException(
-                taskDisplayName() + " task timed out after " + timeoutMillis + "ms: "
-                    + payloadIdentifier(payload), e);
+                taskDisplayName() + "任务超时（" + timeoutMillis + "ms）：" + payloadIdentifier(payload), e);
         } catch (ExecutionException e) {
             Throwable cause = e.getCause();
             if (cause instanceof Exception exception) {
