@@ -393,7 +393,7 @@ export default function KnowledgeBaseUploadPage({ onBack, onViewProgress }: Know
                 </span>
                 {item.category && (
                   <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded text-xs whitespace-nowrap">
-                    {item.category.replace('/', ' / ')}
+                    {item.category.split('/').join(' / ')}
                   </span>
                 )}
                 <StatusBadge status={item.status} />

@@ -33,7 +33,8 @@ export interface KnowledgeBaseStats {
   processingCount: number;
 }
 
-export type SortOption = 'time' | 'size' | 'access' | 'question';
+// status：按向量化状态排序（失败 → 处理中 → 待处理 → 已完成）
+export type SortOption = 'time' | 'size' | 'access' | 'question' | 'status';
 
 // 批量删除结果：后端逐条删除并隔离失败，返回成功与失败数量
 export interface BatchDeleteKnowledgeBaseResult {
@@ -41,10 +42,10 @@ export interface BatchDeleteKnowledgeBaseResult {
   failedCount: number;
 }
 
-// 分类树节点：一级分类 + 其下二级分类（category 约定为 "一级/二级"，斜杠分隔，最多两级）
+// 分类树节点：可递归，name 为该节点完整路径（如 ai、ai/agent、ai/agent/rag），children 为空表示叶子
 export interface CategoryTreeNode {
   name: string;
-  children: string[];
+  children: CategoryTreeNode[];
 }
 
 export interface UploadKnowledgeBaseResponse {
@@ -417,9 +418,12 @@ export const knowledgeBaseApi = {
 
   /**
    * 根据分类获取知识库
+   * 分类名含斜杠（一级/二级/三级），走查询参数而不是路径变量
    */
   async getByCategory(category: string): Promise<KnowledgeBaseItem[]> {
-    return request.get<KnowledgeBaseItem[]>(`/api/knowledgebase/category/${encodeURIComponent(category)}`);
+    return request.get<KnowledgeBaseItem[]>(
+      `/api/knowledgebase/category?category=${encodeURIComponent(category)}`
+    );
   },
 
   /**

@@ -142,9 +142,13 @@ public class KnowledgeBaseController {
 
     /**
      * 根据分类获取知识库列表
+     *
+     * <p>分类名形如 "一级/二级[/三级]"，含斜杠，用查询参数而不是路径变量
+     * （路径里的 %2F 会被容器拒绝，二级及以上分类会 400）。
      */
-    @GetMapping("/api/knowledgebase/category/{category}")
-    public Result<List<KnowledgeBaseListItemDTO>> getByCategory(@PathVariable String category) {
+    @GetMapping("/api/knowledgebase/category")
+    public Result<List<KnowledgeBaseListItemDTO>> getByCategory(
+            @RequestParam(value = "category", required = false) String category) {
         return Result.success(listService.listByCategory(category));
     }
 

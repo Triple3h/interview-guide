@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Check, ChevronDown, FolderTree } from 'lucide-react';
 import type { CategoryTreeNode } from '../../api/knowledgebase';
@@ -7,9 +7,12 @@ import { DROPDOWN_LIST_CLASS, DROPDOWN_PANEL_CLASS } from '../ui/dropdownStyles'
 /** 「未分类」筛选项的值：用双下划线包裹与真实分类名区分 */
 export const UNCATEGORIZED_FILTER_VALUE = '__uncategorized__';
 
+/** 各级缩进：一级不缩进，二级/三级逐级右移，更深层沿用最后一档 */
+const INDENT_CLASSES = ['pl-3 pr-3', 'pl-8 pr-3', 'pl-12 pr-3'];
+
 interface CategoryFilterSelectProps {
   tree: CategoryTreeNode[];
-  /** '' 表示全部分类；'ai' 为一级分类；'ai/agent' 为二级分类；UNCATEGORIZED_FILTER_VALUE 为未分类 */
+  /** '' 全部分类；'ai' 一级；'ai/agent' 二级；'ai/agent/rag' 三级；UNCATEGORIZED_FILTER_VALUE 未分类 */
   value: string;
   onChange: (value: string) => void;
   /** 是否在树末尾追加「未分类」选项（默认不展示） */
@@ -20,36 +23,36 @@ interface OptionRowProps {
   selected: boolean;
   label: string;
   onClick: () => void;
-  /** 二级分类的缩进样式 */
-  indent?: boolean;
+  /** 层级深度，0 为一级分类，影响缩进与前置圆点 */
+  depth?: number;
   /** 一级分类右侧的辅助文案（如「全部」） */
   suffix?: string;
-  /** 一级分类带二级时展示的图标 */
+  /** 带子分类时展示的文件夹图标 */
   showFolderIcon?: boolean;
 }
 
-function splitCategory(value: string): { parent: string; child: string | null } {
-  const slash = value.indexOf('/');
-  if (slash <= 0) return { parent: value, child: null };
-  return { parent: value.slice(0, slash), child: value.slice(slash + 1) };
+/** 分类节点存的是完整路径，显示时只取最后一段 */
+function categoryLabel(path: string): string {
+  const slash = path.lastIndexOf('/');
+  return slash < 0 ? path : path.slice(slash + 1);
 }
 
-function OptionRow({ selected, label, onClick, indent = false, suffix, showFolderIcon = false }: OptionRowProps) {
+function OptionRow({ selected, label, onClick, depth = 0, suffix, showFolderIcon = false }: OptionRowProps) {
+  const indentClass = INDENT_CLASSES[Math.min(depth, INDENT_CLASSES.length - 1)];
   return (
     <button
       type="button"
       role="option"
       aria-selected={selected}
       onClick={onClick}
-      className={`flex w-full items-center gap-2 py-2 text-left text-sm transition-colors ${
-        indent ? 'pl-10 pr-3' : 'pl-3 pr-3'
-      } ${
+      title={label}
+      className={`flex w-full items-center gap-2 py-2 text-left text-sm transition-colors ${indentClass} ${
         selected
           ? 'bg-primary-50 font-medium text-primary-600 dark:bg-primary-900/20 dark:text-primary-400'
           : 'text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-700/60'
       }`}
     >
-      {indent && (
+      {depth > 0 && (
         <span
           className={`h-1.5 w-1.5 shrink-0 rounded-full ${
             selected ? 'bg-primary-400 dark:bg-primary-500' : 'bg-slate-300 dark:bg-slate-600'
@@ -64,9 +67,44 @@ function OptionRow({ selected, label, onClick, indent = false, suffix, showFolde
   );
 }
 
+/** 递归渲染分类树，每层都可直接选中（选中即匹配该层及其下全部） */
+function CategoryTreeOptions({
+  nodes,
+  value,
+  depth,
+  onSelect,
+}: {
+  nodes: CategoryTreeNode[];
+  value: string;
+  depth: number;
+  onSelect: (value: string) => void;
+}) {
+  return (
+    <>
+      {nodes.map(node => (
+        <li key={node.name}>
+          <OptionRow
+            depth={depth}
+            selected={value === node.name}
+            label={categoryLabel(node.name)}
+            suffix={node.children.length > 0 ? '全部' : undefined}
+            showFolderIcon={node.children.length > 0}
+            onClick={() => onSelect(node.name)}
+          />
+          {node.children.length > 0 && (
+            <ul>
+              <CategoryTreeOptions nodes={node.children} value={value} depth={depth + 1} onSelect={onSelect} />
+            </ul>
+          )}
+        </li>
+      ))}
+    </>
+  );
+}
+
 /**
  * 知识库分类筛选下拉：一棵分类树收敛到一个下拉框，
- * 一级分类直接可选，存在二级时在下方缩进展示，选中二级时值为「一级/二级」
+ * 支持任意层级（当前分类最多三级），选中某层即匹配「该层及其下全部」
  */
 export default function CategoryFilterSelect({
   tree,
@@ -100,8 +138,6 @@ export default function CategoryFilterSelect({
     setOpen(false);
   };
 
-  const { parent, child } = splitCategory(value);
-
   return (
     <div ref={rootRef} className="relative">
       <button
@@ -115,15 +151,14 @@ export default function CategoryFilterSelect({
           {value === UNCATEGORIZED_FILTER_VALUE ? (
             <span className="truncate">未分类</span>
           ) : value ? (
-            <>
-              <span className="truncate">{parent}</span>
-              {child && (
-                <>
-                  <span className="text-slate-300 dark:text-slate-500">/</span>
-                  <span className="truncate text-primary-600 dark:text-primary-400">{child}</span>
-                </>
-              )}
-            </>
+            value.split('/').map((part, index) => (
+              <Fragment key={`${part}-${index}`}>
+                {index > 0 && <span className="text-slate-300 dark:text-slate-500">/</span>}
+                <span className={`truncate ${index === 0 ? '' : 'text-primary-600 dark:text-primary-400'}`}>
+                  {part}
+                </span>
+              </Fragment>
+            ))
           ) : (
             <span className="text-slate-600 dark:text-slate-300">全部分类</span>
           )}
@@ -140,40 +175,13 @@ export default function CategoryFilterSelect({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -4, scale: 0.98 }}
             transition={{ duration: 0.12 }}
-            className={`absolute left-0 top-full mt-2 w-64 origin-top ${DROPDOWN_PANEL_CLASS}`}
+            className={`absolute left-0 top-full mt-2 w-72 origin-top ${DROPDOWN_PANEL_CLASS}`}
           >
             <ul role="listbox" className={DROPDOWN_LIST_CLASS}>
               <li>
                 <OptionRow selected={value === ''} label="全部分类" onClick={() => select('')} />
               </li>
-              {tree.map(node => (
-                <li key={node.name}>
-                  <OptionRow
-                    selected={value === node.name}
-                    label={node.name}
-                    suffix={node.children.length > 0 ? '全部' : undefined}
-                    showFolderIcon={node.children.length > 0}
-                    onClick={() => select(node.name)}
-                  />
-                  {node.children.length > 0 && (
-                    <ul>
-                      {node.children.map(childName => {
-                        const childValue = `${node.name}/${childName}`;
-                        return (
-                          <li key={childValue}>
-                            <OptionRow
-                              indent
-                              selected={value === childValue}
-                              label={childName}
-                              onClick={() => select(childValue)}
-                            />
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                </li>
-              ))}
+              <CategoryTreeOptions nodes={tree} value={value} depth={0} onSelect={select} />
               {includeUncategorized && (
                 <li>
                   <OptionRow

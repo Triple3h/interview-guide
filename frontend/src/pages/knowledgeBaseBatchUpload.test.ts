@@ -21,9 +21,9 @@ function makeFile(name: string, size = 1024): File {
   return { name, size } as File;
 }
 
-test('deriveCategoryFromPath：所选文件夹名即第一级，子文件夹为第二级', () => {
+test('deriveCategoryFromPath：所选文件夹名即第一级，子文件夹依次为第二、三级', () => {
   assert.equal(deriveCategoryFromPath('题库/MySQL 实战/1.pdf'), '题库/MySQL 实战');
-  assert.equal(deriveCategoryFromPath('题库/Redis/a/b.pdf'), '题库/Redis');
+  assert.equal(deriveCategoryFromPath('题库/Redis/a/b.pdf'), '题库/Redis/a');
   assert.equal(deriveCategoryFromPath('AI/agent/agent-basis.md'), 'AI/agent');
 });
 
@@ -74,9 +74,14 @@ test('buildBatchQueue：推导分类并标记不合法文件', () => {
   assert.equal(queue[0].status, 'waiting');
   assert.equal(queue[0].category, '题库/MySQL');
   assert.equal(queue[1].status, 'waiting');
-  assert.equal(queue[1].category, '题库/Redis');
+  assert.equal(queue[1].category, '题库/Redis/基础');
   assert.equal(queue[2].status, 'invalid');
   assert.ok(queue[2].error?.includes('不支持的文件类型'));
+});
+
+test('deriveCategoryFromPath：超过 3 级的深层目录会被截断', () => {
+  assert.equal(deriveCategoryFromPath('题库/Redis/基础/进阶/b.pdf'), '题库/Redis/基础');
+  assert.equal(deriveCategoryFromPath('AI/agent/rag/advanced/x.md'), 'AI/agent/rag');
 });
 
 test('buildBatchQueue：同名同大小的文件批内去重', () => {

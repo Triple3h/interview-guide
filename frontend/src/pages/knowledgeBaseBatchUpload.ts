@@ -28,16 +28,19 @@ export interface BatchQueueItem {
   error: string | null;
 }
 
-// 从 webkitRelativePath 推导分类：所选文件夹名即第一级分类，其下子文件夹为第二级，
-// 拼成 "一级/二级"（如 ai/agent）。所选文件夹根目录下的文件只取一级（如 ai），
-// 仅含文件名的路径（无目录）返回 null，交由默认分类兜底
+/** 分类层级上限：文件夹路径最多取前 3 段作为分类（一级/二级/三级） */
+export const MAX_CATEGORY_DEPTH = 3;
+
+// 从 webkitRelativePath 推导分类：所选文件夹名即第一级分类，其下子文件夹依次为第二、三级，
+// 拼成 "一级/二级/三级"（如 ai/agent/rag）；最后一段是文件名，不计入分类，
+// 超过 MAX_CATEGORY_DEPTH 的更深层级会被截断。仅含文件名的路径返回 null，交由默认分类兜底
 export function deriveCategoryFromPath(relativePath: string | null | undefined): string | null {
   if (!relativePath) return null;
   const segments = relativePath.split('/').filter(Boolean);
-  // segments[0] 是所选文件夹名（第一级分类），segments[1] 是第二级，最后一段是文件名
-  if (segments.length <= 1) return null;
-  if (segments.length === 2) return segments[0];
-  return `${segments[0]}/${segments[1]}`;
+  // 去掉最后一段（文件名），剩下的就是目录层级
+  const dirs = segments.slice(0, -1);
+  if (dirs.length === 0) return null;
+  return dirs.slice(0, MAX_CATEGORY_DEPTH).join('/');
 }
 
 export function getFileExtension(fileName: string): string {

@@ -17,11 +17,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * 知识库查询服务
@@ -32,6 +34,9 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class KnowledgeBaseListService {
 
+    /** 分类树的根键：真实分类不会是空字符串，取空串不会与任何分类冲突 */
+    private static final String ROOT_CATEGORY_KEY = "";
+
     private final KnowledgeBaseRepository knowledgeBaseRepository;
     private final RagChatMessageRepository ragChatMessageRepository;
     private final KnowledgeBaseMapper knowledgeBaseMapper;
@@ -41,7 +46,8 @@ public class KnowledgeBaseListService {
      * 获取知识库列表（支持状态过滤和排序）
      * 
      * @param vectorStatus 向量化状态，null 表示不过滤
-     * @param sortBy 排序字段，null 或 "time" 表示按时间排序
+     * @param sortBy 排序字段：null 或 "time" 按上传时间倒序，另有 "size" / "access" / "question" / "status"
+     *               （status 为按向量化状态排序，失败 → 处理中 → 待处理 → 已完成）
      * @return 知识库列表
      */
     public List<KnowledgeBaseListItemDTO> listKnowledgeBases(VectorStatus vectorStatus, String sortBy) {
@@ -113,23 +119,36 @@ public class KnowledgeBaseListService {
     }
 
     /**
-     * 获取分类树（一级分类 + 其下二级分类）
-     * category 约定为 "一级/二级"（斜杠分隔，最多两级），没有斜杠的一级分类 children 为空
+     * 获取分类树（可递归，支持任意层级）
+     *
+     * <p>category 约定为 "一级/二级[/三级]"（斜杠分隔），逐级登记完整路径：
+     * "ai/agent/rag" 会生成 ai → ai/agent → ai/agent/rag 三层节点，
+     * 中间层级即使没有知识库直接归属也会作为可选节点出现。
      */
     public List<CategoryTreeNode> getCategoryTree() {
-        Map<String, List<String>> childrenByParent = new LinkedHashMap<>();
+        Map<String, Set<String>> childrenByParent = new LinkedHashMap<>();
         for (String category : knowledgeBaseRepository.findAllCategories()) {
-            int slash = category.indexOf('/');
-            if (slash > 0) {
-                String parent = category.substring(0, slash);
-                String child = category.substring(slash + 1);
-                childrenByParent.computeIfAbsent(parent, k -> new ArrayList<>()).add(child);
-            } else {
-                childrenByParent.computeIfAbsent(category, k -> new ArrayList<>());
+            String[] segments = category.split("/");
+            StringBuilder path = new StringBuilder();
+            String parent = ROOT_CATEGORY_KEY;
+            for (String segment : segments) {
+                if (path.length() > 0) {
+                    path.append("/");
+                }
+                path.append(segment);
+                String node = path.toString();
+                childrenByParent.computeIfAbsent(parent, k -> new LinkedHashSet<>()).add(node);
+                // 叶子节点也要登记，保证后续能作为父节点被查询（无子节点时返回空）
+                childrenByParent.computeIfAbsent(node, k -> new LinkedHashSet<>());
+                parent = node;
             }
         }
-        return childrenByParent.entrySet().stream()
-            .map(entry -> new CategoryTreeNode(entry.getKey(), entry.getValue()))
+        return buildCategoryTree(ROOT_CATEGORY_KEY, childrenByParent);
+    }
+
+    private List<CategoryTreeNode> buildCategoryTree(String parent, Map<String, Set<String>> childrenByParent) {
+        return childrenByParent.getOrDefault(parent, Set.of()).stream()
+            .map(node -> new CategoryTreeNode(node, buildCategoryTree(node, childrenByParent)))
             .toList();
     }
 
@@ -207,6 +226,8 @@ public class KnowledgeBaseListService {
 
     /**
      * 在内存中对实体列表排序
+     *
+     * <p>排序稳定，同值条目保持传入顺序（即默认的上传时间倒序）。
      */
     private List<KnowledgeBaseEntity> sortEntities(List<KnowledgeBaseEntity> entities, String sortBy) {
         return switch (sortBy.toLowerCase()) {
@@ -219,7 +240,26 @@ public class KnowledgeBaseListService {
             case "question" -> entities.stream()
                 .sorted((a, b) -> Integer.compare(b.getQuestionCount(), a.getQuestionCount()))
                 .toList();
+            // 按状态排序：需要关注的排前面（失败 → 处理中 → 待处理 → 已完成）
+            case "status" -> entities.stream()
+                .sorted(Comparator.comparingInt(e -> statusOrder(e.getVectorStatus())))
+                .toList();
             default -> entities; // time 已经在数据库层面排序了
+        };
+    }
+
+    /**
+     * 状态排序权重：越需要关注的值越小
+     */
+    private static int statusOrder(VectorStatus status) {
+        if (status == null) {
+            return 4;
+        }
+        return switch (status) {
+            case FAILED -> 0;
+            case PROCESSING -> 1;
+            case PENDING -> 2;
+            case COMPLETED -> 3;
         };
     }
 

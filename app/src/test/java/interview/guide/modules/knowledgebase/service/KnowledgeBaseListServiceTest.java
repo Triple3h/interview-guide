@@ -3,12 +3,16 @@ package interview.guide.modules.knowledgebase.service;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.infrastructure.file.FileStorageService;
 import interview.guide.infrastructure.mapper.KnowledgeBaseMapper;
+import interview.guide.modules.knowledgebase.model.CategoryTreeNode;
+import interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity;
+import interview.guide.modules.knowledgebase.model.VectorStatus;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
 import interview.guide.modules.knowledgebase.repository.RagChatMessageRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
@@ -133,5 +137,60 @@ class KnowledgeBaseListServiceTest {
 
             verify(knowledgeBaseRepository).findByCategoryIsNullOrderByUploadedAtDesc();
         }
+    }
+
+    @Nested
+    @DisplayName("按状态排序")
+    class SortByStatus {
+
+        @Test
+        @DisplayName("失败、处理中、待处理排在已完成之前，同状态保持原有时间倒序")
+        void shouldSortByStatusWorthAttentionFirst() {
+            // 传入顺序即默认的上传时间倒序
+            when(knowledgeBaseRepository.findAllByOrderByUploadedAtDesc()).thenReturn(List.of(
+                knowledgeBase(1L, VectorStatus.COMPLETED),
+                knowledgeBase(2L, VectorStatus.FAILED),
+                knowledgeBase(3L, VectorStatus.PROCESSING),
+                knowledgeBase(4L, VectorStatus.PENDING),
+                knowledgeBase(5L, VectorStatus.FAILED)
+            ));
+            when(knowledgeBaseMapper.toListItemDTOList(anyList())).thenReturn(List.of());
+
+            listService.listKnowledgeBases(null, "status");
+
+            ArgumentCaptor<List<KnowledgeBaseEntity>> captor = ArgumentCaptor.forClass(List.class);
+            verify(knowledgeBaseMapper).toListItemDTOList(captor.capture());
+            assertThat(captor.getValue())
+                .extracting(KnowledgeBaseEntity::getId)
+                .containsExactly(2L, 5L, 3L, 4L, 1L);
+        }
+    }
+
+    @Nested
+    @DisplayName("分类树")
+    class CategoryTree {
+
+        @Test
+        @DisplayName("逐级登记多级分类：中间层级也作为可选节点，name 为完整路径")
+        void shouldBuildNestedTree() {
+            when(knowledgeBaseRepository.findAllCategories())
+                .thenReturn(List.of("ai/agent/rag", "ai/agent", "database"));
+
+            List<CategoryTreeNode> tree = listService.getCategoryTree();
+
+            assertThat(tree).extracting(CategoryTreeNode::name).containsExactly("ai", "database");
+            CategoryTreeNode agent = tree.get(0).children().get(0);
+            assertThat(agent.name()).isEqualTo("ai/agent");
+            assertThat(agent.children()).extracting(CategoryTreeNode::name).containsExactly("ai/agent/rag");
+            // 叶子节点 children 为空而不是 null
+            assertThat(tree.get(1).children()).isEmpty();
+        }
+    }
+
+    private KnowledgeBaseEntity knowledgeBase(Long id, VectorStatus status) {
+        KnowledgeBaseEntity entity = new KnowledgeBaseEntity();
+        entity.setId(id);
+        entity.setVectorStatus(status);
+        return entity;
     }
 }

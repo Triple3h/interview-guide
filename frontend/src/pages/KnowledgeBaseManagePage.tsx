@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {Fragment, useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useLocation} from 'react-router-dom';
 import {AnimatePresence, motion} from 'framer-motion';
 import {
@@ -87,27 +87,26 @@ function getStatusText(status: VectorStatus): string {
   }
 }
 
-// 分类徽标：category 约定为 "一级/二级"（斜杠分隔），拆成两级层级展示；单级分类只显示一级
+// 分类徽标：category 按斜杠分段（一级/二级/三级），逐级渲染徽章，一级为灰底、其余为强调色
 function CategoryBadge({ category }: { category: string }) {
-  const slash = category.indexOf('/');
-  if (slash <= 0) {
-    return (
-      <span className="inline-block whitespace-nowrap px-2 py-1 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded text-sm">
-        {category}
-      </span>
-    );
-  }
-  const parent = category.slice(0, slash);
-  const child = category.slice(slash + 1);
+  const parts = category.split('/').filter(Boolean);
+  if (parts.length === 0) return null;
   return (
     <span className="inline-flex items-center gap-1 whitespace-nowrap">
-      <span className="px-2 py-1 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded text-sm">
-        {parent}
-      </span>
-      <span className="text-slate-300 dark:text-slate-600 text-sm">/</span>
-      <span className="px-2 py-1 bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 rounded text-sm">
-        {child}
-      </span>
+      {parts.map((part, index) => (
+        <Fragment key={`${part}-${index}`}>
+          {index > 0 && <span className="text-slate-300 dark:text-slate-600 text-sm">/</span>}
+          <span
+            className={`px-2 py-1 rounded text-sm ${
+              index === 0
+                ? 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                : 'bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400'
+            }`}
+          >
+            {part}
+          </span>
+        </Fragment>
+      ))}
     </span>
   );
 }
@@ -433,7 +432,7 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
   };
 
   return (
-    <div className="max-w-[1400px] mx-auto">
+    <div className="max-w-[1600px] mx-auto">
       {/* 页面标题 */}
       <div className="flex items-center justify-between mb-8">
         <div>
@@ -526,6 +525,7 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
             }}
           >
             <option value="time">按时间排序</option>
+            <option value="status">按状态排序</option>
             <option value="size">按大小排序</option>
             <option value="access">按访问排序</option>
             <option value="question">按提问排序</option>
@@ -582,25 +582,25 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                     title="全选当前列表"
                   />
                 </th>
-                  <th className="text-left px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300">
+                  <th className="text-left px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
                   名称
                 </th>
-                  <th className="text-left px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300">
+                  <th className="text-left px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
                   分类
                 </th>
-                  <th className="text-left px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300">
+                  <th className="text-left px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
                   大小
                 </th>
-                  <th className="text-left px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300">
+                  <th className="text-left px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
                   状态
                 </th>
-                  <th className="text-left px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300">
+                  <th className="text-left px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
                   提问
                 </th>
-                  <th className="text-left px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300">
+                  <th className="text-left px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
                   上传时间
                 </th>
-                  <th className="text-right px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300">
+                  <th className="text-right px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
                   操作
                 </th>
               </tr>
@@ -649,7 +649,7 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                             onKeyDown={(e) => handleCategoryKeyDown(e, kb.id)}
                             placeholder="输入分类名称"
                             list="category-suggestions"
-                            className="w-24 px-2 py-1 text-sm border border-primary-300 dark:border-primary-600 rounded focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+                            className="w-40 px-2 py-1 text-sm border border-primary-300 dark:border-primary-600 rounded focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
                             disabled={savingCategory}
                           />
                           <datalist id="category-suggestions">
@@ -689,7 +689,7 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                           {kb.category ? (
                             <CategoryBadge category={kb.category} />
                           ) : (
-                              <span className="text-slate-400 dark:text-slate-500 text-sm">未分类</span>
+                              <span className="text-slate-400 dark:text-slate-500 text-sm whitespace-nowrap">未分类</span>
                           )}
                           <button
                             onClick={() => handleStartEditCategory(kb)}
@@ -702,10 +702,10 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                       )}
                     </AnimatePresence>
                   </td>
-                    <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300">
+                    <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300 whitespace-nowrap">
                     {formatFileSize(kb.fileSize)}
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center gap-2">
                       <StatusIcon status={kb.vectorStatus} />
                         <span className="text-sm text-slate-600 dark:text-slate-300">
@@ -713,10 +713,10 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                       </span>
                     </div>
                   </td>
-                    <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300">
+                    <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300 whitespace-nowrap">
                     {kb.questionCount}
                   </td>
-                    <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400">
+                    <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400 whitespace-nowrap">
                     {formatDate(kb.uploadedAt)}
                   </td>
                   <td className="px-6 py-4 text-right">
