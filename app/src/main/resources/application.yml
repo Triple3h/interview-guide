@@ -197,6 +197,17 @@ app:
       - application/vnd.openxmlformats-officedocument.wordprocessingml.document
       - text/plain
 
+  # 知识库向量化节流：解析文档时把 embedding 请求排成一个队列逐个发出，
+  # 慢一点但不会被供应商 QPS 限流（DashScope 429 Requests are too frequent）打断
+  knowledgebase:
+    vectorize:
+      # 两次 embedding 请求之间的最小间隔（毫秒），调大更稳、更慢；实测 500ms 仍会偶发 429
+      request-interval-millis: ${APP_KB_VECTORIZE_REQUEST_INTERVAL_MS:1500}
+      # 单批次命中限流后的最大重试次数
+      rate-limit-max-retries: ${APP_KB_VECTORIZE_RATE_LIMIT_MAX_RETRIES:3}
+      # 限流退避基数（毫秒）：按重试次数翻倍 → 3s → 6s → 12s
+      retry-backoff-millis: ${APP_KB_VECTORIZE_RETRY_BACKOFF_MS:3000}
+
   # RustFS (S3兼容) 存储配置
   storage:
     endpoint: ${APP_STORAGE_ENDPOINT:http://localhost:9000}

@@ -47,6 +47,8 @@ import static org.mockito.Mockito.*;
 class KnowledgeBaseVectorServiceTest {
 
     private KnowledgeBaseVectorService vectorService;
+    /** 分块链未 Mock：节流测试需要用同一个实例重建服务 */
+    private DocumentChunkingService chunkingService;
 
     @Mock
     private VectorStore vectorStore;
@@ -58,7 +60,7 @@ class KnowledgeBaseVectorServiceTest {
     void setUp() {
         MockitoAnnotations.openMocks(this);
         KnowledgeBaseChunkingProperties chunkingProperties = new KnowledgeBaseChunkingProperties();
-        DocumentChunkingService chunkingService = new DocumentChunkingService(List.of(
+        chunkingService = new DocumentChunkingService(List.of(
             new QaContentChunker(chunkingProperties),
             new MarkdownHeadingChunker(chunkingProperties),
             new DefaultTokenChunker(chunkingProperties)
@@ -617,6 +619,90 @@ class KnowledgeBaseVectorServiceTest {
 
             // Then
             assertEquals(5, results.size(), "应该返回所有可用结果");
+        }
+    }
+
+    @Nested
+    @DisplayName("向量化节流与限流退避测试")
+    class ThrottleTests {
+
+        /** 默认关闭等待，避免用例被节流拖慢 */
+        private KnowledgeBaseVectorizeProperties noWaitProperties() {
+            KnowledgeBaseVectorizeProperties properties = new KnowledgeBaseVectorizeProperties();
+            properties.setRequestIntervalMillis(0L);
+            properties.setRetryBackoffMillis(0L);
+            return properties;
+        }
+
+        @Test
+        @DisplayName("命中 429 限流时退避重试，重试成功后继续")
+        void retriesWhenRateLimited() {
+            KnowledgeBaseVectorizeProperties properties = noWaitProperties();
+            properties.setRateLimitMaxRetries(2);
+            KnowledgeBaseVectorService throttledService =
+                new KnowledgeBaseVectorService(vectorStore, chunkingService, vectorRepository, properties);
+
+            doThrow(new RuntimeException("429: Requests are too frequent"))
+                .doThrow(new RuntimeException("Requests are too frequent"))
+                .doNothing()
+                .when(vectorStore).add(anyList());
+
+            int chunkCount = throttledService.vectorizeAndStore(1L, richText(generateLongContent(5)));
+
+            assertTrue(chunkCount > 0, "重试成功后应返回 chunk 数量");
+            verify(vectorStore, atLeast(3)).add(anyList());
+        }
+
+        @Test
+        @DisplayName("非限流错误不重试，直接失败")
+        void doesNotRetryOnNonRateLimitError() {
+            KnowledgeBaseVectorizeProperties properties = noWaitProperties();
+            properties.setRateLimitMaxRetries(3);
+            KnowledgeBaseVectorService throttledService =
+                new KnowledgeBaseVectorService(vectorStore, chunkingService, vectorRepository, properties);
+
+            doThrow(new RuntimeException("解析失败")).when(vectorStore).add(anyList());
+
+            BusinessException exception = assertThrows(BusinessException.class,
+                () -> throttledService.vectorizeAndStore(1L, richText(generateLongContent(5))));
+
+            assertTrue(exception.getMessage().contains("向量化知识库失败"), "异常消息应包含'向量化知识库失败'");
+            verify(vectorStore, times(1)).add(anyList());
+        }
+
+        @Test
+        @DisplayName("限流重试次数耗尽后失败，且不提升新向量")
+        void failsAfterRetriesExhausted() {
+            KnowledgeBaseVectorizeProperties properties = noWaitProperties();
+            properties.setRateLimitMaxRetries(1);
+            KnowledgeBaseVectorService throttledService =
+                new KnowledgeBaseVectorService(vectorStore, chunkingService, vectorRepository, properties);
+
+            doThrow(new RuntimeException("429 Requests are too frequent")).when(vectorStore).add(anyList());
+
+            assertThrows(BusinessException.class,
+                () -> throttledService.vectorizeAndStore(1L, richText(generateLongContent(5))));
+
+            // 首次请求 + 1 次重试后放弃
+            verify(vectorStore, times(2)).add(anyList());
+            verify(vectorRepository, never()).deleteByKnowledgeBaseId(1L);
+        }
+
+        @Test
+        @DisplayName("连续请求之间按配置间隔节流")
+        void throttlesConsecutiveRequests() {
+            KnowledgeBaseVectorizeProperties properties = noWaitProperties();
+            properties.setRequestIntervalMillis(100L);
+            KnowledgeBaseVectorService throttledService =
+                new KnowledgeBaseVectorService(vectorStore, chunkingService, vectorRepository, properties);
+
+            long start = System.currentTimeMillis();
+            throttledService.vectorizeAndStore(1L, richText(generateLongContent(10)));
+            throttledService.vectorizeAndStore(2L, richText(generateLongContent(10)));
+            long elapsed = System.currentTimeMillis() - start;
+
+            verify(vectorStore, atLeast(2)).add(anyList());
+            assertTrue(elapsed >= 100L, "两次请求之间应至少间隔 100ms，实际耗时 " + elapsed + "ms");
         }
     }
 }

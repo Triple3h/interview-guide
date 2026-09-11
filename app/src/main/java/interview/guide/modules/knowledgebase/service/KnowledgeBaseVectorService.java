@@ -14,8 +14,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 /**
@@ -38,22 +40,45 @@ public class KnowledgeBaseVectorService {
     private final DocumentChunkingService chunkingService;
     private final VectorRepository vectorRepository;
     private final TransactionalExecutor transactionalExecutor;
+    private final KnowledgeBaseVectorizeProperties vectorizeProperties;
+    /** 上一次 embedding 请求的发起时间，用于把请求速率压在供应商限流阈值内 */
+    private final AtomicLong lastEmbeddingRequestAt = new AtomicLong(0L);
+    private final Object embeddingRequestLock = new Object();
 
     @Autowired
     public KnowledgeBaseVectorService(
         VectorStore vectorStore,
         DocumentChunkingService chunkingService,
         VectorRepository vectorRepository,
-        TransactionalExecutor transactionalExecutor
+        TransactionalExecutor transactionalExecutor,
+        KnowledgeBaseVectorizeProperties vectorizeProperties
     ) {
         this.vectorStore = vectorStore;
         this.chunkingService = chunkingService;
         this.vectorRepository = vectorRepository;
         this.transactionalExecutor = transactionalExecutor;
+        this.vectorizeProperties = vectorizeProperties;
     }
 
     KnowledgeBaseVectorService(VectorStore vectorStore, DocumentChunkingService chunkingService, VectorRepository vectorRepository) {
-        this(vectorStore, chunkingService, vectorRepository, null);
+        this(vectorStore, chunkingService, vectorRepository, null, disabledThrottleProperties());
+    }
+
+    KnowledgeBaseVectorService(
+        VectorStore vectorStore,
+        DocumentChunkingService chunkingService,
+        VectorRepository vectorRepository,
+        KnowledgeBaseVectorizeProperties vectorizeProperties
+    ) {
+        this(vectorStore, chunkingService, vectorRepository, null, vectorizeProperties);
+    }
+
+    /** 单测专用：关闭请求间隔与退避等待，避免用例被节流拖慢 */
+    private static KnowledgeBaseVectorizeProperties disabledThrottleProperties() {
+        KnowledgeBaseVectorizeProperties properties = new KnowledgeBaseVectorizeProperties();
+        properties.setRequestIntervalMillis(0L);
+        properties.setRetryBackoffMillis(0L);
+        return properties;
     }
 
     /**
@@ -91,7 +116,7 @@ public class KnowledgeBaseVectorService {
                 int end = Math.min(start + MAX_BATCH_SIZE, totalChunks);
                 List<Document> batch = chunks.subList(start, end);
                 log.debug("处理第 {}/{} 批: chunks {}-{}", i + 1, batchCount, start + 1, end);
-                vectorStore.add(batch);
+                addBatchWithThrottle(knowledgeBaseId, batch, i + 1, batchCount);
             }
             activateVectorJob(knowledgeBaseId, jobId);
             log.info("知识库向量化完成: kbId={}, jobId={}, chunks={}, batches={}",
@@ -103,6 +128,78 @@ public class KnowledgeBaseVectorService {
                 knowledgeBaseId, jobId, e.getMessage(), e);
             throw new BusinessException(ErrorCode.KNOWLEDGE_BASE_VECTORIZATION_FAILED,
                 "向量化知识库失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 带节流与限流退避地写入一批向量：
+     * 1）每次请求前保证与上一次请求间隔 {@code requestIntervalMillis}，避免打满供应商 QPS；
+     * 2）命中限流（429）时按退避基数翻倍等待后重试，重试耗尽才抛出异常交给上层重试。
+     */
+    private void addBatchWithThrottle(Long knowledgeBaseId, List<Document> batch, int batchIndex, int batchCount) {
+        int maxRetries = Math.max(0, vectorizeProperties.getRateLimitMaxRetries());
+        for (int attempt = 0; ; attempt++) {
+            awaitEmbeddingSlot();
+            try {
+                vectorStore.add(batch);
+                return;
+            } catch (RuntimeException e) {
+                if (attempt >= maxRetries || !isRateLimitError(e)) {
+                    throw e;
+                }
+                long backoffMillis = vectorizeProperties.retryDelayMillis(attempt);
+                log.warn("embedding 请求被限流，{}ms 后重试第 {}/{} 批（kbId={}，第 {} 次重试）: {}",
+                    backoffMillis, batchIndex, batchCount, knowledgeBaseId, attempt + 1, e.getMessage());
+                sleepQuietly(backoffMillis);
+            }
+        }
+    }
+
+    /**
+     * 保证两次 embedding 请求之间的最小间隔。本服务是单例，
+     * 多线程同时进入时也会被串行化，等价于把请求排成一个队列逐个发出。
+     */
+    private void awaitEmbeddingSlot() {
+        long intervalMillis = vectorizeProperties.getRequestIntervalMillis();
+        if (intervalMillis <= 0) {
+            return;
+        }
+        synchronized (embeddingRequestLock) {
+            long waitMillis = lastEmbeddingRequestAt.get() + intervalMillis - System.currentTimeMillis();
+            if (waitMillis > 0) {
+                sleepQuietly(waitMillis);
+            }
+            lastEmbeddingRequestAt.set(System.currentTimeMillis());
+        }
+    }
+
+    /** 判断异常链中是否为供应商限流（口径与 DashscopeLlmService 的错误归类一致） */
+    private static boolean isRateLimitError(Throwable error) {
+        for (Throwable current = error; current != null; current = current.getCause()) {
+            String message = current.getMessage();
+            if (message == null) {
+                continue;
+            }
+            String normalized = message.toLowerCase(Locale.ROOT);
+            if (normalized.contains("429")
+                || normalized.contains("too frequent")
+                || normalized.contains("rate limit")
+                || normalized.contains("throttl")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void sleepQuietly(long millis) {
+        if (millis <= 0) {
+            return;
+        }
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BusinessException(ErrorCode.KNOWLEDGE_BASE_VECTORIZATION_FAILED, "向量化任务被中断");
         }
     }
 
