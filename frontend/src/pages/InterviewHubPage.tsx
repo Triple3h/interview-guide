@@ -12,6 +12,7 @@ import { getSkillIcon } from '../utils/skillIcons';
 import { getTemplateName } from '../utils/voiceInterview';
 import { getScoreTextColor } from '../utils/score';
 import { formatDateTime } from '../utils/date';
+import Select from '../components/ui/Select';
 import { uuid } from '../utils/uuid';
 import {
   useInterviewConfig,
@@ -374,18 +375,16 @@ export default function InterviewHubPage() {
                       基于简历面试（可选）
                     </p>
                   </div>
-                  <select
+                  <Select
+                    variant="form"
                     value={config.resumeId || ''}
                     onChange={e => config.setResumeId(e.target.value ? parseInt(e.target.value) : undefined)}
-                    className="w-full px-4 py-2.5 rounded-lg border border-primary-200 dark:border-primary-700/50
-                      bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-white
-                      focus:outline-none focus:ring-2 focus:ring-primary-500/50 transition-shadow"
                   >
                     <option value="">不使用简历（通用提问）</option>
                     {config.resumes.map(r => (
                       <option key={r.id} value={r.id}>{r.filename}</option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
 
                 {/* 文字面试 - 题目数 */}

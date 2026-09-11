@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { llmProviderApi } from '../api/llmProvider';
 import ConfirmDialog from '../components/ConfirmDialog';
+import Select from '../components/ui/Select';
 import type {
   ProviderItem, CreateProviderRequest, UpdateProviderRequest,
   ProviderTestResult, AsrConfig, TtsConfig, AsrConfigRequest, TtsConfigRequest,
@@ -1255,11 +1256,14 @@ export default function SettingsPage() {
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Turn Detection</label>
-                        <select value={asrForm.enableTurnDetection ? 'true' : 'false'} onChange={(e) => setAsrForm(f => ({ ...f, enableTurnDetection: e.target.value === 'true' }))}
-                          className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-400 transition-shadow">
+                        <Select
+                          variant="form"
+                          value={asrForm.enableTurnDetection ? 'true' : 'false'}
+                          onChange={(e) => setAsrForm(f => ({ ...f, enableTurnDetection: e.target.value === 'true' }))}
+                        >
                           <option value="true">Enabled</option>
                           <option value="false">Disabled</option>
-                        </select>
+                        </Select>
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Detection Type</label>

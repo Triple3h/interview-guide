@@ -135,13 +135,19 @@ public class KnowledgeBaseListService {
 
     /**
      * 根据分类获取知识库列表
+     * 一级分类（"ai"）会连同其下全部二级分类（"ai/agent"、"ai/rag"）一起命中；二级分类精确匹配
      */
     public List<KnowledgeBaseListItemDTO> listByCategory(String category) {
         List<KnowledgeBaseEntity> entities;
         if (category == null || category.isBlank()) {
             entities = knowledgeBaseRepository.findByCategoryIsNullOrderByUploadedAtDesc();
         } else {
-            entities = knowledgeBaseRepository.findByCategoryOrderByUploadedAtDesc(category);
+            List<String> matchedCategories = knowledgeBaseRepository.findAllCategories().stream()
+                .filter(c -> c.equals(category) || c.startsWith(category + "/"))
+                .toList();
+            entities = matchedCategories.isEmpty()
+                ? List.of()
+                : knowledgeBaseRepository.findByCategoryInOrderByUploadedAtDesc(matchedCategories);
         }
         return knowledgeBaseMapper.toListItemDTOList(entities);
     }

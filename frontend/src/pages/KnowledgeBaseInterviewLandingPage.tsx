@@ -27,6 +27,7 @@ import StartKnowledgeBaseInterviewModal, {
 import GenerateKnowledgeBaseQuestionsModal, {
   type GenerateQuestionsConfig,
 } from '../components/knowledgebaseInterview/GenerateKnowledgeBaseQuestionsModal';
+import Select from '../components/ui/Select';
 import KnowledgeBaseCard from '../components/knowledgebaseInterview/KnowledgeBaseCard';
 import QuestionGenerationQueueDrawer from '../components/knowledgebaseInterview/QuestionGenerationQueueDrawer';
 import { isQuestionGenerationActive } from './questionGenerationStatus';
@@ -384,15 +385,16 @@ export default function KnowledgeBaseInterviewLandingPage() {
         </div>
         <div className="flex items-center gap-2">
           <ArrowDownUp className="w-4 h-4 text-slate-400 shrink-0" />
-          <select
+          <Select
+            variant="filter"
             value={sortKey}
             onChange={event => setSortKey(event.target.value as SortKey)}
-            className={`${INPUT_CLASS} sm:w-40`}
+            className="sm:w-40"
           >
             {SORT_OPTIONS.map(option => (
               <option key={option.value} value={option.value}>{option.label}</option>
             ))}
-          </select>
+          </Select>
         </div>
       </div>
 

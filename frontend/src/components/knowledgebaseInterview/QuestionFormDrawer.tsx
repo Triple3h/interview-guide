@@ -1,5 +1,6 @@
 import { FormEvent } from 'react';
 import { FileText, Loader2, X } from 'lucide-react';
+import Select from '../ui/Select';
 import type {
   KnowledgeBaseQuestion,
   KnowledgeBaseQuestionFollowUp,
@@ -159,18 +160,26 @@ export default function QuestionFormDrawer({
         <div className="p-5 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Field label="难度">
-              <select value={form.difficulty} onChange={event => onChange({ ...form, difficulty: event.target.value })} className={INPUT_CLASS}>
+              <Select
+                variant="form"
+                value={form.difficulty}
+                onChange={event => onChange({ ...form, difficulty: event.target.value })}
+              >
                 {DIFFICULTY_OPTIONS.map(option => (
                   <option key={option.value} value={option.value}>{option.label}</option>
                 ))}
-              </select>
+              </Select>
             </Field>
             <Field label="状态">
-              <select value={form.status} onChange={event => onChange({ ...form, status: event.target.value as KnowledgeBaseQuestionStatus })} className={INPUT_CLASS}>
+              <Select
+                variant="form"
+                value={form.status}
+                onChange={event => onChange({ ...form, status: event.target.value as KnowledgeBaseQuestionStatus })}
+              >
                 {STATUS_OPTIONS.filter(option => option.value).map(option => (
                   <option key={option.value} value={option.value}>{option.label}</option>
                 ))}
-              </select>
+              </Select>
             </Field>
           </div>
           <Field label="面试方向（用于筛选和开始面试）">

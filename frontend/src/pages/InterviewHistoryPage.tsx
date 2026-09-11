@@ -20,6 +20,7 @@ import {
 import {skillApi, type SkillDTO} from '../api/skill';
 import {getTemplateName} from '../utils/voiceInterview';
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
+import Select from '../components/ui/Select';
 import {
   AlertCircle,
   CheckCircle,
@@ -580,11 +581,11 @@ export default function InterviewHistoryPage({
           animate={{ opacity: 1, y: 0 }}
         >
           <Filter className="w-4 h-4 text-slate-400 shrink-0" />
-          <select
+          <Select
+            variant="filter"
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
             aria-label="按面试方向筛选"
-            className="bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-200 outline-none focus:border-primary-500 transition-colors cursor-pointer"
           >
             <option value="all">全部记录</option>
             {categoryOptions.values.map(category => (
@@ -593,27 +594,27 @@ export default function InterviewHistoryPage({
             {categoryOptions.hasUncategorized && (
               <option value={ALL_DIRECTIONS_VALUE}>{ALL_DIRECTIONS_LABEL}</option>
             )}
-          </select>
-          <select
+          </Select>
+          <Select
+            variant="filter"
             value={timeFilter}
             onChange={(e) => setTimeFilter(e.target.value as TimeRange)}
             aria-label="按时间范围筛选"
-            className="bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-200 outline-none focus:border-primary-500 transition-colors cursor-pointer"
           >
             {TIME_RANGE_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
-          </select>
-          <select
+          </Select>
+          <Select
+            variant="filter"
             value={completionFilter}
             onChange={(e) => setCompletionFilter(e.target.value as CompletionFilter)}
             aria-label="按完成状态筛选"
-            className="bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-200 outline-none focus:border-primary-500 transition-colors cursor-pointer"
           >
             {COMPLETION_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
-          </select>
+          </Select>
           {hasActiveKbFilters && (
             <button
               onClick={resetKbFilters}

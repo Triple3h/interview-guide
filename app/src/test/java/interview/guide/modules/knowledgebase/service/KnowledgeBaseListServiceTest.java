@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -75,6 +76,62 @@ class KnowledgeBaseListServiceTest {
 
             assertThat(updated).isEqualTo(1);
             verify(knowledgeBaseRepository).updateCategoryBatch(eq(List.of(1L)), eq("MySQL 实战"));
+        }
+    }
+
+    @Nested
+    @DisplayName("按分类筛选")
+    class ListByCategory {
+
+        @Test
+        @DisplayName("选中一级分类时连同其下二级分类一起命中")
+        void shouldIncludeChildCategories() {
+            when(knowledgeBaseRepository.findAllCategories())
+                .thenReturn(List.of("ai", "ai/agent", "ai/rag", "system-design"));
+            when(knowledgeBaseRepository.findByCategoryInOrderByUploadedAtDesc(anyList()))
+                .thenReturn(List.of());
+            when(knowledgeBaseMapper.toListItemDTOList(anyList())).thenReturn(List.of());
+
+            listService.listByCategory("ai");
+
+            verify(knowledgeBaseRepository)
+                .findByCategoryInOrderByUploadedAtDesc(List.of("ai", "ai/agent", "ai/rag"));
+        }
+
+        @Test
+        @DisplayName("选中二级分类时只精确匹配该分类")
+        void shouldMatchChildCategoryExactly() {
+            when(knowledgeBaseRepository.findAllCategories())
+                .thenReturn(List.of("ai", "ai/agent", "ai/rag"));
+            when(knowledgeBaseRepository.findByCategoryInOrderByUploadedAtDesc(anyList()))
+                .thenReturn(List.of());
+            when(knowledgeBaseMapper.toListItemDTOList(anyList())).thenReturn(List.of());
+
+            listService.listByCategory("ai/agent");
+
+            verify(knowledgeBaseRepository)
+                .findByCategoryInOrderByUploadedAtDesc(List.of("ai/agent"));
+        }
+
+        @Test
+        @DisplayName("分类不存在时返回空列表且不查库")
+        void shouldReturnEmptyWhenNoCategoryMatched() {
+            when(knowledgeBaseRepository.findAllCategories()).thenReturn(List.of("ai/agent"));
+
+            assertThat(listService.listByCategory("rag")).isEmpty();
+
+            verify(knowledgeBaseRepository, never()).findByCategoryInOrderByUploadedAtDesc(anyList());
+        }
+
+        @Test
+        @DisplayName("空白分类返回未分类知识库")
+        void shouldReturnUncategorizedWhenBlank() {
+            when(knowledgeBaseRepository.findByCategoryIsNullOrderByUploadedAtDesc()).thenReturn(List.of());
+            when(knowledgeBaseMapper.toListItemDTOList(anyList())).thenReturn(List.of());
+
+            assertThat(listService.listByCategory("  ")).isEmpty();
+
+            verify(knowledgeBaseRepository).findByCategoryIsNullOrderByUploadedAtDesc();
         }
     }
 }

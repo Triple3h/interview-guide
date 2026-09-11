@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Loader2, Sparkles, X } from 'lucide-react';
+import Select from '../ui/Select';
 import {
   CATEGORY_LIMIT_OPTIONS,
   DEFAULT_CATEGORY_LIMIT,
@@ -8,7 +9,6 @@ import {
   DIFFICULTY_OPTIONS,
   FOLLOW_UP_COUNT_OPTIONS,
   GENERATE_COUNT_OPTIONS,
-  INPUT_CLASS,
 } from '../../constants/knowledgebaseInterview';
 
 export interface GenerateQuestionsConfig {
@@ -110,27 +110,27 @@ export default function GenerateKnowledgeBaseQuestionsModal({
                 <div className="grid grid-cols-2 gap-3">
                   <label className="block">
                     <span className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">难度</span>
-                    <select
+                    <Select
+                      variant="form"
                       value={difficulty}
                       onChange={event => setDifficulty(event.target.value)}
-                      className={INPUT_CLASS}
                     >
                       {DIFFICULTY_OPTIONS.map(option => (
                         <option key={option.value} value={option.value}>{option.label}</option>
                       ))}
-                    </select>
+                    </Select>
                   </label>
                   <label className="block">
                     <span className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">题量</span>
-                    <select
+                    <Select
+                      variant="form"
                       value={questionCount}
                       onChange={event => setQuestionCount(parseInt(event.target.value, 10))}
-                      className={INPUT_CLASS}
                     >
                       {GENERATE_COUNT_OPTIONS.map(count => (
                         <option key={count} value={count}>{count} 题</option>
                       ))}
-                    </select>
+                    </Select>
                   </label>
                 </div>
 
@@ -139,29 +139,29 @@ export default function GenerateKnowledgeBaseQuestionsModal({
                     <span className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">
                       新增方向上限
                     </span>
-                    <select
+                    <Select
+                      variant="form"
                       value={categoryLimit}
                       onChange={event => setCategoryLimit(parseInt(event.target.value, 10))}
-                      className={INPUT_CLASS}
                     >
                       {CATEGORY_LIMIT_OPTIONS.map(count => (
                         <option key={count} value={count}>{count} 个</option>
                       ))}
-                    </select>
+                    </Select>
                   </label>
                   <label className="block">
                     <span className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">
                       每题追问数
                     </span>
-                    <select
+                    <Select
+                      variant="form"
                       value={followUpCount}
                       onChange={event => setFollowUpCount(parseInt(event.target.value, 10))}
-                      className={INPUT_CLASS}
                     >
                       {FOLLOW_UP_COUNT_OPTIONS.map(count => (
                         <option key={count} value={count}>{count} 个</option>
                       ))}
-                    </select>
+                    </Select>
                   </label>
                 </div>
 

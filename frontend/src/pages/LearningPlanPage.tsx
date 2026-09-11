@@ -5,6 +5,7 @@ import { learningApi } from '../api/learning';
 import type { LearningPlanItem, LearningPlanStatus } from '../types/learning';
 import { formatDateOnly } from '../utils/date';
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
+import Select from '../components/ui/Select';
 import { ChevronLeft, ListTodo, Pencil, Plus, Trash2 } from 'lucide-react';
 
 const STATUS_FILTERS: { value: LearningPlanStatus | 'ALL'; label: string }[] = [
@@ -251,16 +252,16 @@ export default function LearningPlanPage() {
                 </div>
 
                 <div className="flex items-center gap-1 flex-shrink-0">
-                  <select
+                  <Select
+                    variant="compact"
                     value={item.status}
                     onChange={(e) => handleStatusChange(item, e.target.value as LearningPlanStatus)}
-                    className="px-2 py-1 text-xs border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-primary-500"
                     title="调整状态"
                   >
                     <option value="PENDING">待开始</option>
                     <option value="IN_PROGRESS">进行中</option>
                     <option value="DONE">已完成</option>
-                  </select>
+                  </Select>
                   <button
                     onClick={() => openEditModal(item)}
                     className="p-1.5 text-slate-400 hover:text-primary-500 rounded transition-colors"

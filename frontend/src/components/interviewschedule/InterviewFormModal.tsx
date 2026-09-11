@@ -6,6 +6,7 @@ import { X, ChevronRight, ChevronLeft, AlertCircle, CheckCircle, Trash2 } from '
 import type { InterviewFormData, ParseResponse, InterviewType } from '../../types/interviewSchedule';
 import { interviewScheduleApi } from '../../api/interviewSchedule';
 import dayjs from 'dayjs';
+import Select from '../ui/Select';
 
 interface InterviewFormModalProps {
   isOpen: boolean;
@@ -363,15 +364,15 @@ export const InterviewFormModal: React.FC<InterviewFormModalProps> = ({
 
       <div>
         <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">面试形式</label>
-        <select
+        <Select
+          variant="form"
           value={formData.interviewType}
           onChange={(e) => handleFormChange('interviewType', e.target.value)}
-          className="w-full px-4 py-3 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:focus:ring-primary-400 dark:focus:border-primary-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 transition-all"
         >
           <option value="VIDEO">视频面试</option>
           <option value="ONSITE">现场面试</option>
           <option value="PHONE">电话面试</option>
-        </select>
+        </Select>
       </div>
 
       <div>

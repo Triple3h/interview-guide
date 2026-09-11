@@ -27,6 +27,7 @@ import {
   INPUT_CLASS,
 } from '../constants/knowledgebaseInterview';
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
+import Select from '../components/ui/Select';
 import QuestionFormDrawer, {
   type QuestionFormState,
   buildQuestionPayload,
@@ -514,26 +515,26 @@ export default function KnowledgeBaseInterviewQuestionsPage() {
               placeholder="搜索题干 / 参考答案"
             />
           </div>
-          <select
+          <Select
+            variant="form"
             value={filters.category}
             onChange={event => setFilters(prev => ({ ...prev, category: event.target.value }))}
-            className={INPUT_CLASS}
           >
             <option value="">全部方向</option>
             {categoryOptions.map(category => (
               <option key={category} value={category}>{category}</option>
             ))}
-          </select>
-          <select
+          </Select>
+          <Select
+            variant="form"
             value={filters.difficulty}
             onChange={event => setFilters(prev => ({ ...prev, difficulty: event.target.value }))}
-            className={INPUT_CLASS}
           >
             <option value="">全部难度</option>
             {DIFFICULTY_OPTIONS.map(option => (
               <option key={option.value} value={option.value}>{option.label}</option>
             ))}
-          </select>
+          </Select>
           <div className="flex gap-2">
             <button
               onClick={() => setFilters(EMPTY_FILTERS)}
@@ -764,15 +765,15 @@ function Pagination({
         </span>
         <span className="text-slate-300 dark:text-slate-600">|</span>
         <span>每页</span>
-        <select
+        <Select
+          variant="mini"
           value={pageSize}
           onChange={event => onPageSizeChange(parseInt(event.target.value, 10))}
-          className="px-2 py-1 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
         >
           {PAGE_SIZE_OPTIONS.map(size => (
             <option key={size} value={size}>{size}</option>
           ))}
-        </select>
+        </Select>
       </div>
       <div className="flex items-center gap-1">
         <PaginationButton

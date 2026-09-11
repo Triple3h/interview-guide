@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { AlertCircle, Loader2, Play, X } from 'lucide-react';
+import Select from '../ui/Select';
 import type {
   KnowledgeBaseInterviewCapacityResponse,
   KnowledgeBaseItem,
@@ -10,7 +11,6 @@ import {
   DEFAULT_DIFFICULTY,
   DIFFICULTY_OPTIONS,
   FOLLOW_UP_COUNT_OPTIONS,
-  INPUT_CLASS,
   MAIN_QUESTION_COUNT_OPTIONS,
 } from '../../constants/knowledgebaseInterview';
 import {
@@ -171,10 +171,10 @@ export default function StartKnowledgeBaseInterviewModal({
                 {!isBatch && (
                   <label className="block">
                     <span className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">面试方向</span>
-                    <select
+                    <Select
+                      variant="form"
                       value={category}
                       onChange={event => setCategory(event.target.value)}
-                      className={INPUT_CLASS}
                       disabled={loadingCapacity}
                     >
                       <option value="">全部方向（按方向均衡抽题）</option>
@@ -186,41 +186,41 @@ export default function StartKnowledgeBaseInterviewModal({
                           {item.category}（{item.availableQuestionCount} 题）
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </label>
                 )}
 
                 <div className="grid grid-cols-3 gap-3">
                   <label className="block">
                     <span className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">难度</span>
-                    <select
+                    <Select
+                      variant="form"
                       value={difficulty}
                       onChange={event => setDifficulty(event.target.value)}
-                      className={INPUT_CLASS}
                     >
                       {DIFFICULTY_OPTIONS.map(option => (
                         <option key={option.value} value={option.value}>{option.label}</option>
                       ))}
-                    </select>
+                    </Select>
                   </label>
                   <label className="block">
                     <span className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">主问题数</span>
-                    <select
+                    <Select
+                      variant="form"
                       value={mainQuestionCount}
                       onChange={event => setMainQuestionCount(parseInt(event.target.value, 10))}
-                      className={INPUT_CLASS}
                     >
                       {MAIN_QUESTION_COUNT_OPTIONS.map(count => (
                         <option key={count} value={count}>{count} 道</option>
                       ))}
-                    </select>
+                    </Select>
                   </label>
                   <label className="block">
                     <span className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">每题追问</span>
-                    <select
+                    <Select
+                      variant="form"
                       value={followUpCount}
                       onChange={event => setFollowUpCount(parseInt(event.target.value, 10))}
-                      className={INPUT_CLASS}
                     >
                       {FOLLOW_UP_COUNT_OPTIONS.map(count => {
                         const optionCapacity = getSelectedCapacity(followUpOptions, count);
@@ -237,7 +237,7 @@ export default function StartKnowledgeBaseInterviewModal({
                           </option>
                         );
                       })}
-                    </select>
+                    </Select>
                   </label>
                 </div>
 

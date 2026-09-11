@@ -26,6 +26,7 @@ paths:
 ## UI
 
 - 延续现有 React + TailwindCSS 4 风格，不引入新的 UI 框架。
+- 下拉框统一使用 `frontend/src/components/ui/Select.tsx`（`form` / `filter` / `compact` / `mini` 四种变体），不要手写原生 `<select>` 样式；知识库级联分类下拉 `CategoryFilterSelect` 是唯一例外。
 - 操作按钮优先使用 `lucide-react` 图标加清晰文本或 tooltip。
 - 表单状态要包含 loading、success、error 和 disabled 处理。
 - 不要把业务说明性长文塞进页面；优先让界面直接可操作。

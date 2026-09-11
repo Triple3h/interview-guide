@@ -5,6 +5,7 @@ import { learningApi } from '../api/learning';
 import type { LearningMastery, LearningRecord } from '../types/learning';
 import { formatDateOnly } from '../utils/date';
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
+import Select from '../components/ui/Select';
 import { BookOpenCheck, ChevronLeft, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 
 const MASTERY_FILTERS: { value: LearningMastery | 'ALL'; label: string }[] = [
@@ -259,16 +260,16 @@ export default function LearningRecordsPage() {
                 </div>
 
                 <div className="flex items-center gap-1 flex-shrink-0">
-                  <select
+                  <Select
+                    variant="compact"
                     value={record.mastery}
                     onChange={(e) => handleMasteryChange(record, e.target.value as LearningMastery)}
-                    className="px-2 py-1 text-xs border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-primary-500"
                     title="调整掌握度"
                   >
                     <option value="BEGINNER">初学</option>
                     <option value="INTERMEDIATE">理解</option>
                     <option value="ADVANCED">熟练</option>
-                  </select>
+                  </Select>
                   <button
                     onClick={() => openEditModal(record)}
                     className="p-1.5 text-slate-400 hover:text-primary-500 rounded transition-colors"
@@ -337,15 +338,15 @@ export default function LearningRecordsPage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">掌握度</label>
-                    <select
+                    <Select
+                      variant="form"
                       value={formMastery}
                       onChange={(e) => setFormMastery(e.target.value as LearningMastery)}
-                      className="w-full px-4 py-2.5 text-sm border border-slate-200 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
                     >
                       <option value="BEGINNER">初学</option>
                       <option value="INTERMEDIATE">理解</option>
                       <option value="ADVANCED">熟练</option>
-                    </select>
+                    </Select>
                   </div>
                 </div>
 

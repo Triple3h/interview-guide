@@ -5,7 +5,6 @@ import {
   AlertCircle,
   Check,
   CheckCircle,
-  ChevronDown,
   Clock,
   Database,
   Download,
@@ -27,6 +26,8 @@ import {knowledgeBaseApi, CategoryTreeNode, KnowledgeBaseItem, KnowledgeBaseStat
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
 import BatchTasksDrawer from '../components/knowledgebase/BatchTasksDrawer';
 import BatchCategoryModal from '../components/knowledgebase/BatchCategoryModal';
+import CategoryFilterSelect from '../components/knowledgebase/CategoryFilterSelect';
+import Select from '../components/ui/Select';
 
 interface KnowledgeBaseManagePageProps {
   onUpload: () => void;
@@ -150,10 +151,9 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
   const [searchKeyword, setSearchKeyword] = useState('');
   const [sortBy, setSortBy] = useState<SortOption>('time');
   const [categories, setCategories] = useState<string[]>([]);
-  // 级联筛选：一级分类 + 其下二级分类
+  // 分类筛选：单下拉承载分类树，值为 ''（全部）/ '一级' / '一级/二级'
   const [categoryTree, setCategoryTree] = useState<CategoryTreeNode[]>([]);
-  const [selectedParentCategory, setSelectedParentCategory] = useState<string>('');
-  const [selectedChildCategory, setSelectedChildCategory] = useState<string>('');
+  const [selectedCategory, setSelectedCategory] = useState('');
   const [deleteItem, setDeleteItem] = useState<KnowledgeBaseItem | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -182,16 +182,6 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
 
   // 重新向量化状态
   const [revectorizing, setRevectorizing] = useState<number | null>(null);
-
-  // 从级联筛选状态派生精确 category（"一级/二级"，仅选中一级时即该一级分类）
-  const selectedCategory = useMemo(() => {
-    if (selectedParentCategory) {
-      return selectedChildCategory
-        ? `${selectedParentCategory}/${selectedChildCategory}`
-        : selectedParentCategory;
-    }
-    return null;
-  }, [selectedParentCategory, selectedChildCategory]);
 
   // 加载数据（不显示loading状态，用于轮询）
   const loadDataSilent = useCallback(async () => {
@@ -498,69 +488,30 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
           </form>
 
           {/* 排序选择 */}
-          <div className="relative">
-            <select
-              value={sortBy}
-              onChange={(e) => {
-                setSortBy(e.target.value as SortOption);
-                setSearchKeyword('');
-                setSelectedParentCategory('');
-                setSelectedChildCategory('');
-              }}
-              className="appearance-none pl-4 pr-10 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white cursor-pointer"
-            >
-              <option value="time">按时间排序</option>
-              <option value="size">按大小排序</option>
-              <option value="access">按访问排序</option>
-              <option value="question">按提问排序</option>
-            </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-          </div>
+          <Select
+            variant="filter"
+            value={sortBy}
+            onChange={(e) => {
+              setSortBy(e.target.value as SortOption);
+              setSearchKeyword('');
+              setSelectedCategory('');
+            }}
+          >
+            <option value="time">按时间排序</option>
+            <option value="size">按大小排序</option>
+            <option value="access">按访问排序</option>
+            <option value="question">按提问排序</option>
+          </Select>
 
-          {/* 分类筛选（一级 → 二级级联） */}
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <select
-                value={selectedParentCategory}
-                onChange={(e) => {
-                  setSelectedParentCategory(e.target.value);
-                  setSelectedChildCategory('');
-                  setSearchKeyword('');
-                }}
-                className="appearance-none pl-4 pr-10 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white cursor-pointer"
-              >
-                <option value="">全部分类</option>
-                {categoryTree.map(node => (
-                  <option key={node.name} value={node.name}>
-                    {node.name}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-            </div>
-            {selectedParentCategory && (
-              <div className="relative">
-                <select
-                  value={selectedChildCategory}
-                  onChange={(e) => {
-                    setSelectedChildCategory(e.target.value);
-                    setSearchKeyword('');
-                  }}
-                  className="appearance-none pl-4 pr-10 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white cursor-pointer"
-                >
-                  <option value="">全部二级分类</option>
-                  {categoryTree
-                    .find(node => node.name === selectedParentCategory)
-                    ?.children.map(child => (
-                      <option key={child} value={child}>
-                        {child}
-                      </option>
-                    ))}
-                </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-              </div>
-            )}
-          </div>
+          {/* 分类筛选：一级/二级合并为单个下拉（有二级时缩进展示，值为「一级/二级」） */}
+          <CategoryFilterSelect
+            tree={categoryTree}
+            value={selectedCategory}
+            onChange={(next) => {
+              setSelectedCategory(next);
+              setSearchKeyword('');
+            }}
+          />
         </div>
       </div>
 

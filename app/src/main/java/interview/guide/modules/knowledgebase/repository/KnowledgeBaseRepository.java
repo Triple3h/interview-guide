@@ -12,6 +12,7 @@ import org.springframework.stereotype.Repository;
 
 import jakarta.persistence.LockModeType;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -50,16 +51,14 @@ public interface KnowledgeBaseRepository extends JpaRepository<KnowledgeBaseEnti
     List<String> findAllCategories();
 
     /**
-     * 获取指定一级分类下的全部二级分类（用于管理页级联筛选）
-     */
-    @Query("SELECT DISTINCT k.category FROM KnowledgeBaseEntity k "
-        + "WHERE k.category IS NOT NULL AND k.category LIKE concat(:prefix, '%') ORDER BY k.category")
-    List<String> findSubCategoriesByParent(@Param("prefix") String prefix);
-
-    /**
      * 根据分类查找知识库
      */
     List<KnowledgeBaseEntity> findByCategoryOrderByUploadedAtDesc(String category);
+
+    /**
+     * 根据多个分类查找知识库（用于一级分类筛选时连同其下二级分类一起命中）
+     */
+    List<KnowledgeBaseEntity> findByCategoryInOrderByUploadedAtDesc(Collection<String> categories);
 
     /**
      * 查找未分类的知识库
