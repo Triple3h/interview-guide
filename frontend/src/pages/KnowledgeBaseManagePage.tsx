@@ -23,7 +23,7 @@ import {
   Upload,
   X,
 } from 'lucide-react';
-import {knowledgeBaseApi, KnowledgeBaseItem, KnowledgeBaseStats, KbBatchSummary, SortOption, VectorStatus,} from '../api/knowledgebase';
+import {knowledgeBaseApi, CategoryTreeNode, KnowledgeBaseItem, KnowledgeBaseStats, KbBatchSummary, SortOption, VectorStatus,} from '../api/knowledgebase';
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
 import BatchTasksDrawer from '../components/knowledgebase/BatchTasksDrawer';
 import BatchCategoryModal from '../components/knowledgebase/BatchCategoryModal';
@@ -86,6 +86,31 @@ function getStatusText(status: VectorStatus): string {
   }
 }
 
+// 分类徽标：category 约定为 "一级/二级"（斜杠分隔），拆成两级层级展示；单级分类只显示一级
+function CategoryBadge({ category }: { category: string }) {
+  const slash = category.indexOf('/');
+  if (slash <= 0) {
+    return (
+      <span className="px-2 py-1 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded text-sm">
+        {category}
+      </span>
+    );
+  }
+  const parent = category.slice(0, slash);
+  const child = category.slice(slash + 1);
+  return (
+    <span className="flex items-center gap-1">
+      <span className="px-2 py-1 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded text-sm">
+        {parent}
+      </span>
+      <span className="text-slate-300 dark:text-slate-600 text-sm">/</span>
+      <span className="px-2 py-1 bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 rounded text-sm">
+        {child}
+      </span>
+    </span>
+  );
+}
+
 // 统计卡片组件
 function StatCard({
   icon: Icon,
@@ -124,8 +149,11 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
   const [loading, setLoading] = useState(true);
   const [searchKeyword, setSearchKeyword] = useState('');
   const [sortBy, setSortBy] = useState<SortOption>('time');
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
+  // 级联筛选：一级分类 + 其下二级分类
+  const [categoryTree, setCategoryTree] = useState<CategoryTreeNode[]>([]);
+  const [selectedParentCategory, setSelectedParentCategory] = useState<string>('');
+  const [selectedChildCategory, setSelectedChildCategory] = useState<string>('');
   const [deleteItem, setDeleteItem] = useState<KnowledgeBaseItem | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -155,10 +183,20 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
   // 重新向量化状态
   const [revectorizing, setRevectorizing] = useState<number | null>(null);
 
+  // 从级联筛选状态派生精确 category（"一级/二级"，仅选中一级时即该一级分类）
+  const selectedCategory = useMemo(() => {
+    if (selectedParentCategory) {
+      return selectedChildCategory
+        ? `${selectedParentCategory}/${selectedChildCategory}`
+        : selectedParentCategory;
+    }
+    return null;
+  }, [selectedParentCategory, selectedChildCategory]);
+
   // 加载数据（不显示loading状态，用于轮询）
   const loadDataSilent = useCallback(async () => {
     try {
-      const [statsData, kbList, categoryList, batchList] = await Promise.all([
+      const [statsData, kbList, categoryList, tree, batchList] = await Promise.all([
         knowledgeBaseApi.getStatistics(),
         searchKeyword
           ? knowledgeBaseApi.search(searchKeyword)
@@ -166,11 +204,13 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
           ? knowledgeBaseApi.getByCategory(selectedCategory)
           : knowledgeBaseApi.getAllKnowledgeBases(sortBy),
         knowledgeBaseApi.getAllCategories(),
+        knowledgeBaseApi.getCategoryTree().catch(() => [] as CategoryTreeNode[]),
         knowledgeBaseApi.listUploadBatches(20),
       ]);
       setStats(statsData);
       setKnowledgeBases(kbList);
       setCategories(categoryList);
+      setCategoryTree(tree);
       setBatchSummaries(batchList);
     } catch (error) {
       console.error('加载数据失败:', error);
@@ -181,7 +221,7 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const [statsData, kbList, categoryList, batchList] = await Promise.all([
+      const [statsData, kbList, categoryList, tree, batchList] = await Promise.all([
         knowledgeBaseApi.getStatistics(),
         searchKeyword
           ? knowledgeBaseApi.search(searchKeyword)
@@ -189,11 +229,13 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
           ? knowledgeBaseApi.getByCategory(selectedCategory)
           : knowledgeBaseApi.getAllKnowledgeBases(sortBy),
         knowledgeBaseApi.getAllCategories(),
+        knowledgeBaseApi.getCategoryTree().catch(() => [] as CategoryTreeNode[]),
         knowledgeBaseApi.listUploadBatches(20),
       ]);
       setStats(statsData);
       setKnowledgeBases(kbList);
       setCategories(categoryList);
+      setCategoryTree(tree);
       setBatchSummaries(batchList);
     } catch (error) {
       console.error('加载数据失败:', error);
@@ -462,7 +504,8 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
               onChange={(e) => {
                 setSortBy(e.target.value as SortOption);
                 setSearchKeyword('');
-                setSelectedCategory(null);
+                setSelectedParentCategory('');
+                setSelectedChildCategory('');
               }}
               className="appearance-none pl-4 pr-10 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white cursor-pointer"
             >
@@ -474,24 +517,49 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
           </div>
 
-          {/* 分类筛选 */}
-          <div className="relative">
-            <select
-              value={selectedCategory || ''}
-              onChange={(e) => {
-                setSelectedCategory(e.target.value || null);
-                setSearchKeyword('');
-              }}
-              className="appearance-none pl-4 pr-10 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white cursor-pointer"
-            >
-              <option value="">全部分类</option>
-              {categories.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+          {/* 分类筛选（一级 → 二级级联） */}
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <select
+                value={selectedParentCategory}
+                onChange={(e) => {
+                  setSelectedParentCategory(e.target.value);
+                  setSelectedChildCategory('');
+                  setSearchKeyword('');
+                }}
+                className="appearance-none pl-4 pr-10 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white cursor-pointer"
+              >
+                <option value="">全部分类</option>
+                {categoryTree.map(node => (
+                  <option key={node.name} value={node.name}>
+                    {node.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+            </div>
+            {selectedParentCategory && (
+              <div className="relative">
+                <select
+                  value={selectedChildCategory}
+                  onChange={(e) => {
+                    setSelectedChildCategory(e.target.value);
+                    setSearchKeyword('');
+                  }}
+                  className="appearance-none pl-4 pr-10 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white cursor-pointer"
+                >
+                  <option value="">全部二级分类</option>
+                  {categoryTree
+                    .find(node => node.name === selectedParentCategory)
+                    ?.children.map(child => (
+                      <option key={child} value={child}>
+                        {child}
+                      </option>
+                    ))}
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -632,10 +700,7 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                           className="flex items-center gap-2 group/category"
                         >
                           {kb.category ? (
-                              <span
-                                  className="px-2 py-1 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded text-sm">
-                              {kb.category}
-                            </span>
+                            <CategoryBadge category={kb.category} />
                           ) : (
                               <span className="text-slate-400 dark:text-slate-500 text-sm">未分类</span>
                           )}

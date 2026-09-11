@@ -44,10 +44,17 @@ public interface KnowledgeBaseRepository extends JpaRepository<KnowledgeBaseEnti
     List<KnowledgeBaseEntity> findAllByOrderByUploadedAtDesc();
 
     /**
-     * 获取所有不同的分类
+     * 获取所有不同的分类（category 约定为 "一级/二级"，斜杠分隔，最多两级）
      */
     @Query("SELECT DISTINCT k.category FROM KnowledgeBaseEntity k WHERE k.category IS NOT NULL ORDER BY k.category")
     List<String> findAllCategories();
+
+    /**
+     * 获取指定一级分类下的全部二级分类（用于管理页级联筛选）
+     */
+    @Query("SELECT DISTINCT k.category FROM KnowledgeBaseEntity k "
+        + "WHERE k.category IS NOT NULL AND k.category LIKE concat(:prefix, '%') ORDER BY k.category")
+    List<String> findSubCategoriesByParent(@Param("prefix") String prefix);
 
     /**
      * 根据分类查找知识库

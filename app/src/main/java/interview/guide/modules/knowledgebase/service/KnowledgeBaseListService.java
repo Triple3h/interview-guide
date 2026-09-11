@@ -4,6 +4,7 @@ import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.infrastructure.file.FileStorageService;
 import interview.guide.infrastructure.mapper.KnowledgeBaseMapper;
+import interview.guide.modules.knowledgebase.model.CategoryTreeNode;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseListItemDTO;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseStatsDTO;
@@ -16,7 +17,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -106,6 +110,27 @@ public class KnowledgeBaseListService {
      */
     public List<String> getAllCategories() {
         return knowledgeBaseRepository.findAllCategories();
+    }
+
+    /**
+     * 获取分类树（一级分类 + 其下二级分类）
+     * category 约定为 "一级/二级"（斜杠分隔，最多两级），没有斜杠的一级分类 children 为空
+     */
+    public List<CategoryTreeNode> getCategoryTree() {
+        Map<String, List<String>> childrenByParent = new LinkedHashMap<>();
+        for (String category : knowledgeBaseRepository.findAllCategories()) {
+            int slash = category.indexOf('/');
+            if (slash > 0) {
+                String parent = category.substring(0, slash);
+                String child = category.substring(slash + 1);
+                childrenByParent.computeIfAbsent(parent, k -> new ArrayList<>()).add(child);
+            } else {
+                childrenByParent.computeIfAbsent(category, k -> new ArrayList<>());
+            }
+        }
+        return childrenByParent.entrySet().stream()
+            .map(entry -> new CategoryTreeNode(entry.getKey(), entry.getValue()))
+            .toList();
     }
 
     /**

@@ -3,6 +3,7 @@ package interview.guide.modules.knowledgebase;
 import interview.guide.common.annotation.RateLimit;
 import interview.guide.common.result.Result;
 import interview.guide.modules.knowledgebase.model.BatchUpdateKnowledgeBaseCategoryRequest;
+import interview.guide.modules.knowledgebase.model.CategoryTreeNode;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseListItemDTO;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseStatsDTO;
 import interview.guide.modules.knowledgebase.model.QueryRequest;
@@ -118,6 +119,14 @@ public class KnowledgeBaseController {
     @GetMapping("/api/knowledgebase/categories")
     public Result<List<String>> getAllCategories() {
         return Result.success(listService.getAllCategories());
+    }
+
+    /**
+     * 获取分类树（一级分类 + 其下二级分类，用于管理页级联筛选）
+     */
+    @GetMapping("/api/knowledgebase/category-tree")
+    public Result<List<CategoryTreeNode>> getCategoryTree() {
+        return Result.success(listService.getCategoryTree());
     }
 
     /**

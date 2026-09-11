@@ -35,6 +35,12 @@ export interface KnowledgeBaseStats {
 
 export type SortOption = 'time' | 'size' | 'access' | 'question';
 
+// 分类树节点：一级分类 + 其下二级分类（category 约定为 "一级/二级"，斜杠分隔，最多两级）
+export interface CategoryTreeNode {
+  name: string;
+  children: string[];
+}
+
 export interface UploadKnowledgeBaseResponse {
   knowledgeBase: {
     id: number;
@@ -387,6 +393,13 @@ export const knowledgeBaseApi = {
    */
   async getAllCategories(): Promise<string[]> {
     return request.get<string[]>('/api/knowledgebase/categories');
+  },
+
+  /**
+   * 获取分类树（一级分类 + 其下二级分类，用于管理页级联筛选）
+   */
+  async getCategoryTree(): Promise<CategoryTreeNode[]> {
+    return request.get<CategoryTreeNode[]>('/api/knowledgebase/category-tree');
   },
 
   /**
