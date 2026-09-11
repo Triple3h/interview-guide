@@ -6,23 +6,34 @@ import {
   deriveCategoryFromPath,
   extractFilesFromDataTransfer,
   getFileExtension,
+  getUploadRetryDelay,
+  getUploadThrottleWait,
+  isRateLimitError,
   removeQueueItems,
   summarizeQueue,
   validateBatchFile,
   KB_MAX_FILE_SIZE,
+  KB_UPLOAD_MIN_INTERVAL_MS,
+  KB_UPLOAD_RETRY_DELAYS_MS,
 } from './knowledgeBaseBatchUpload.ts';
 
 function makeFile(name: string, size = 1024): File {
   return { name, size } as File;
 }
 
-test('deriveCategoryFromPath：取第一级子文件夹名作为分类', () => {
-  assert.equal(deriveCategoryFromPath('题库/MySQL 实战/1.pdf'), 'MySQL 实战');
-  assert.equal(deriveCategoryFromPath('题库/Redis/a/b.pdf'), 'Redis');
+test('deriveCategoryFromPath：所选文件夹名即第一级，子文件夹为第二级', () => {
+  assert.equal(deriveCategoryFromPath('题库/MySQL 实战/1.pdf'), '题库/MySQL 实战');
+  assert.equal(deriveCategoryFromPath('题库/Redis/a/b.pdf'), '题库/Redis');
+  assert.equal(deriveCategoryFromPath('AI/agent/agent-basis.md'), 'AI/agent');
 });
 
-test('deriveCategoryFromPath：根目录文件返回 null', () => {
-  assert.equal(deriveCategoryFromPath('题库/1.pdf'), null);
+test('deriveCategoryFromPath：所选文件夹根目录下的文件只取一级', () => {
+  assert.equal(deriveCategoryFromPath('题库/1.pdf'), '题库');
+  assert.equal(deriveCategoryFromPath('ai/ai-core-concepts.md'), 'ai');
+});
+
+test('deriveCategoryFromPath：无目录（仅文件名）返回 null', () => {
+  assert.equal(deriveCategoryFromPath('1.pdf'), null);
   assert.equal(deriveCategoryFromPath(null), null);
   assert.equal(deriveCategoryFromPath(''), null);
 });
@@ -55,14 +66,17 @@ test('validateBatchFile：空文件拒绝', () => {
 test('buildBatchQueue：推导分类并标记不合法文件', () => {
   const queue = buildBatchQueue([
     { file: makeFile('a.pdf'), relativePath: '题库/MySQL/a.pdf' },
-    { file: makeFile('b.zip'), relativePath: null },
+    { file: makeFile('b.pdf'), relativePath: '题库/Redis/基础/b.pdf' },
+    { file: makeFile('c.zip'), relativePath: null },
   ]);
 
-  assert.equal(queue.length, 2);
+  assert.equal(queue.length, 3);
   assert.equal(queue[0].status, 'waiting');
-  assert.equal(queue[0].category, 'MySQL');
-  assert.equal(queue[1].status, 'invalid');
-  assert.ok(queue[1].error?.includes('不支持的文件类型'));
+  assert.equal(queue[0].category, '题库/MySQL');
+  assert.equal(queue[1].status, 'waiting');
+  assert.equal(queue[1].category, '题库/Redis');
+  assert.equal(queue[2].status, 'invalid');
+  assert.ok(queue[2].error?.includes('不支持的文件类型'));
 });
 
 test('buildBatchQueue：同名同大小的文件批内去重', () => {
@@ -146,4 +160,28 @@ test('extractFilesFromDataTransfer：兼容仅有 files 的 DataTransfer', () =>
   assert.equal(files.length, 1);
   assert.equal(files[0].file.name, 'a.pdf');
   assert.equal(files[0].relativePath, null);
+});
+
+test('isRateLimitError：识别服务端限流文案，不误伤普通错误', () => {
+  assert.equal(isRateLimitError(new Error('请求过于频繁，请稍后再试')), true);
+  assert.equal(isRateLimitError('请求过于频繁'), true);
+  assert.equal(isRateLimitError(new Error('不支持的文件类型 .zip')), false);
+  assert.equal(isRateLimitError(new Error('上传失败，可能是网络超时或连接中断，请重试')), false);
+  assert.equal(isRateLimitError(null), false);
+  assert.equal(isRateLimitError(undefined), false);
+});
+
+test('getUploadRetryDelay：退避等待递增，序列耗尽返回 null', () => {
+  assert.equal(getUploadRetryDelay(0), KB_UPLOAD_RETRY_DELAYS_MS[0]);
+  assert.equal(getUploadRetryDelay(1), KB_UPLOAD_RETRY_DELAYS_MS[1]);
+  assert.ok(getUploadRetryDelay(1)! > getUploadRetryDelay(0)!);
+  assert.equal(getUploadRetryDelay(KB_UPLOAD_RETRY_DELAYS_MS.length), null);
+  assert.equal(getUploadRetryDelay(-1), null);
+});
+
+test('getUploadThrottleWait：两次请求之间补足最小间隔', () => {
+  assert.equal(getUploadThrottleWait(0, 10_000), 0);
+  assert.equal(getUploadThrottleWait(10_000, 10_000), KB_UPLOAD_MIN_INTERVAL_MS);
+  assert.equal(getUploadThrottleWait(10_000, 10_000 + KB_UPLOAD_MIN_INTERVAL_MS), 0);
+  assert.equal(getUploadThrottleWait(10_000, 10_000 + KB_UPLOAD_MIN_INTERVAL_MS - 50), 50);
 });

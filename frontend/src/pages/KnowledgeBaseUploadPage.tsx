@@ -18,12 +18,16 @@ import {
 import {
   knowledgeBaseApi,
   type CreateKbBatchResponse,
+  type KbBatchFileUploadResult,
 } from '../api/knowledgebase';
 import { getErrorMessage } from '../api/request';
 import {
   buildBatchQueue,
   collectQueueKeys,
   extractFilesFromDataTransfer,
+  getUploadRetryDelay,
+  getUploadThrottleWait,
+  isRateLimitError,
   removeQueueItems,
   summarizeQueue,
   type BatchFileInput,
@@ -42,6 +46,12 @@ function formatFileSize(bytes: number): string {
   const sizes = ['B', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => {
+    window.setTimeout(resolve, ms);
+  });
 }
 
 const STATUS_META: Record<BatchQueueItemStatus, { label: string; className: string }> = {
@@ -73,12 +83,15 @@ export default function KnowledgeBaseUploadPage({ onBack, onViewProgress }: Know
   const [singleName, setSingleName] = useState('');
   const [categories, setCategories] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
   const [batch, setBatch] = useState<CreateKbBatchResponse | null>(null);
   const [startError, setStartError] = useState('');
   const [dragOver, setDragOver] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
+  // 上一次上传请求的发起时间，用于两次请求之间的节流
+  const lastRequestAtRef = useRef(0);
 
   useEffect(() => {
     knowledgeBaseApi
@@ -127,26 +140,53 @@ export default function KnowledgeBaseUploadPage({ onBack, onViewProgress }: Know
     }
   };
 
-  // 逐个串行上传，避免瞬时并发压垮服务端
+  // 单文件上传：请求之间保持节流，命中服务端限流时退避后自动重试
+  const uploadOneFile = async (
+    batchId: number,
+    item: BatchQueueItem,
+    nameOverride?: string
+  ): Promise<KbBatchFileUploadResult> => {
+    for (let attempt = 0; ; attempt++) {
+      const wait = getUploadThrottleWait(lastRequestAtRef.current, Date.now());
+      if (wait > 0) await sleep(wait);
+      lastRequestAtRef.current = Date.now();
+      try {
+        return await knowledgeBaseApi.uploadBatchFile(batchId, item.file, {
+          category: item.category ?? defaultCategory.trim() ?? undefined,
+          relativePath: item.relativePath ?? undefined,
+          name: nameOverride,
+        });
+      } catch (err) {
+        const retryDelay = isRateLimitError(err) ? getUploadRetryDelay(attempt) : null;
+        if (retryDelay === null) throw err;
+        setQueue(prev =>
+          prev.map(q =>
+            q.id === item.id ? { ...q, error: `请求过于频繁，${retryDelay / 1000} 秒后自动重试…` } : q
+          )
+        );
+        await sleep(retryDelay);
+      }
+    }
+  };
+
+  // 严格串行上传：上一个文件结束（成功或失败）后才发起下一个，两次请求之间保持最小间隔
   const handleStartUpload = async () => {
     const pending = queue.filter(item => item.status === 'waiting');
     if (pending.length === 0 || uploading) return;
 
     setUploading(true);
     setStartError('');
+    setUploadProgress({ done: 0, total: pending.length });
     try {
       const created = await knowledgeBaseApi.createUploadBatch();
       setBatch(created);
 
-      const isSingleFile = queue.length === 1;
-      for (const item of pending) {
-        setQueue(prev => prev.map(q => (q.id === item.id ? { ...q, status: 'uploading' } : q)));
+      const nameOverride = queue.length === 1 && singleName.trim() ? singleName.trim() : undefined;
+
+      for (const [index, item] of pending.entries()) {
+        setQueue(prev => prev.map(q => (q.id === item.id ? { ...q, status: 'uploading', error: null } : q)));
         try {
-          const result = await knowledgeBaseApi.uploadBatchFile(created.batchId, item.file, {
-            category: item.category ?? defaultCategory.trim() ?? undefined,
-            relativePath: item.relativePath ?? undefined,
-            name: isSingleFile && singleName.trim() ? singleName.trim() : undefined,
-          });
+          const result = await uploadOneFile(created.batchId, item, nameOverride);
           setQueue(prev =>
             prev.map(q =>
               q.id === item.id ? { ...q, status: result.duplicate ? 'duplicate' : 'queued', error: null } : q
@@ -157,6 +197,7 @@ export default function KnowledgeBaseUploadPage({ onBack, onViewProgress }: Know
             prev.map(q => (q.id === item.id ? { ...q, status: 'failed', error: getErrorMessage(err) } : q))
           );
         }
+        setUploadProgress({ done: index + 1, total: pending.length });
       }
     } catch (err) {
       setStartError(getErrorMessage(err));
@@ -224,7 +265,7 @@ export default function KnowledgeBaseUploadPage({ onBack, onViewProgress }: Know
         <FileText className="w-12 h-12 text-slate-300 dark:text-slate-500 mx-auto mb-4" />
         <p className="text-slate-600 dark:text-slate-300 mb-1">拖拽文件到此处，或使用下方按钮选择</p>
         <p className="text-xs text-slate-400 dark:text-slate-500 mb-5">
-          支持 PDF、DOCX、DOC、TXT、MD，单个文件最大 50MB；选择文件夹时将按第一级子文件夹自动分类
+          支持 PDF、DOCX、DOC、TXT、MD，单个文件最大 50MB；选择文件夹时将按子文件夹层级自动分类（一级 / 二级）
         </p>
         <div className="flex items-center justify-center gap-3">
           <button
@@ -352,7 +393,7 @@ export default function KnowledgeBaseUploadPage({ onBack, onViewProgress }: Know
                 </span>
                 {item.category && (
                   <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded text-xs whitespace-nowrap">
-                    {item.category}
+                    {item.category.replace('/', ' / ')}
                   </span>
                 )}
                 <StatusBadge status={item.status} />
@@ -385,7 +426,7 @@ export default function KnowledgeBaseUploadPage({ onBack, onViewProgress }: Know
           {uploading ? (
             <span className="flex items-center gap-2">
               <Loader2 className="w-4 h-4 animate-spin text-primary-500" />
-              正在上传，请勿关闭页面…
+              正在逐个上传（{uploadProgress.done}/{uploadProgress.total}），请勿关闭页面…
             </span>
           ) : (
             summary.finished && (

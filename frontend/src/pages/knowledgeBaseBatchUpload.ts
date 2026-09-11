@@ -28,12 +28,16 @@ export interface BatchQueueItem {
   error: string | null;
 }
 
-// 从 webkitRelativePath 推导分类：路径为"所选文件夹/子文件夹/文件名"时取子文件夹名，
-// 根目录文件（"所选文件夹/文件名"）返回 null，交由默认分类兜底
+// 从 webkitRelativePath 推导分类：所选文件夹名即第一级分类，其下子文件夹为第二级，
+// 拼成 "一级/二级"（如 ai/agent）。所选文件夹根目录下的文件只取一级（如 ai），
+// 仅含文件名的路径（无目录）返回 null，交由默认分类兜底
 export function deriveCategoryFromPath(relativePath: string | null | undefined): string | null {
   if (!relativePath) return null;
   const segments = relativePath.split('/').filter(Boolean);
-  return segments.length >= 3 ? segments[1] : null;
+  // segments[0] 是所选文件夹名（第一级分类），segments[1] 是第二级，最后一段是文件名
+  if (segments.length <= 1) return null;
+  if (segments.length === 2) return segments[0];
+  return `${segments[0]}/${segments[1]}`;
 }
 
 export function getFileExtension(fileName: string): string {
@@ -156,6 +160,34 @@ export function summarizeQueue(items: BatchQueueItem[]): BatchQueueSummary {
     invalid,
     finished: items.length > 0 && waiting === 0 && uploading === 0,
   };
+}
+
+// ========== 上传节流与限流退避 ==========
+
+// 服务端批次上传接口按 IP 限流 10 次/秒（KnowledgeBaseBatchController），
+// 两次请求至少间隔 250ms，保证串行上传稳定留在阈值内
+export const KB_UPLOAD_MIN_INTERVAL_MS = 250;
+
+// 命中限流后的退避等待序列（毫秒），序列耗尽仍失败才标记为上传失败
+export const KB_UPLOAD_RETRY_DELAYS_MS: readonly number[] = [1000, 2500, 5000];
+
+// 服务端限流文案（RateLimitAspect 固定抛出「请求过于频繁，请稍后再试」）
+export const KB_UPLOAD_RATE_LIMIT_HINT = '请求过于频繁';
+
+export function isRateLimitError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : typeof error === 'string' ? error : '';
+  return message.includes(KB_UPLOAD_RATE_LIMIT_HINT);
+}
+
+// 第 attempt 次重试（从 0 开始）前的等待时长；返回 null 表示重试次数已耗尽
+export function getUploadRetryDelay(attempt: number): number | null {
+  if (attempt < 0 || attempt >= KB_UPLOAD_RETRY_DELAYS_MS.length) return null;
+  return KB_UPLOAD_RETRY_DELAYS_MS[attempt];
+}
+
+// 距上次上传发起不足最小间隔时，返回需要补等的毫秒数（0 表示可立即发起）
+export function getUploadThrottleWait(lastRequestAt: number, now: number): number {
+  return Math.max(0, KB_UPLOAD_MIN_INTERVAL_MS - (now - lastRequestAt));
 }
 
 // 提取 DataTransfer 中的文件（文件夹拖拽暂不支持，返回是否检测到文件夹）
