@@ -1,9 +1,11 @@
 import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
-import { CURRENT_USER_STORAGE_KEY } from '../utils/currentUser';
+import { clearStoredToken, getAuthHeaderForUrl, isAdminApiUrl } from '../auth/tokenStore';
 
 declare module 'axios' {
   interface AxiosRequestConfig {
     skipResultTransform?: boolean;
+    /** 登录态失效时不自动跳登录页（登录接口、启动时的 /api/auth/me 探测等自行处理） */
+    skipAuthRedirect?: boolean;
   }
 }
 
@@ -17,6 +19,7 @@ export interface Result<T = unknown> {
 }
 
 const SUCCESS_CODE = 200;
+const UNAUTHORIZED_CODE = 401;
 const RESULT_BLOB_PARSE_LIMIT = 64 * 1024;
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
@@ -26,21 +29,32 @@ const instance: AxiosInstance = axios.create({
   timeout: 60000,
 });
 
-// 极简选人模式：所有请求携带当前学习成员标识
+/**
+ * 登录态注入：/api/admin/** 携带管理端 token，其余携带学员 token
+ * （请求头名由后端登录响应回传，默认 sa-token）
+ */
 instance.interceptors.request.use((config) => {
-  const raw = localStorage.getItem(CURRENT_USER_STORAGE_KEY);
-  if (raw) {
-    try {
-      const stored = JSON.parse(raw) as { id?: number };
-      if (typeof stored.id === 'number') {
-        config.headers['X-User-Id'] = String(stored.id);
-      }
-    } catch {
-      // 忽略损坏的本地数据，由后端提示重新选人
-    }
-  }
+  Object.assign(config.headers, getAuthHeaderForUrl(config.url));
   return config;
 });
+
+/**
+ * 登录态失效：清理对应体系的本地 token 并跳转登录页（带 redirect 回跳）
+ */
+function handleUnauthorized(url?: string): void {
+  const adminRequest = isAdminApiUrl(url);
+  clearStoredToken(adminRequest ? 'admin' : 'student');
+
+  if (typeof window === 'undefined') {
+    return;
+  }
+  const loginPath = adminRequest ? '/admin/login' : '/login';
+  if (window.location.pathname === loginPath) {
+    return;
+  }
+  const current = `${window.location.pathname}${window.location.search}`;
+  window.location.replace(`${loginPath}?redirect=${encodeURIComponent(current)}`);
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
@@ -142,6 +156,10 @@ instance.interceptors.response.use(
         response.data = result.data;
         return response;
       }
+      // 登录态失效：清 token 并跳转对应登录页（登录接口等已显式跳过）
+      if (result.code === UNAUTHORIZED_CODE && !response.config.skipAuthRedirect) {
+        handleUnauthorized(response.config.url);
+      }
       // 失败：直接抛出 message
       return Promise.reject(new Error(result.message || '请求失败'));
     }
@@ -152,7 +170,12 @@ instance.interceptors.response.use(
   async (error) => {
     // 有响应的情况：后端返回了结果（即使是错误）
     if (error.response) {
-      const { data } = error.response;
+      const { data, status } = error.response;
+      // 网关/容器层直接返回 401（非 Result 约定）时同样跳登录页
+      if (status === 401 && !error.config?.skipAuthRedirect) {
+        handleUnauthorized(error.config?.url);
+        return Promise.reject(new Error('登录状态已失效，请重新登录'));
+      }
       // 尝试解析 Result 格式
       const responseError = await getErrorFromResponseData(data);
       if (responseError) {

@@ -236,6 +236,7 @@ GET    /api/voice-interview/sessions/{id}/evaluation # 获取评估报告
 #### VoiceInterviewSessionEntity
 ```java
 - id: Long                    # 会话ID
+- userId: Long                # 归属用户（app_users.id；V20260914 由 VARCHAR 归一为 BIGINT）
 - roleType: String            # 角色类型（ali-p8/byteance-algo/tencent-backend）
 - resumeId: Long              # 关联简历ID
 - currentPhase: InterviewPhase # 当前阶段（INTRO/TECH/PROJECT/HR/COMPLETED）
@@ -365,9 +366,17 @@ WebSocket消息 → Service → 状态变更 → WebSocket通知
 
 ### 安全措施
 1. **API密钥保护**: 环境变量存储，不提交代码
-2. **会话隔离**: 每个用户独立会话
+2. **会话隔离**: 会话按 `user_id` 归属；REST 接口逐个校验归属（越权按 404 处理），列表查询直接按 `user_id` 过滤
 3. **输入验证**: DTO校验，防止注入
 4. **异常处理**: 统一异常处理，敏感信息不泄露
+5. **WebSocket 握手鉴权**: `/ws/**` 不走 MVC 拦截器，由 `VoiceInterviewHandshakeInterceptor` 处理——token 通过查询参数传递（浏览器 WS 无法自定义请求头）：
+
+   ```
+   ws(s)://<host>/ws/voice-interview/{sessionId}?token=<sa-token>
+   ```
+
+   校验通过后把 userId 写入 WebSocketSession attributes，`afterConnectionEstablished` 用它校验会话归属，非本人连接直接以 `POLICY_VIOLATION` 关闭。过渡期（`app.auth.legacy-header-enabled=true`）允许无 token 连接但不做归属校验；关闭开关后无 token/token 无效一律 401。
+   注意：后端不再下发 `webSocketUrl`（原硬编码 `ws://localhost:8080` 已移除）；WS 地址由前端按 `window.location` 拼接（`frontend/src/utils/voiceInterviewWs.ts`，`ws/wss` 自适应、支持 `VITE_WS_BASE_URL` 覆盖）并附 `?token=`，nginx / Vite 均需代理 `/ws`。
 
 ### 性能优化
 1. **Redis缓存**: 活跃会话缓存，减少DB查询

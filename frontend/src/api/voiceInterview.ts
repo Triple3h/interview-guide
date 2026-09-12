@@ -23,7 +23,6 @@ export interface SessionResponse {
   status: string;
   startTime: string;
   plannedDuration: number;
-  webSocketUrl: string;
 }
 
 export interface InterviewMessage {

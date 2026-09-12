@@ -1,5 +1,7 @@
 export interface UserProfile {
   id: number;
+  /** 登录账号（/api/auth/me 返回；后台建号时分配） */
+  username?: string | null;
   nickname: string;
   avatarEmoji: string | null;
   occupation: string | null;

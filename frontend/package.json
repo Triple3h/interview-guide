@@ -8,11 +8,13 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test:e2e": "playwright test",
-    "test:interview-history": "node --test src/pages/interviewHistoryStats.test.ts",
-    "test:question-generation": "node --test src/pages/questionGenerationStatus.test.ts",
+    "test:auth-token": "node --test src/auth/tokenStore.test.ts",
+    "test:voice-ws": "node --test src/utils/voiceInterviewWs.test.ts",
+    "test:interview-history": "node --test src/pages/student/interviewHistoryStats.test.ts",
+    "test:question-generation": "node --test src/pages/student/questionGenerationStatus.test.ts",
     "test:interview-capacity": "node --test src/components/knowledgebaseInterview/interviewCapacity.test.ts",
-    "test:interview-entry": "node --test src/pages/interviewEntry.test.ts",
-    "test:kb-batch-upload": "node --test src/pages/knowledgeBaseBatchUpload.test.ts",
+    "test:interview-entry": "node --test src/pages/student/interviewEntry.test.ts",
+    "test:kb-batch-upload": "node --test src/pages/student/knowledgeBaseBatchUpload.test.ts",
     "test:question-generation-queue": "node --test src/components/knowledgebaseInterview/questionGenerationQueue.test.ts"
   },
   "dependencies": {

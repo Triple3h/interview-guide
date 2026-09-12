@@ -8,7 +8,10 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 /**
- * Session response with WebSocket URL
+ * 语音面试会话响应
+ *
+ * <p>WebSocket 地址由前端按当前站点地址拼装并附登录 token（浏览器 WS 无法自定义请求头），
+ * 服务端不再下发 URL。</p>
  */
 @Data
 @Builder
@@ -21,5 +24,4 @@ public class SessionResponseDTO {
     private String status;
     private LocalDateTime startTime;
     private Integer plannedDuration;
-    private String webSocketUrl;
 }

@@ -1,4 +1,5 @@
 import { API_BASE_URL, getErrorMessage, getResultError, parseResultPayload } from './request';
+import { getAuthHeaderForUrl } from '../auth/tokenStore';
 
 type SseParseMode = 'line' | 'event';
 
@@ -268,9 +269,20 @@ async function readStream(response: Response, options: StreamSseOptions): Promis
   }
 }
 
+/** fetch 流同样需要登录态（SSE 走学员体系），未显式指定的头由 tokenStore 补齐 */
+function withAuthHeaders(url: string, init: RequestInit): RequestInit {
+  const headers = new Headers(init.headers);
+  for (const [name, value] of Object.entries(getAuthHeaderForUrl(url))) {
+    if (!headers.has(name)) {
+      headers.set(name, value);
+    }
+  }
+  return { ...init, headers };
+}
+
 export async function streamSse(options: StreamSseOptions): Promise<void> {
   try {
-    const response = await fetch(toApiUrl(options.url), options.init);
+    const response = await fetch(toApiUrl(options.url), withAuthHeaders(options.url, options.init));
     await assertStreamResponse(response);
     await readStream(response, options);
     options.onComplete();

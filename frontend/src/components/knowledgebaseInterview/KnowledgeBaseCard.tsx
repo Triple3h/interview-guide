@@ -12,7 +12,7 @@ import {
   type KnowledgeBaseItem,
   type KnowledgeBaseQuestion,
 } from '../../api/knowledgebase';
-import { isQuestionGenerationActive } from '../../pages/questionGenerationStatus';
+import { isQuestionGenerationActive } from '../../pages/student/questionGenerationStatus';
 
 interface KbStats {
   total: number;

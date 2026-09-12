@@ -1,6 +1,5 @@
 import { request } from './request';
 import { streamSse } from './stream';
-import { CURRENT_USER_STORAGE_KEY } from '../utils/currentUser';
 import type { RagChatSession, RagChatSessionDetail } from './ragChat';
 import type { AgentStep, AskLearnerPayload } from '../types/learning';
 
@@ -47,17 +46,6 @@ export const learningAgentApi = {
     handlers: AgentStreamHandlers
   ): Promise<void> {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    const raw = localStorage.getItem(CURRENT_USER_STORAGE_KEY);
-    if (raw) {
-      try {
-        const stored = JSON.parse(raw) as { id?: number };
-        if (typeof stored.id === 'number') {
-          headers['X-User-Id'] = String(stored.id);
-        }
-      } catch {
-        // 未选人时后端会返回统一错误
-      }
-    }
 
     return streamSse({
       url: `/api/learning/sessions/${sessionId}/stream`,

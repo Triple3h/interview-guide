@@ -33,6 +33,12 @@ export default defineConfig(({ mode }) => {
           target: apiProxyTarget,
           changeOrigin: true,
         },
+        // 语音面试 WebSocket（dev 下与 nginx 生产代理保持一致）
+        '/ws': {
+          target: apiProxyTarget,
+          changeOrigin: true,
+          ws: true,
+        },
       },
       // 忽略 @ricky0123/vad-web 的 sourcemap 警告
       sourcemapIgnoreList: (relativeSourcePath) => {
