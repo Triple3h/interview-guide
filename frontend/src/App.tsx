@@ -8,6 +8,7 @@ import { Loader2 } from 'lucide-react';
 import { ROUTE_PATTERNS, ROUTES } from './constants/routes';
 import { uuid } from './utils/uuid';
 import UserGate from './components/UserGate';
+import { useIsMobile } from './hooks/useIsMobile';
 
 // Lazy load components
 const UploadPage = lazy(() => import('./pages/UploadPage'));
@@ -189,6 +190,12 @@ function InterviewWrapper() {
   );
 }
 
+// 落地分流：桌面端进简历库，移动端直接进面试中心（简历管理是 PC 专属页）
+function IndexRedirect() {
+  const isMobile = useIsMobile();
+  return <Navigate to={isMobile ? '/interview-hub' : '/history'} replace />;
+}
+
 function App() {
   return (
     <BrowserRouter>
@@ -196,8 +203,8 @@ function App() {
       <Suspense fallback={<Loading />}>
         <Routes>
           <Route path="/" element={<Layout />}>
-            {/* 默认重定向到简历管理页面 */}
-            <Route index element={<Navigate to="/history" replace />} />
+            {/* 默认重定向：桌面端进简历管理，移动端进面试中心 */}
+            <Route index element={<IndexRedirect />} />
 
             {/* 上传页面 */}
             <Route path="upload" element={<UploadPageWrapper />} />

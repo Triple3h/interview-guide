@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useOutletContext } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   ChevronDown, ChevronUp, FileStack, FileText, Loader2, Mic,
@@ -21,6 +21,7 @@ import {
   DIFFICULTY_OPTIONS,
 } from '../hooks/useInterviewConfig';
 import {ROUTES} from '../constants/routes';
+import {useMobileTopBarAction} from '../hooks/useMobileTopBarAction';
 
 // 统一的面试记录项
 interface RecentInterviewItem {
@@ -36,8 +37,12 @@ interface RecentInterviewItem {
 
 export default function InterviewHubPage() {
   const navigate = useNavigate();
+  const { openInterviewModal } = useOutletContext<{ openInterviewModal: () => void }>();
 
   const config = useInterviewConfig({ autoLoad: false });
+
+  // 移动端顶栏「+」：开始新面试（复用 Layout 的统一面试配置弹窗）
+  useMobileTopBarAction('开始新面试', openInterviewModal);
 
   // === 最近面试记录 ===
   const [recentInterviews, setRecentInterviews] = useState<RecentInterviewItem[]>([]);
@@ -136,23 +141,23 @@ export default function InterviewHubPage() {
   return (
     <div className="max-w-5xl mx-auto">
       {/* 页面标题 */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-3">
-          <Sparkles className="w-7 h-7 text-primary-500" />
+      <div className="mb-4 md:mb-8">
+        <h1 className="flex text-xl md:text-2xl font-bold text-slate-800 dark:text-white items-center gap-2 md:gap-3">
+          <Sparkles className="w-6 h-6 md:w-7 md:h-7 text-primary-500" />
           模拟面试
         </h1>
-        <p className="text-slate-500 dark:text-slate-400 mt-1">选择面试模式和方向，快速开始练习</p>
+        <p className="hidden md:block text-sm md:text-base text-slate-500 dark:text-slate-400 mt-1">选择面试模式和方向，快速开始练习</p>
       </div>
 
       {/* 配置区域 */}
-      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 p-6 mb-8">
-        <div className="space-y-6">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 p-4 md:p-6 mb-6 md:mb-8">
+        <div className="space-y-4 md:space-y-6">
           {/* 面试模式 */}
           <div>
-            <label className="flex items-center gap-2 mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
+            <label className="flex items-center gap-2 mb-2 md:mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
               面试模式
             </label>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {([
                 {
                   value: 'text' as InterviewMode,
@@ -201,7 +206,7 @@ export default function InterviewHubPage() {
 
           {/* 面试方向 */}
           <div>
-            <label className="flex items-center gap-2 mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
+            <label className="flex items-center gap-2 mb-2 md:mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
               面试方向
             </label>
             {config.loadingSkills ? (
@@ -323,7 +328,7 @@ export default function InterviewHubPage() {
 
           {/* 难度 */}
           <div>
-            <label className="flex items-center gap-2 mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
+            <label className="flex items-center gap-2 mb-2 md:mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
               难度
             </label>
             <div className="grid grid-cols-3 gap-3">
@@ -333,7 +338,7 @@ export default function InterviewHubPage() {
                   <button
                     key={opt.value}
                     onClick={() => config.setDifficulty(opt.value)}
-                    className={`py-3 px-4 rounded-xl border-2 transition-all duration-200 text-center
+                    className={`py-2.5 px-2 md:py-3 md:px-4 rounded-xl border-2 transition-all duration-200 text-center
                       ${selected
                         ? 'border-primary-500 bg-primary-50/80 dark:bg-primary-900/20'
                         : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600'
@@ -390,7 +395,7 @@ export default function InterviewHubPage() {
                 {/* 文字面试 - 题目数 */}
                 {config.mode === 'text' && (
                   <div>
-                    <label className="flex items-center gap-2 mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    <label className="flex items-center gap-2 mb-2 md:mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
                       题目数量
                     </label>
                     <div className="flex gap-2">
@@ -442,7 +447,7 @@ export default function InterviewHubPage() {
         </div>
 
         {/* 开始面试按钮 */}
-        <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-700">
+        <div className="mt-4 pt-4 md:mt-6 md:pt-6 border-t border-slate-100 dark:border-slate-700">
           <motion.button
             onClick={handleStart}
             whileHover={{ scale: 1.01 }}
@@ -458,9 +463,9 @@ export default function InterviewHubPage() {
       </div>
 
       {/* 最近面试记录 */}
-      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 p-6">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 p-4 md:p-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold text-slate-800 dark:text-white">最近面试记录</h2>
+          <h2 className="text-base md:text-lg font-bold text-slate-800 dark:text-white">最近面试记录</h2>
           <Link
             to="/interviews"
             className="text-sm text-primary-500 hover:text-primary-600 font-medium transition-colors"
@@ -495,7 +500,7 @@ export default function InterviewHubPage() {
                       navigate(`/voice-interview/${item.voiceSessionId}/evaluation`);
                     }
                   }}
-                  className="flex items-center gap-4 p-4 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors cursor-pointer group"
+                  className="flex items-center gap-3 md:gap-4 p-3 md:p-4 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors cursor-pointer group"
                 >
                   {/* 类型图标 */}
                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${

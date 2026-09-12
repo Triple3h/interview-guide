@@ -15,14 +15,20 @@ import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
 import CodeBlock from '../components/CodeBlock';
 import UserMenu from '../components/UserMenu';
 import {groupInvocations, ReasoningBlock, ToolCallBlock} from '../components/learning/AgentBlocks';
+import {useMobileTopBarAction} from '../hooks/useMobileTopBarAction';
 import {
+  ArrowLeft,
+  CalendarCheck,
   Check,
   CircleHelp,
   Edit,
+  History,
   MessageSquare,
+  NotebookPen,
   Pin,
   Plus,
   Trash2,
+  Upload,
 } from 'lucide-react';
 
 interface LearningAgentPageProps {
@@ -122,6 +128,8 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
   const [sessionDeleteConfirm, setSessionDeleteConfirm] = useState<{ id: number; title: string } | null>(null);
   const [editingSessionTitle, setEditingSessionTitle] = useState<{ id: number; title: string } | null>(null);
   const [newSessionTitle, setNewSessionTitle] = useState('');
+  /** 移动端：对话历史抽屉是否展开 */
+  const [mobileSessionsOpen, setMobileSessionsOpen] = useState(false);
 
   // 消息状态
   const [question, setQuestion] = useState('');
@@ -189,7 +197,11 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
     setCurrentSessionId(null);
     setCurrentSessionTitle('');
     setMessages([]);
+    setMobileSessionsOpen(false);
   };
+
+  // 移动端顶栏「+」：新建对话
+  useMobileTopBarAction('新建对话', handleNewSession);
 
   // 切换学习成员（含新建后自动进入）：本地身份先生效（请求层实时读），再按新成员重载本页
   const handleSwitchMember = (user: UserProfile) => {
@@ -200,6 +212,7 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
   };
 
   const handleLoadSession = async (sessionId: number) => {
+    setMobileSessionsOpen(false);
     try {
       const detail = await ragChatApi.getSessionDetail(sessionId);
       setCurrentSessionId(detail.id);
@@ -659,55 +672,54 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
     );
   };
 
+  // 页头操作入口：桌面端在页面标题行（带文字），手机端并入会话头部一行（纯图标）
+  const headerActions = [
+    {key: 'plan', title: '学习计划', icon: CalendarCheck, onClick: () => navigate('/learning/plan')},
+    {key: 'records', title: '学习台账', icon: NotebookPen, onClick: () => navigate('/learning/records')},
+    {key: 'upload', title: '上传知识库', icon: Upload, onClick: onUpload},
+    {key: 'back', title: '返回', icon: ArrowLeft, onClick: onBack},
+  ];
+
   return (
-    <div className="max-w-7xl mx-auto pt-8 pb-10 px-4">
-      {/* 头部 */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-1">学习帮手</h1>
-          <p className="text-slate-500 dark:text-slate-400 text-sm">
+    <div className="max-w-7xl mx-auto -mx-4 -mb-6 flex flex-col h-[calc(100dvh-3.75rem)] md:mx-auto md:pt-8 md:pb-10 md:px-4 md:mb-0 md:h-auto">
+      {/* 头部：仅桌面端（手机端不放标题，操作入口并入下方会话头部一行） */}
+      <div className="hidden md:flex items-center justify-between gap-2 mb-6 shrink-0">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-1 truncate">学习帮手</h1>
+          <p className="text-base text-slate-500 dark:text-slate-400">
             和 AI 一起学习，自动检索知识库，学过的知识点自动记入台账
           </p>
         </div>
-        <div className="flex gap-3">
-          <motion.button
-            onClick={() => navigate('/learning/plan')}
-            className="px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-all text-sm"
-            whileHover={{scale: 1.02}}
-            whileTap={{scale: 0.98}}
-          >
-            学习计划
-          </motion.button>
-          <motion.button
-            onClick={() => navigate('/learning/records')}
-            className="px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-all text-sm"
-            whileHover={{scale: 1.02}}
-            whileTap={{scale: 0.98}}
-          >
-            学习台账
-          </motion.button>
-          <motion.button
-            onClick={onUpload}
-            className="px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-all text-sm"
-            whileHover={{scale: 1.02}}
-            whileTap={{scale: 0.98}}
-          >
-            上传知识库
-          </motion.button>
-          <motion.button
-            onClick={onBack}
-            className="px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-all text-sm"
-            whileHover={{scale: 1.02}}
-            whileTap={{scale: 0.98}}
-          >
-            返回
-          </motion.button>
+        <div className="flex items-center gap-3 shrink-0">
+          {headerActions.map(({key, title, icon: Icon, onClick}) => (
+            <motion.button
+              key={key}
+              onClick={onClick}
+              className="inline-flex items-center gap-1.5 px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-all text-sm"
+              whileHover={{scale: 1.02}}
+              whileTap={{scale: 0.98}}
+              title={title}
+            >
+              <Icon className="w-4 h-4"/>
+              <span>{title}</span>
+            </motion.button>
+          ))}
         </div>
       </div>
 
-      <div className="flex gap-4 h-[calc(100vh-10rem)]">
-        {/* 左侧：对话历史 */}
-        <div className="w-64 flex-shrink-0">
+      <div className="flex gap-4 flex-1 min-h-0 md:flex-none md:h-[calc(100vh-10rem)]">
+        {/* 左侧：对话历史（桌面常驻；移动端为底部抽屉） */}
+        {mobileSessionsOpen && (
+          <div
+            className="fixed inset-0 z-40 bg-black/40 md:hidden"
+            onClick={() => setMobileSessionsOpen(false)}
+          />
+        )}
+        <div
+          className={`fixed inset-x-0 bottom-0 z-50 h-[70dvh] p-3 transition-transform duration-200 ease-out md:static md:inset-auto md:z-auto md:h-auto md:w-64 md:flex-shrink-0 md:p-0 md:translate-y-0 ${
+            mobileSessionsOpen ? 'translate-y-0' : 'translate-y-full'
+          }`}
+        >
           <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-sm h-full flex flex-col border border-slate-100 dark:border-slate-700">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-base font-semibold text-slate-800 dark:text-white">对话历史</h2>
@@ -758,7 +770,7 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
                             {session.messageCount} 条消息 · {formatTimeAgo(session.updatedAt)}
                           </p>
                         </div>
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                        <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all">
                           <button
                             onClick={(e) => handleTogglePin(session.id, e)}
                             className={`p-1 rounded transition-colors ${session.isPinned
@@ -801,29 +813,69 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
 
         {/* 中间：聊天区域 */}
         <div className="flex-1 min-w-0">
-          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm flex flex-col h-full border border-slate-100 dark:border-slate-700">
+          <div className="bg-white dark:bg-slate-800 md:rounded-2xl md:shadow-sm flex flex-col h-full overscroll-y-contain md:border border-slate-100 dark:border-slate-700">
             {/* 会话头部：学习成员是主体（点开头像出成员菜单），会话标题为附属信息 */}
-            <div className="flex items-center gap-3 p-4 border-b border-slate-200 dark:border-slate-600">
-              <UserMenu
-                current={profile}
-                locked={loading}
-                onSwitch={handleSwitchMember}
-                onProfileSaved={setProfile}
-              />
+            <div className="p-3 md:p-4 border-b border-slate-200 dark:border-slate-600">
+              <div className="flex items-center gap-1 md:gap-3">
+                <button
+                  onClick={() => setMobileSessionsOpen(true)}
+                  className="md:hidden p-2 text-slate-500 dark:text-slate-400 hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-primary-900/30 dark:hover:text-primary-400 rounded-lg transition-colors flex-shrink-0"
+                  title="对话历史"
+                >
+                  <History className="w-5 h-5"/>
+                </button>
 
-              <div className="h-8 w-px bg-slate-200 dark:bg-slate-700 flex-shrink-0"/>
+                <UserMenu
+                  current={profile}
+                  locked={loading}
+                  onSwitch={handleSwitchMember}
+                  onProfileSaved={setProfile}
+                />
 
+                <div className="hidden md:block h-8 w-px bg-slate-200 dark:bg-slate-700 flex-shrink-0"/>
+
+                <button
+                  onClick={() => currentSessionId && handleEditSessionTitle(currentSessionId, currentSessionTitle)}
+                  disabled={!currentSessionId}
+                  className="hidden md:flex group/title flex-1 min-w-0 items-center gap-1.5 text-left disabled:cursor-default"
+                  title={currentSessionId ? '重命名对话' : undefined}
+                >
+                  <span className="truncate text-sm text-slate-500 dark:text-slate-400 group-hover/title:text-primary-600 dark:group-hover/title:text-primary-400 transition-colors">
+                    {currentSessionTitle || '新的学习对话'}
+                  </span>
+                  {currentSessionId && (
+                    <Edit className="w-3.5 h-3.5 text-slate-400 opacity-0 group-hover/title:opacity-100 transition-opacity flex-shrink-0"/>
+                  )}
+                </button>
+
+                {/* 手机端：页面操作入口并入本行（桌面端在页头，带文字） */}
+                <div className="ml-auto flex md:hidden items-center gap-0.5 shrink-0">
+                  {headerActions.map(({key, title, icon: Icon, onClick}) => (
+                    <button
+                      key={key}
+                      onClick={onClick}
+                      title={title}
+                      aria-label={title}
+                      className="p-1.5 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-600 dark:text-slate-300 active:bg-primary-50 dark:active:bg-primary-900/30 transition-colors"
+                    >
+                      <Icon className="w-4 h-4"/>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 手机端：会话标题另起一行，半透明浅色展示（可点重命名） */}
               <button
                 onClick={() => currentSessionId && handleEditSessionTitle(currentSessionId, currentSessionTitle)}
                 disabled={!currentSessionId}
-                className="group/title flex-1 min-w-0 flex items-center gap-1.5 text-left disabled:cursor-default"
+                className="md:hidden mt-1.5 flex w-full items-center gap-1 text-left disabled:cursor-default"
                 title={currentSessionId ? '重命名对话' : undefined}
               >
-                <span className="truncate text-sm text-slate-500 dark:text-slate-400 group-hover/title:text-primary-600 dark:group-hover/title:text-primary-400 transition-colors">
+                <span className="min-w-0 truncate text-xs text-slate-400/80 dark:text-slate-500/80">
                   {currentSessionTitle || '新的学习对话'}
                 </span>
                 {currentSessionId && (
-                  <Edit className="w-3.5 h-3.5 text-slate-400 opacity-0 group-hover/title:opacity-100 transition-opacity flex-shrink-0"/>
+                  <Edit className="w-3 h-3 flex-shrink-0 text-slate-400/70 dark:text-slate-500/70"/>
                 )}
               </button>
             </div>
@@ -831,20 +883,20 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
             {/* 消息列表 */}
             <div className="flex-1 min-h-0 relative dark:bg-slate-800">
               {messages.length === 0 ? (
-                <div className="absolute inset-0 flex flex-col items-center justify-center px-6">
-                  <MessageSquare className="w-12 h-12 mx-auto mb-3 text-slate-400 dark:text-slate-500 opacity-50"/>
+                <div className="absolute inset-0 flex flex-col items-center justify-center px-4 md:px-6">
+                  <MessageSquare className="w-10 h-10 md:w-12 md:h-12 mx-auto mb-2 md:mb-3 text-slate-400 dark:text-slate-500 opacity-50"/>
                   <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">
                     {profile ? `${profile.nickname}，今天想学点什么？` : '今天想学点什么？'}
                   </p>
-                  <p className="text-xs text-slate-400 dark:text-slate-500 mb-6">
+                  <p className="hidden md:block text-xs text-slate-400 dark:text-slate-500 mb-6">
                     AI 会自动检索知识库，学过的知识点会记入你的学习台账
                   </p>
-                  <div className="flex flex-wrap justify-center gap-2 max-w-xl">
+                  <div className="flex flex-wrap justify-center gap-1.5 md:gap-2 max-w-xl mt-2 md:mt-0">
                     {SUGGESTIONS.map((suggestion) => (
                       <button
                         key={suggestion}
                         onClick={() => handleSubmitQuestion(suggestion)}
-                        className="px-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full hover:bg-primary-50 dark:hover:bg-primary-900/30 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+                        className="px-2.5 py-1 md:px-3 md:py-1.5 text-[11px] md:text-xs bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full hover:bg-primary-50 dark:hover:bg-primary-900/30 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
                       >
                         {suggestion}
                       </button>
@@ -859,14 +911,14 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
                   followOutput="smooth"
                   className="h-full w-full"
                   itemContent={(index, msg) => (
-                    <div className="pb-4 px-4 first:pt-4 dark:bg-slate-800">
+                    <div className="pb-3 px-3 md:pb-4 md:px-4 first:pt-3 md:first:pt-4 dark:bg-slate-800">
                       <motion.div
                         initial={{opacity: 0, y: 10}}
                         animate={{opacity: 1, y: 0}}
                         className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}
                       >
                         <div
-                          className={`rounded-2xl p-4 shadow-sm ${msg.type === 'user'
+                          className={`rounded-2xl p-3 md:p-4 shadow-sm ${msg.type === 'user'
                             ? 'max-w-[85%] bg-primary-600 text-white'
                             : 'w-full min-w-0 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-600 text-slate-800 dark:text-slate-100'
                           }`}

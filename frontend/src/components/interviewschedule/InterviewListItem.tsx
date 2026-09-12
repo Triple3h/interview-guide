@@ -50,20 +50,20 @@ export const InterviewListItem: React.FC<InterviewListItemProps> = ({
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -2 }}
       transition={{ duration: 0.2 }}
-      className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-slate-200/50 dark:border-slate-700/50 rounded-2xl p-6 hover:shadow-2xl hover:shadow-slate-200/50 dark:hover:shadow-slate-900/50 hover:-translate-y-0.5 transition-all"
+      className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-slate-200/50 dark:border-slate-700/50 rounded-2xl p-4 md:p-6 hover:shadow-2xl hover:shadow-slate-200/50 dark:hover:shadow-slate-900/50 hover:-translate-y-0.5 transition-all"
     >
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-start justify-between gap-3 md:gap-4">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-3 mb-3">
+          <div className="flex flex-wrap items-center gap-2 md:gap-3 mb-3">
             <span className={`status-badge backdrop-blur-sm ${statusConfig[interview.status].className}`}>
               {statusConfig[interview.status].label}
             </span>
-            <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
+            <span className="text-xs md:text-sm font-medium text-slate-600 dark:text-slate-400">
               {dayjs(interview.interviewTime).format('YYYY-MM-DD HH:mm')}
             </span>
           </div>
 
-          <h3 className="font-display font-bold text-xl mb-2 text-slate-900 dark:text-white tracking-tight">
+          <h3 className="font-display font-bold text-lg md:text-xl mb-2 text-slate-900 dark:text-white tracking-tight">
             {interview.companyName}
           </h3>
           <p className="text-slate-600 dark:text-slate-300 mb-3 font-medium">{interview.position}</p>
@@ -100,12 +100,12 @@ export const InterviewListItem: React.FC<InterviewListItemProps> = ({
           )}
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex gap-1.5 md:gap-2">
           <motion.button
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
             onClick={onEdit}
-            className="p-2.5 text-slate-400 dark:text-slate-500 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-500/10 dark:hover:bg-primary-500/20 rounded-xl hover:shadow-lg hover:shadow-primary-500/20 transition-all"
+            className="p-2 md:p-2.5 text-slate-400 dark:text-slate-500 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-500/10 dark:hover:bg-primary-500/20 rounded-xl hover:shadow-lg hover:shadow-primary-500/20 transition-all"
             title="编辑"
           >
             <Edit2 className="w-5 h-5" />
@@ -114,7 +114,7 @@ export const InterviewListItem: React.FC<InterviewListItemProps> = ({
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
             onClick={onDelete}
-            className="p-2.5 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 dark:hover:bg-red-500/20 rounded-xl hover:shadow-lg hover:shadow-red-500/20 transition-all"
+            className="p-2 md:p-2.5 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 dark:hover:bg-red-500/20 rounded-xl hover:shadow-lg hover:shadow-red-500/20 transition-all"
             title="删除"
           >
             <Trash2 className="w-5 h-5" />
@@ -126,13 +126,13 @@ export const InterviewListItem: React.FC<InterviewListItemProps> = ({
         <motion.div
           initial={{ opacity: 0, height: 0 }}
           animate={{ opacity: 1, height: 'auto' }}
-          className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 flex gap-3"
+          className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 flex flex-wrap gap-2 md:gap-3"
         >
           <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             onClick={() => onStatusChange('COMPLETED')}
-            className="px-4 py-2 text-sm font-medium rounded-xl bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 dark:hover:bg-emerald-500/30 border border-emerald-300/30 dark:border-emerald-400/30 transition-all"
+            className="flex-1 md:flex-none whitespace-nowrap px-3 md:px-4 py-2 text-xs md:text-sm font-medium rounded-xl bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 dark:hover:bg-emerald-500/30 border border-emerald-300/30 dark:border-emerald-400/30 transition-all"
           >
             标记为已完成
           </motion.button>
@@ -140,7 +140,7 @@ export const InterviewListItem: React.FC<InterviewListItemProps> = ({
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             onClick={() => onStatusChange('CANCELLED')}
-            className="px-4 py-2 text-sm font-medium rounded-xl bg-slate-500/10 dark:bg-slate-500/20 text-slate-700 dark:text-slate-300 hover:bg-slate-500/20 dark:hover:bg-slate-500/30 border border-slate-300/30 dark:border-slate-400/30 transition-all"
+            className="flex-1 md:flex-none whitespace-nowrap px-3 md:px-4 py-2 text-xs md:text-sm font-medium rounded-xl bg-slate-500/10 dark:bg-slate-500/20 text-slate-700 dark:text-slate-300 hover:bg-slate-500/20 dark:hover:bg-slate-500/30 border border-slate-300/30 dark:border-slate-400/30 transition-all"
           >
             取消面试
           </motion.button>

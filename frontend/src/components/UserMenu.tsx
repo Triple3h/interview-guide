@@ -70,19 +70,19 @@ export default function UserMenu({ current, locked = false, onSwitch, onProfileS
         className="group flex items-center gap-3"
         title="切换 / 新建学习成员"
       >
-        <span className="w-10 h-10 rounded-xl bg-primary-600/10 dark:bg-primary-400/15 ring-1 ring-primary-600/20 dark:ring-primary-400/30 flex items-center justify-center text-xl leading-none group-hover:ring-primary-500/50 transition-all">
+        <span className="w-9 h-9 md:w-10 md:h-10 rounded-xl bg-primary-600/10 dark:bg-primary-400/15 ring-1 ring-primary-600/20 dark:ring-primary-400/30 flex items-center justify-center text-lg md:text-xl leading-none group-hover:ring-primary-500/50 transition-all">
           {current?.avatarEmoji || '🙂'}
         </span>
         <span className="text-left">
           <span className="flex items-center gap-1">
-            <span className="text-base font-semibold text-slate-900 dark:text-slate-50 truncate max-w-32">
+            <span className="text-sm md:text-base font-semibold text-slate-900 dark:text-slate-50 truncate max-w-24 md:max-w-32">
               {current?.nickname || '学员'}
             </span>
             <ChevronDown
               className={`w-3.5 h-3.5 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`}
             />
           </span>
-          <span className="block text-xs text-slate-400 dark:text-slate-500">学习成员 · 切换 / 新建</span>
+          <span className="hidden md:block text-xs text-slate-400 dark:text-slate-500">学习成员 · 切换 / 新建</span>
         </span>
       </button>
 
@@ -90,13 +90,13 @@ export default function UserMenu({ current, locked = false, onSwitch, onProfileS
       <AnimatePresence>
         {open && (
           <>
-            <div className="fixed inset-0 z-30" onClick={() => setOpen(false)}/>
+            <div className="fixed inset-0 z-40 md:z-30" onClick={() => setOpen(false)}/>
             <motion.div
-              initial={{ opacity: 0, y: -6, scale: 0.98 }}
+              initial={{ opacity: 0, y: 12, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -6, scale: 0.98 }}
+              exit={{ opacity: 0, y: 12, scale: 0.98 }}
               transition={{ duration: 0.15, ease: 'easeOut' }}
-              className="absolute top-full left-0 mt-2 w-80 z-40 rounded-2xl border border-slate-100 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-xl shadow-slate-900/10 p-1.5"
+              className="fixed inset-x-3 bottom-3 z-50 max-h-[65vh] overflow-y-auto rounded-2xl border border-slate-100 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-xl shadow-slate-900/10 p-1.5 md:absolute md:inset-x-auto md:bottom-auto md:top-full md:left-0 md:mt-2 md:w-80 md:max-h-none md:overflow-visible"
             >
               {/* 当前成员：hover 出编辑 */}
               {current && (
@@ -120,7 +120,7 @@ export default function UserMenu({ current, locked = false, onSwitch, onProfileS
                       setOpen(false);
                       setEditOpen(true);
                     }}
-                    className="p-1.5 text-slate-400 hover:text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/30 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                    className="p-1.5 text-slate-400 hover:text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/30 rounded-lg transition-colors opacity-100 md:opacity-0 md:group-hover:opacity-100"
                     title="编辑资料"
                   >
                     <Pencil className="w-4 h-4"/>

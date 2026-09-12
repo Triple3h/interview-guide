@@ -150,7 +150,7 @@ export const InterviewFormModal: React.FC<InterviewFormModalProps> = ({
         <div className="flex-1 h-px bg-slate-200 dark:bg-slate-700" />
       </div>
 
-      <div className="grid grid-cols-2 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4 mb-6">
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
@@ -385,7 +385,7 @@ export const InterviewFormModal: React.FC<InterviewFormModalProps> = ({
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">第几轮面试</label>
           <input
@@ -477,17 +477,17 @@ export const InterviewFormModal: React.FC<InterviewFormModalProps> = ({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50"
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50"
     >
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 20 }}
         transition={{ duration: 0.2 }}
-        className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-slate-200/50 dark:border-slate-700/50"
+        className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] md:max-h-[90vh] overflow-y-auto border border-slate-200/50 dark:border-slate-700/50"
       >
-        <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-700">
-          <h2 className="text-2xl font-display font-bold text-slate-900 dark:text-white">
+        <div className="flex items-center justify-between p-4 md:p-6 border-b border-slate-200 dark:border-slate-700">
+          <h2 className="text-xl md:text-2xl font-display font-bold text-slate-900 dark:text-white">
             {mode === 'edit' ? '编辑面试' : '添加面试'}
           </h2>
           <motion.button
@@ -500,7 +500,7 @@ export const InterviewFormModal: React.FC<InterviewFormModalProps> = ({
           </motion.button>
         </div>
 
-        <div className="p-6">
+        <div className="p-4 md:p-6">
           {step === 'text' && renderTextInput()}
           {step === 'parse-result' && renderParseResult()}
           {step === 'form' && renderForm()}

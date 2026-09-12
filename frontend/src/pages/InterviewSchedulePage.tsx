@@ -10,6 +10,8 @@ import { ScheduleList } from '../components/interviewschedule/ScheduleList';
 import { InterviewFormModal } from '../components/interviewschedule/InterviewFormModal';
 import { CalendarErrorBoundary } from '../components/interviewschedule/CalendarErrorBoundary';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { useIsMobile } from '../hooks/useIsMobile';
+import { useMobileTopBarAction } from '../hooks/useMobileTopBarAction';
 import type { InterviewSchedule, InterviewFormData, InterviewStatus } from '../types/interviewSchedule';
 
 export const InterviewSchedulePage: React.FC = () => {
@@ -23,7 +25,9 @@ export const InterviewSchedulePage: React.FC = () => {
     updateStatus,
   } = useInterviewSchedule();
 
-  const [view, setView] = useState<'day' | 'week' | 'month' | 'list'>('week');
+  const isMobile = useIsMobile();
+  // 移动端默认进列表视图：周/月视图是宽表格，窄屏不可用
+  const [view, setView] = useState<'day' | 'week' | 'month' | 'list'>(isMobile ? 'list' : 'week');
   const [date, setDate] = useState(new Date());
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
@@ -38,6 +42,9 @@ export const InterviewSchedulePage: React.FC = () => {
     setSelectedInterview(null);
     setIsModalOpen(true);
   }, []);
+
+  // 移动端顶栏「+」：新建日程（页面内按钮在手机上隐藏，避免重复入口）
+  useMobileTopBarAction('添加面试', handleAddClick);
 
   const handleEditClick = useCallback((interview: InterviewSchedule) => {
     setModalMode('edit');
@@ -162,7 +169,7 @@ export const InterviewSchedulePage: React.FC = () => {
   }
 
   return (
-    <div className="max-w-7xl mx-auto p-6">
+    <div className="max-w-7xl mx-auto pb-6 md:p-6">
       <ScheduleHeader
         view={view}
         onViewChange={setView}

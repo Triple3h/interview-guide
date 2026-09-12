@@ -152,16 +152,16 @@ function StatCard({
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm border border-slate-100 dark:border-slate-700"
+      className="bg-white dark:bg-slate-800 rounded-xl p-3 md:p-6 shadow-sm border border-slate-100 dark:border-slate-700"
     >
-      <div className="flex items-center gap-4">
-        <div className={`p-3 rounded-lg ${color}`}>
-          <Icon className="w-6 h-6 text-white" />
+      <div className="flex flex-col items-center gap-1.5 md:flex-row md:items-center md:gap-4">
+        <div className={`p-2 md:p-3 rounded-lg ${color}`}>
+          <Icon className="w-4 h-4 md:w-6 md:h-6 text-white" />
         </div>
-        <div>
-          <p className="text-sm text-slate-500 dark:text-slate-400">{label}</p>
-          <p className="text-2xl font-bold text-slate-800 dark:text-white">
-            {value}{suffix && <span className="text-base font-normal text-slate-400 dark:text-slate-500 ml-1">{suffix}</span>}
+        <div className="text-center md:text-left">
+          <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400">{label}</p>
+          <p className="text-lg md:text-2xl font-bold text-slate-800 dark:text-white">
+            {value}{suffix && <span className="text-xs md:text-base font-normal text-slate-400 dark:text-slate-500 ml-0.5 md:ml-1">{suffix}</span>}
           </p>
         </div>
       </div>
@@ -491,21 +491,99 @@ export default function InterviewHistoryPage({
   const showFilterEmpty = isKnowledgeBaseView && hasActiveKbFilters && items.length > 0 && filtered.length === 0;
   const showOriginalEmpty = filtered.length === 0 && !showFilterEmpty;
 
+  // 行操作按钮：桌面表格与移动端卡片共用（闭包捕获本组件的 state 与回调）
+  const renderRowActions = (item: UnifiedInterviewItem) => (
+    <>
+      {item.type === 'text' && !isCompletedStatus(item.status) && !isEvaluateCompleted(item) && onContinueInterview && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            if (item.sourceType === 'KNOWLEDGE_BASE') {
+              navigate(`/knowledgebase-interview/${item.sessionId}`, {
+                state: { knowledgeBaseId: item.knowledgeBaseId },
+              });
+            } else {
+              onContinueInterview(item.sessionId);
+            }
+          }}
+          className="p-2 text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors"
+          title="继续面试"
+        >
+          <PlayCircle className="w-4 h-4" />
+        </button>
+      )}
+      {item.type === 'voice' && isLiveStatus(item.status) && item.voiceSessionId && (
+        <button
+          onClick={(e) => { e.stopPropagation(); navigate('/voice-interview', { state: { voiceSessionId: item.voiceSessionId } }); }}
+          className="p-2 text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors"
+          title="继续面试"
+        >
+          <PlayCircle className="w-4 h-4" />
+        </button>
+      )}
+      {isEvaluateCompleted(item) && item.type === 'text' && (
+        <button
+          onClick={(e) => handleExport(item.sessionId, e)}
+          disabled={exporting === item.sessionId}
+          className="p-2 text-slate-400 hover:text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/30 rounded-lg transition-colors disabled:opacity-50"
+          title="导出PDF"
+        >
+          {exporting === item.sessionId ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Download className="w-4 h-4" />
+          )}
+        </button>
+      )}
+      {isEvaluateCompleted(item) && item.type === 'text' && item.resumeId && onRestartInterview && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onRestartInterview(item.resumeId!); }}
+          className="p-2 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-lg transition-colors"
+          title="重新面试"
+        >
+          <RotateCcw className="w-4 h-4" />
+        </button>
+      )}
+      {isVoiceEvaluationRetryable(item) && item.voiceSessionId && (
+        <button
+          onClick={(e) => handleRetryVoiceEvaluation(item, e)}
+          disabled={retryingVoiceSessionId === item.voiceSessionId}
+          className="p-2 text-amber-500 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/30 rounded-lg transition-colors disabled:opacity-50"
+          title="重新生成评估"
+        >
+          {retryingVoiceSessionId === item.voiceSessionId ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <RefreshCw className="w-4 h-4" />
+          )}
+        </button>
+      )}
+      <button
+        onClick={(e) => handleDeleteClick(item, e)}
+        disabled={deletingSessionId === item.sessionId}
+        className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors disabled:opacity-50"
+        title="删除"
+      >
+        <Trash2 className="w-4 h-4" />
+      </button>
+    </>
+  );
+
   return (
     <motion.div className="w-full" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
       {/* Header */}
-      <div className="flex justify-between items-start mb-8 flex-wrap gap-6">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-4 md:mb-8 gap-3 md:gap-6">
         <div>
           <motion.h1
-            className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-3"
+            className="text-xl md:text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2 md:gap-3"
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
           >
-            <Users className="w-7 h-7 text-primary-500" />
+            <Users className="w-6 h-6 md:w-7 md:h-7 text-primary-500" />
             {isKnowledgeBaseView ? '知识库面试记录' : '面试记录'}
           </motion.h1>
           <motion.p
-            className="text-slate-500 dark:text-slate-400 mt-1"
+            className="hidden md:block text-xs md:text-base text-slate-500 dark:text-slate-400 mt-1 line-clamp-1 md:line-clamp-none"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.1 }}
@@ -515,7 +593,7 @@ export default function InterviewHistoryPage({
         </div>
 
         <motion.div
-          className="flex items-center gap-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl px-4 py-2.5 min-w-[280px] focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-primary-100 dark:focus-within:ring-primary-900/30 transition-all"
+          className="flex items-center gap-3 w-full sm:w-auto bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl px-4 py-2.5 sm:min-w-[280px] focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-primary-100 dark:focus-within:ring-primary-900/30 transition-all"
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
         >
@@ -532,7 +610,7 @@ export default function InterviewHistoryPage({
 
       {/* Stats */}
       {!loading && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-3 gap-2 md:gap-6 mb-4 md:mb-8">
           <StatCard icon={Users} label="面试总数" value={stats.totalCount} color="bg-primary-500" />
           <StatCard icon={CheckCircle} label="已完成" value={stats.completedCount} color="bg-emerald-500" />
           <StatCard icon={TrendingUp} label="平均分数" value={stats.averageScore} suffix="分" color="bg-amber-500" />
@@ -541,7 +619,7 @@ export default function InterviewHistoryPage({
 
       {isKnowledgeBaseView && trendData.length > 0 && (
         <motion.div
-          className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm border border-slate-100 dark:border-slate-700 mb-8"
+          className="bg-white dark:bg-slate-800 rounded-xl p-4 md:p-6 shadow-sm border border-slate-100 dark:border-slate-700 mb-6 md:mb-8"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
         >
@@ -552,7 +630,7 @@ export default function InterviewHistoryPage({
             </div>
             <span className="text-sm text-slate-500 dark:text-slate-400">共 {trendData.length} 场练习</span>
           </div>
-          <div className="h-48">
+          <div className="h-40 md:h-48">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trendData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e3dccb" className="dark:stroke-slate-700" />
@@ -628,7 +706,7 @@ export default function InterviewHistoryPage({
       )}
 
       {/* Type filter tabs */}
-      {!isKnowledgeBaseView && <div className="flex items-center gap-2 mb-6">
+      {!isKnowledgeBaseView && <div className="flex items-center gap-2 mb-3 md:mb-6">
         {([
           { key: 'all', label: '全部' },
           { key: 'text', label: '文字面试' },
@@ -690,10 +768,10 @@ export default function InterviewHistoryPage({
         </motion.div>
       )}
 
-      {/* Table */}
+      {/* Table（桌面端） */}
       {!loading && filtered.length > 0 && (
         <motion.div
-          className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden"
+          className="hidden md:block bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
@@ -876,6 +954,60 @@ export default function InterviewHistoryPage({
             </tbody>
           </table>
         </motion.div>
+      )}
+
+      {/* 移动端卡片列表（7 列表格在窄屏不可用，改为卡片） */}
+      {!loading && filtered.length > 0 && (
+        <div className="md:hidden space-y-2.5">
+          {filtered.map((item, index) => (
+            <motion.div
+              key={item.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: Math.min(index, 10) * 0.05 }}
+              onClick={() => handleRowClick(item)}
+              className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 p-4 cursor-pointer"
+            >
+              {/* 类型 + 标题 + 得分 */}
+              <div className="flex items-start justify-between gap-3 mb-2">
+                <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                  <TypeBadge item={item} />
+                  <span className="font-medium text-slate-800 dark:text-white truncate">{item.title}</span>
+                </div>
+                {isEvaluateCompleted(item) && item.overallScore !== null && (
+                  <span className="shrink-0 font-bold text-slate-800 dark:text-white">{item.overallScore}</span>
+                )}
+              </div>
+
+              {isKnowledgeBaseView && item.type === 'text' && item.interviewCategory && (
+                <span
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 mb-2 bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 rounded text-xs font-medium"
+                  title="面试方向"
+                >
+                  <Tag className="w-3 h-3" />
+                  {getKnowledgeBaseInterviewCategoryLabel(item.interviewCategory)}
+                </span>
+              )}
+
+              {/* 状态 / 时间 / 题数 */}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400 mb-3">
+                <span className="flex items-center gap-1.5">
+                  <StatusIcon item={item} />
+                  {getStatusText(item)}
+                </span>
+                <span>{formatDate(item.createdAt)}</span>
+                {item.type === 'text' && item.totalQuestions != null && <span>{item.totalQuestions} 题</span>}
+                {item.type === 'voice' && <span>{formatDuration(item.actualDuration)}</span>}
+              </div>
+
+              {/* 操作 */}
+              <div className="flex items-center flex-wrap gap-1 pt-3 border-t border-slate-100 dark:border-slate-700">
+                {renderRowActions(item)}
+                <ChevronRight className="w-5 h-5 text-slate-300 dark:text-slate-600 ml-auto" />
+              </div>
+            </motion.div>
+          ))}
+        </div>
       )}
 
       <DeleteConfirmDialog

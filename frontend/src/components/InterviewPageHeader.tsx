@@ -14,7 +14,7 @@ export default function InterviewPageHeader({
 }: InterviewPageHeaderProps) {
   return (
     <motion.div
-      className="text-center mb-8"
+      className="hidden md:block text-center mb-8"
       initial={{ opacity: 0, y: -20 }}
       animate={{ opacity: 1, y: 0 }}
     >
@@ -24,7 +24,7 @@ export default function InterviewPageHeader({
         </div>
         {title}
       </h1>
-      <p className="text-slate-500 dark:text-slate-400">{subtitle}</p>
+      <p className="text-base text-slate-500 dark:text-slate-400">{subtitle}</p>
     </motion.div>
   );
 }

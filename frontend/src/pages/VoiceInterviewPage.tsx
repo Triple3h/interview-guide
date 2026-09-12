@@ -769,7 +769,7 @@ export default function VoiceInterviewPage() {
   }
 
   return (
-    <div className="pb-10">
+    <div className="md:pb-10">
       <div className="max-w-7xl mx-auto">
         <InterviewPageHeader
           title="语音模拟面试"
@@ -784,10 +784,10 @@ export default function VoiceInterviewPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          <div className="xl:col-span-2 space-y-6">
-            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm p-6">
-              <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 md:gap-6">
+          <div className="xl:col-span-2 space-y-3 md:space-y-6">
+            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm p-4 md:p-6">
+              <div className="flex items-center justify-between mb-4 md:mb-6 flex-wrap gap-3">
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() => navigate('/interviews')}
@@ -817,20 +817,20 @@ export default function VoiceInterviewPage() {
                 </div>
               </div>
 
-              <div className="flex flex-col items-center justify-center py-6">
+              <div className="flex flex-col items-center justify-center py-4 md:py-6">
                 <motion.div
                   animate={isAiSpeaking ? { scale: [1, 1.05, 1] } : {}}
                   transition={{ repeat: Infinity, duration: 2 }}
-                  className={`w-32 h-32 rounded-full border-4 flex items-center justify-center mb-6 transition-colors
+                  className={`w-24 h-24 md:w-32 md:h-32 rounded-full border-4 flex items-center justify-center mb-4 md:mb-6 transition-colors
                     ${isAiSpeaking
                       ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
                       : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60'
                     }`}
                 >
-                  <Bot className={`w-14 h-14 ${isAiSpeaking ? 'text-primary-500' : 'text-slate-400 dark:text-slate-500'}`} />
+                  <Bot className={`w-10 h-10 md:w-14 md:h-14 ${isAiSpeaking ? 'text-primary-500' : 'text-slate-400 dark:text-slate-500'}`} />
                 </motion.div>
 
-                <div className="w-full max-w-2xl min-h-[130px] rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 px-6 py-5 text-center flex items-center justify-center">
+                <div className="w-full max-w-2xl min-h-[110px] md:min-h-[130px] rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 px-4 md:px-6 py-4 md:py-5 text-center flex items-center justify-center">
                   <AnimatePresence mode="wait">
                     {isAiSpeaking || aiText ? (
                       <motion.p
@@ -869,8 +869,8 @@ export default function VoiceInterviewPage() {
               </div>
             </div>
 
-            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm p-5">
-              <div className="flex items-center justify-center gap-6">
+            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm p-4 md:p-5">
+              <div className="flex flex-wrap items-center justify-center gap-3 md:gap-6">
                 <button
                   onClick={() => {
                     const choice = window.confirm('暂停面试？\n确定 = 短暂停（5分钟）\n取消 = 离开并保存');

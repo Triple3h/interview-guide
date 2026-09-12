@@ -29,7 +29,7 @@ export const ScheduleList: React.FC<ScheduleListProps> = ({
         animate={{ opacity: 1 }}
         className="text-center py-16"
       >
-        <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-2xl border border-slate-200/50 dark:border-slate-700/50 p-12 shadow-xl">
+        <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-2xl border border-slate-200/50 dark:border-slate-700/50 p-8 md:p-12 shadow-xl">
           <p className="text-slate-500 dark:text-slate-400 text-lg font-medium">暂无面试记录</p>
         </div>
       </motion.div>
@@ -37,7 +37,7 @@ export const ScheduleList: React.FC<ScheduleListProps> = ({
   }
 
   return (
-    <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-2xl border border-slate-200/50 dark:border-slate-700/50 p-6 space-y-4">
+    <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-2xl border border-slate-200/50 dark:border-slate-700/50 p-4 md:p-6 space-y-3 md:space-y-4">
       {sortedInterviews.map((interview, index) => (
         <motion.div
           key={interview.id}

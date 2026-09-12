@@ -225,7 +225,7 @@ export default function VoiceInterviewEvaluationPage() {
   }
 
   return (
-    <div className="pb-10">
+    <div className="md:pb-10">
       <div className="max-w-6xl mx-auto">
         <div className="flex items-center gap-3 mb-6">
           <button
