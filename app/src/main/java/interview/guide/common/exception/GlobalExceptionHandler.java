@@ -1,5 +1,7 @@
 package interview.guide.common.exception;
 
+import cn.dev33.satoken.exception.NotLoginException;
+import cn.dev33.satoken.exception.SaTokenException;
 import interview.guide.common.result.Result;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,6 +37,26 @@ public class GlobalExceptionHandler {
         return Result.error(e.getCode(), e.getMessage());
     }
     
+    /**
+     * 处理未登录异常（SA-Token 拦截器抛出）
+     */
+    @ExceptionHandler(NotLoginException.class)
+    @ResponseStatus(HttpStatus.OK)
+    public Result<Void> handleNotLoginException(NotLoginException e) {
+        log.warn("未登录访问: {}", e.getMessage());
+        return Result.error(ErrorCode.UNAUTHORIZED, "登录状态已失效，请重新登录");
+    }
+
+    /**
+     * 处理其他鉴权异常（权限不足等）
+     */
+    @ExceptionHandler(SaTokenException.class)
+    @ResponseStatus(HttpStatus.OK)
+    public Result<Void> handleSaTokenException(SaTokenException e) {
+        log.warn("鉴权异常: {}", e.getMessage());
+        return Result.error(ErrorCode.FORBIDDEN, "没有权限执行该操作");
+    }
+
     /**
      * 处理参数校验异常
      */

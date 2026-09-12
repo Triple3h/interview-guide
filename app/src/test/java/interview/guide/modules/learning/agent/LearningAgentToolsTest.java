@@ -90,8 +90,8 @@ class LearningAgentToolsTest {
 
     private UserResponse profileResponse(String occupation, String learningDirection,
                                          String learningSkillId, String currentLevel, String learningGoal) {
-        return new UserResponse(1L, "Alice", "🦊", occupation, learningDirection,
-            learningSkillId, currentLevel, learningGoal, null);
+        return new UserResponse(1L, null, "Alice", "🦊", occupation, learningDirection,
+            learningSkillId, currentLevel, learningGoal, UserEntity.STATUS_ACTIVE, null, null);
     }
 
     @Nested

@@ -1,5 +1,6 @@
 package interview.guide.common.web;
 
+import interview.guide.modules.auth.config.AuthProperties;
 import interview.guide.modules.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
@@ -16,9 +17,10 @@ import java.util.List;
 public class UserContextWebConfig implements WebMvcConfigurer {
 
     private final UserRepository userRepository;
+    private final AuthProperties authProperties;
 
     @Override
     public void addArgumentResolvers(List<HandlerMethodArgumentResolver> resolvers) {
-        resolvers.add(new CurrentUserArgumentResolver(userRepository));
+        resolvers.add(new CurrentUserArgumentResolver(userRepository, authProperties));
     }
 }

@@ -80,6 +80,13 @@ dependencies {
     // Jakarta annotation for Java 21+ (replaces javax.annotation)
     implementation 'jakarta.annotation:jakarta.annotation-api:2.1.1'
 
+    // SA-Token 鉴权（学员/管理员双账号体系）；必须用 boot4 专用 starter
+    implementation "cn.dev33:sa-token-spring-boot4-starter:${libs.versions.saToken.get()}"
+    // SA-Token 会话存 Redis：Redisson 版插件（基于 RedissonClient，避开 RedisTemplate 与 Redisson 4.x 适配层的递归问题）
+    implementation "cn.dev33:sa-token-redisson:${libs.versions.saToken.get()}"
+    // BCrypt 密码哈希（仅 crypto 模块，不引 Spring Security 全家桶）
+    implementation 'org.springframework.security:spring-security-crypto'
+
     // Lombok
     compileOnly libs.lombok
     annotationProcessor libs.lombok

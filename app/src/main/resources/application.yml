@@ -93,8 +93,28 @@ spring:
         initialize-schema: false # schema 统一由 Flyway 管理
         remove-existing-vector-store-table: false  # 保留现有表和数据
 
+# SA-Token 鉴权配置（学员/管理员双账号体系，token 空间互相隔离）
+sa-token:
+  token-name: ${APP_AUTH_TOKEN_NAME:sa-token}
+  # 登录有效期（秒），默认 7 天
+  timeout: ${APP_AUTH_TOKEN_TIMEOUT:604800}
+  # 关闭活跃超时，仅按 timeout 过期
+  active-timeout: -1
+  is-concurrent: true
+  is-share: false
+  token-style: uuid
+  # 纯前后端分离：只从请求头读 token，不写 cookie
+  is-read-cookie: false
+  is-read-header: true
+  is-log: false
+
 # Application custom configuration
 app:
+  auth:
+    # 管理端固定登录 Token（只放 .env，改动后需重启 app 生效）
+    admin-token: ${APP_ADMIN_TOKEN:}
+    # 过渡开关：允许旧版 X-User-Id 请求头兜底（前后端全部切换完成后置 false）
+    legacy-header-enabled: ${APP_AUTH_LEGACY_HEADER_ENABLED:true}
   ai:
     default-provider: dashscope
     default-embedding-provider: dashscope

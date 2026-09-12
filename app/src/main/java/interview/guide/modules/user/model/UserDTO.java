@@ -68,6 +68,7 @@ public class UserDTO {
      */
     public record UserResponse(
         Long id,
+        String username,
         String nickname,
         String avatarEmoji,
         String occupation,
@@ -75,6 +76,8 @@ public class UserDTO {
         String learningSkillId,
         String currentLevel,
         String learningGoal,
-        LocalDateTime createdAt
+        String status,
+        LocalDateTime createdAt,
+        LocalDateTime lastLoginAt
     ) {}
 }

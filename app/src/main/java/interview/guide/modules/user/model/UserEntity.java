@@ -20,6 +20,9 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 public class UserEntity {
 
+    public static final String STATUS_ACTIVE = "ACTIVE";
+    public static final String STATUS_DISABLED = "DISABLED";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -65,6 +68,29 @@ public class UserEntity {
      */
     @Column(length = 500)
     private String learningGoal;
+
+    /**
+     * 登录用户名（管理员建号时指定；存量成员为空，需重置密码并补用户名后激活）
+     */
+    @Column(unique = true, length = 50)
+    private String username;
+
+    /**
+     * BCrypt 密码哈希
+     */
+    @Column(length = 100)
+    private String passwordHash;
+
+    /**
+     * 账号状态：ACTIVE（正常）/ DISABLED（禁用，禁止登录）
+     */
+    @Column(nullable = false, length = 20)
+    private String status = STATUS_ACTIVE;
+
+    /**
+     * 最近登录时间
+     */
+    private LocalDateTime lastLoginAt;
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
