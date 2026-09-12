@@ -169,6 +169,14 @@ public class RagChatSessionService {
      */
     @Transactional
     public void completeStreamMessage(Long messageId, String content, String toolStepsJson) {
+        completeStreamMessage(messageId, content, toolStepsJson, null);
+    }
+
+    /**
+     * 流式响应完成后更新消息（含 Agent 工具步骤与回答时间线，供前端回放思考过程）
+     */
+    @Transactional
+    public void completeStreamMessage(Long messageId, String content, String toolStepsJson, String timelineJson) {
         RagChatMessageEntity message = messageRepository.findById(messageId)
             .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "消息不存在"));
 
@@ -177,9 +185,13 @@ public class RagChatSessionService {
         if (toolStepsJson != null) {
             message.setToolStepsJson(toolStepsJson);
         }
+        if (timelineJson != null) {
+            message.setTimelineJson(timelineJson);
+        }
         messageRepository.save(message);
 
-        log.info("完成流式消息: messageId={}, contentLength={}", messageId, content.length());
+        log.info("完成流式消息: messageId={}, contentLength={}, timeline={}",
+            messageId, content.length(), timelineJson != null);
     }
 
     /**

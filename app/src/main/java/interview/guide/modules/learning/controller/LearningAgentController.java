@@ -104,14 +104,15 @@ public class LearningAgentController {
             })
             .map(event -> sseEventWriter.typed(event.type(), event))
             .doOnComplete(() -> {
-                // 3. 完成后落库（含工具步骤，供前端回放）
+                // 3. 完成后落库（含工具步骤与回答时间线，供前端回放）
                 String content = stream.content().get();
                 if (content.isBlank()) {
                     content = "【错误】回答生成失败，请重试";
                 }
-                sessionService.completeStreamMessage(messageId, content, stream.stepsJson().get());
-                log.info("学习帮手流式完成: sessionId={}, messageId={}, steps={}",
-                    sessionId, messageId, stream.stepsJson().get());
+                sessionService.completeStreamMessage(messageId, content,
+                    stream.stepsJson().get(), stream.timelineJson().get());
+                log.info("学习帮手流式完成: sessionId={}, messageId={}, steps={}, timeline={}",
+                    sessionId, messageId, stream.stepsJson().get(), stream.timelineJson().get());
             })
             .concatWith(Mono
                 // 4. 首轮回答结束后自动生成会话标题（标题仍是默认占位时才生成），经 title 事件推给前端

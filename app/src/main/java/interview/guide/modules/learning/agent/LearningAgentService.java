@@ -3,6 +3,7 @@ package interview.guide.modules.learning.agent;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import interview.guide.common.ai.LlmProviderRegistry;
+import interview.guide.common.ai.OpenAiCompatibleStreamClient;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.modules.interview.skill.InterviewSkillService;
@@ -16,8 +17,6 @@ import interview.guide.modules.learning.service.LearningRecordService;
 import interview.guide.modules.user.model.UserEntity;
 import interview.guide.modules.user.service.UserService;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.client.ChatClientAttributes;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
@@ -29,6 +28,7 @@ import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.model.tool.ToolExecutionResult;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Service;
@@ -38,7 +38,6 @@ import reactor.core.scheduler.Schedulers;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -52,11 +51,11 @@ import java.util.stream.Collectors;
 /**
  * 学习帮手 Agent 编排
  * <p>
- * 手动 ReAct 循环：工具轮使用非流式调用（完整 JSON 响应里工具名一定是完整的），由
- * {@link ToolCallingManager} 执行工具并推进对话历史；部分模型（如 deepseek）流式输出工具
- * 调用时会把名字拆到多个分片，Spring AI 聚合层拼不上会抛 "toolName cannot be null or
- * empty"，因此不走 ToolCallingAdvisor。模型思维链（reasoning_content）按轮作为
- * reasoning 事件、最终答案按分片作为 delta 事件流式输出；工具执行过程通过
+ * 手动 ReAct 循环：每轮由 {@link OpenAiCompatibleStreamClient} 直连供应商的 /chat/completions 读
+ * SSE 原始分片——思维链（reasoning_content）与正文分片实时转成 reasoning / delta 事件，工具调用
+ * 分片按 index 聚合后交给 {@link ToolCallingManager} 执行并推进对话历史。之所以不用 Spring AI 的
+ * ChatClient.stream()：其流式聚合会丢掉 reasoning_content（实测恒为空串），且聚合深seek 的分片形态
+ * 曾报 "toolName cannot be null or empty"。工具执行过程通过
  * {@link LearningAgentToolCallback} 实时发步骤事件。
  */
 @Slf4j
@@ -70,14 +69,8 @@ public class LearningAgentService {
      */
     private static final String UPDATE_PROFILE_TOOL = "updateLearnerProfile";
 
-    /**
-     * 最终答案流式输出的分片大小与节奏（分片数过大时自动放大分片，控制总时长）
-     */
-    private static final int DELTA_CHUNK_SIZE = 24;
-    private static final int MAX_DELTA_CHUNKS = 150;
-    private static final long DELTA_INTERVAL_MS = 15;
-
     private final LlmProviderRegistry llmProviderRegistry;
+    private final OpenAiCompatibleStreamClient streamClient;
     private final ToolCallingManager toolCallingManager;
     private final RagChatSessionService sessionService;
     private final LearningRecordService recordService;
@@ -96,6 +89,7 @@ public class LearningAgentService {
     private final String staticSystemPrompt;
 
     public LearningAgentService(LlmProviderRegistry llmProviderRegistry,
+                                OpenAiCompatibleStreamClient streamClient,
                                 ToolCallingManager toolCallingManager,
                                 RagChatSessionService sessionService,
                                 LearningRecordService recordService,
@@ -109,6 +103,7 @@ public class LearningAgentService {
                                 ObjectMapper objectMapper,
                                 ResourceLoader resourceLoader) throws IOException {
         this.llmProviderRegistry = llmProviderRegistry;
+        this.streamClient = streamClient;
         this.toolCallingManager = toolCallingManager;
         this.sessionService = sessionService;
         this.recordService = recordService;
@@ -126,12 +121,13 @@ public class LearningAgentService {
     }
 
     /**
-     * 流式回答结果：events 为 delta/step 混合流；content/stepsJson 供完成后落库
+     * 流式回答结果：events 为 delta/step 混合流；content/stepsJson/timelineJson 供完成后落库
      */
     public record AgentStreamResult(
         Flux<AgentEvent> events,
         Supplier<String> content,
-        Supplier<String> stepsJson
+        Supplier<String> stepsJson,
+        Supplier<String> timelineJson
     ) {}
 
     public AgentStreamResult chatStream(Long sessionId, Long userId, String question) {
@@ -153,70 +149,78 @@ public class LearningAgentService {
 
         StringBuilder content = new StringBuilder();
 
-        // 工具轮是阻塞 HTTP 调用，放到 boundedElastic 执行；步骤/思考文本经 liveSink 汇入主流
-        Flux<AgentEvent> agentWork = Flux.defer(() -> emitFinalAnswer(
+        // 整轮循环都是阻塞式流式读取，放到 boundedElastic 执行；思维链/正文/步骤都经 liveSink 汇入主流
+        Flux<AgentEvent> agentWork = Flux.defer(() -> {
                 runAgentLoop(() -> buildSystemPrompt(learner, userId), history, question, toolCallbacks,
-                    liveSink, profileUpdated)))
+                    liveSink, profileUpdated);
+                return Flux.<AgentEvent>empty();
+            })
             .subscribeOn(Schedulers.boundedElastic())
             .doFinally(signal -> liveSink.tryEmitComplete());
 
+        // 按事件到达顺序还原时间线（思考/工具/正文），随消息一起落库供历史回放
+        AgentTimelineCollector timeline = new AgentTimelineCollector();
         Flux<AgentEvent> events = Flux.merge(liveSink.asFlux(), agentWork)
             .doOnNext(event -> {
                 if (AgentEvent.TYPE_DELTA.equals(event.type())) {
                     content.append(event.text());
                 }
+                timeline.accept(event);
             });
 
         return new AgentStreamResult(
             events,
             content::toString,
-            () -> serializeSteps(steps)
+            () -> serializeSteps(steps),
+            () -> serializeTimeline(timeline.blocks())
         );
     }
 
     /**
-     * 手动 ReAct 循环：每轮非流式调用模型，模型请求工具则执行后带历史进下一轮，
-     * 直到模型直接给出最终答案；工具轮耗尽或执行失败时降级为无工具收尾。
+     * 手动 ReAct 循环：每轮流式调用模型（思维链/正文分片实时推给前端），模型请求工具则用
+     * {@link ToolCallingManager} 执行并推进对话历史，直到模型直接给出最终答案；
+     * 工具轮耗尽或执行失败时降级为无工具收尾。
      */
     private String runAgentLoop(Supplier<String> systemPromptSupplier, List<Message> history, String question,
                                 ToolCallback[] toolCallbacks, Sinks.Many<AgentEvent> liveSink,
                                 AtomicBoolean profileUpdated) {
-        ChatClient loopClient = llmProviderRegistry.getAgentLoopChatClient(null);
-        // 工具定义经由 runtime options 注入请求；镜像 Prompt 复用同一份 options 供 ToolCallingManager 解析回调
-        ToolCallingChatOptions.Builder<?> toolOptionsBuilder = ToolCallingChatOptions.builder()
-            .toolCallbacks(toolCallbacks);
-        ToolCallingChatOptions toolOptions = toolOptionsBuilder.build();
+        OpenAiCompatibleStreamClient.Connection connection = llmProviderRegistry.getChatConnection(null);
+        // 原生流式绕过了 ChatClient 的 SafeGuardAdvisor，这里做等价检查，命中则不请求模型
+        if (llmProviderRegistry.isSafeguardTriggered(question)) {
+            String fallback = llmProviderRegistry.safeguardFailureResponse();
+            liveSink.tryEmitNext(AgentEvent.delta(fallback));
+            return fallback;
+        }
+        // 工具定义经 runtime options 注入请求，同一份 options 供 ToolCallingManager 解析回调
+        ToolCallingChatOptions toolOptions = ToolCallingChatOptions.builder()
+            .toolCallbacks(toolCallbacks)
+            .build();
+        List<ToolDefinition> toolDefinitions = toolCallingManager.resolveToolDefinitions(toolOptions);
 
         List<Message> conversation = new ArrayList<>();
         conversation.add(new SystemMessage(systemPromptSupplier.get()));
         conversation.addAll(history);
         conversation.add(new UserMessage(question));
 
+        // streamState[0]=本轮思维链是否已开始推；streamState[1]=之前是否推过（多轮之间空一行分隔）
+        boolean[] streamState = {false, false};
         for (int round = 1; round <= properties.getMaxRounds(); round++) {
-            ChatResponse response = callModel(loopClient, conversation, toolOptionsBuilder);
-            if (response == null || response.getResult() == null
-                || response.getResult().getOutput() == null) {
-                log.warn("[LearningAgent] 第 {} 轮模型返回为空，转入无工具收尾", round);
-                break;
-            }
-            AssistantMessage output = response.getResult().getOutput();
-            String reasoning = extractReasoning(output);
-            if (!output.hasToolCalls()) {
-                emitReasoning(reasoning, liveSink);
-                if (output.getText() != null && !output.getText().isBlank()) {
-                    return output.getText();
+            streamState[0] = false;
+            OpenAiCompatibleStreamClient.StreamedAssistant turn = streamClient.streamTurn(
+                connection, conversation, toolDefinitions,
+                delta -> emitStreamDelta(delta, liveSink, streamState));
+            if (!turn.hasToolCalls()) {
+                if (turn.text().isBlank()) {
+                    log.warn("[LearningAgent] 第 {} 轮模型输出为空文本，转入无工具收尾", round);
+                    break;
                 }
-                log.warn("[LearningAgent] 第 {} 轮模型输出为空文本，转入无工具收尾", round);
-                break;
+                log.info("[LearningAgent] 第 {} 轮结束：正文 {} 字，思维链 {} 字", round,
+                    turn.text().length(), turn.reasoningContent().length());
+                return turn.text();
             }
-            log.info("[LearningAgent] 第 {} 轮调用 {} 个工具, 过渡正文 {} 字, 思维链 {} 字", round,
-                output.getToolCalls().size(),
-                output.getText() == null ? 0 : output.getText().length(),
-                reasoning.length());
-            // 思维链与过渡正文先推给前端，再执行工具
-            emitReasoning(reasoning, liveSink);
-            emitInterimText(output.getText(), liveSink);
-            if (!executeToolRound(conversation, output, response, toolOptions)) {
+            log.info("[LearningAgent] 第 {} 轮调用 {} 个工具，过渡正文 {} 字，思维链 {} 字", round,
+                turn.toolCalls().size(), turn.text().length(), turn.reasoningContent().length());
+            if (!executeToolRound(conversation, turn.toAssistantMessage(), turn.toChatResponse(), toolOptions)) {
                 break;
             }
             if (profileUpdated.getAndSet(false)) {
@@ -225,24 +229,7 @@ public class LearningAgentService {
             }
         }
 
-        return forcedFinalAnswer(loopClient, conversation);
-    }
-
-    /**
-     * 调用模型一轮；toolOptionsBuilder 为 null 时表示无工具收尾轮。
-     * 消息列表自带头部 SystemMessage，与传给 ToolCallingManager 的镜像 Prompt 保持一致。
-     * 通过 advisor 参数禁用 ChatClient 自动注册的工具循环 Advisor（Spring AI 2.0 会在
-     * advisor 链内自动注册并接管整个工具循环），轮次编排由本服务手动控制。
-     */
-    private ChatResponse callModel(ChatClient loopClient, List<Message> conversation,
-                                   ToolCallingChatOptions.Builder<?> toolOptionsBuilder) {
-        ChatClient.ChatClientRequestSpec spec = loopClient.prompt()
-            .messages(conversation)
-            .advisors(a -> a.param(ChatClientAttributes.TOOL_CALLING_ADVISOR_AUTO_REGISTER.getKey(), Boolean.FALSE));
-        if (toolOptionsBuilder != null) {
-            spec = spec.options(toolOptionsBuilder);
-        }
-        return spec.call().chatResponse();
+        return forcedFinalAnswer(connection, conversation, liveSink);
     }
 
     /**
@@ -274,73 +261,44 @@ public class LearningAgentService {
     }
 
     /**
-     * 工具轮耗尽或失败后的兜底：摘掉工具，让模型基于已有上下文直接收尾
+     * 工具轮耗尽或失败后的兜底：摘掉工具，让模型基于已有上下文直接收尾（同样流式输出）
      */
-    private String forcedFinalAnswer(ChatClient loopClient, List<Message> conversation) {
+    private String forcedFinalAnswer(OpenAiCompatibleStreamClient.Connection connection,
+                                     List<Message> conversation, Sinks.Many<AgentEvent> liveSink) {
         List<Message> closing = new ArrayList<>(conversation);
         closing.add(new UserMessage(
             "工具调用遇到问题，无法继续。请基于以上对话中已有的信息直接给出最终回答，不要提及工具调用失败的技术细节。"));
-        ChatResponse response = callModel(loopClient, closing, null);
-        String text = response != null && response.getResult() != null && response.getResult().getOutput() != null
-            ? response.getResult().getOutput().getText()
-            : null;
-        if (text == null || text.isBlank()) {
+        // 收尾轮之前已有思维链，需要空行分隔
+        boolean[] streamState = {false, true};
+        OpenAiCompatibleStreamClient.StreamedAssistant turn = streamClient.streamTurn(
+            connection, closing, List.of(), delta -> emitStreamDelta(delta, liveSink, streamState));
+        if (turn.text().isBlank()) {
             throw new BusinessException(ErrorCode.AI_SERVICE_ERROR, "模型未返回有效回答");
         }
-        return text;
+        return turn.text();
     }
 
     /**
-     * 取思维链原文：Spring AI 的 OpenAI 模块把响应 message 级的 reasoning_content
-     * （deepseek 等思考模型的 CoT 扩展字段，兼容键名 reasoning）放进
-     * AssistantMessage metadata 的 reasoningContent 键
+     * 把模型流式分片实时转成前端事件：思维链走 reasoning、正文走 delta，全部即收即发（真流式）。
+     * streamState[0] 标记本轮思维链是否已开始推送；streamState[1] 标记之前是否推过，
+     * 多轮之间补一个空行（前端按纯追加渲染）。
      */
-    private String extractReasoning(AssistantMessage output) {
-        Object reasoning = output.getMetadata() == null ? null : output.getMetadata().get("reasoningContent");
-        return reasoning instanceof String text ? text : "";
-    }
-
-    /**
-     * 思维链按整轮推给前端（reasoning 事件），不做分片延迟；未开启思考时为空串直接跳过
-     */
-    private void emitReasoning(String reasoning, Sinks.Many<AgentEvent> liveSink) {
-        if (reasoning != null && !reasoning.isBlank()) {
+    private void emitStreamDelta(OpenAiCompatibleStreamClient.StreamDelta delta,
+                                 Sinks.Many<AgentEvent> liveSink, boolean[] streamState) {
+        String reasoning = delta.reasoningContent();
+        if (reasoning != null && !reasoning.isEmpty()) {
+            if (!streamState[0]) {
+                // 多轮之间的空行直接并进首片，前端纯追加、落库的时间线也自带这个分隔
+                reasoning = streamState[1] ? "\n\n" + reasoning : reasoning;
+                streamState[0] = true;
+                streamState[1] = true;
+            }
             liveSink.tryEmitNext(AgentEvent.reasoning(reasoning));
         }
-    }
-
-    /**
-     * 工具轮之间模型的过渡正文（思维链单独走 reasoning 事件后通常为空，保留兼容）
-     */
-    private void emitInterimText(String text, Sinks.Many<AgentEvent> liveSink) {
-        if (text != null && !text.isBlank()) {
-            liveSink.tryEmitNext(AgentEvent.delta(text));
+        String content = delta.content();
+        if (content != null && !content.isEmpty()) {
+            liveSink.tryEmitNext(AgentEvent.delta(content));
         }
-    }
-
-    /**
-     * 最终答案分片流式输出：保留打字机效果；答案很长时自动放大分片，控制总时长
-     */
-    private Flux<AgentEvent> emitFinalAnswer(String finalText) {
-        return Flux.fromIterable(splitChunks(finalText))
-            .map(AgentEvent::delta)
-            .delayElements(Duration.ofMillis(DELTA_INTERVAL_MS));
-    }
-
-    private List<String> splitChunks(String text) {
-        int chunkSize = Math.max(DELTA_CHUNK_SIZE, text.length() / MAX_DELTA_CHUNKS);
-        List<String> chunks = new ArrayList<>();
-        int start = 0;
-        while (start < text.length()) {
-            int end = Math.min(start + chunkSize, text.length());
-            // 不把增补字符对（emoji 等）劈进两个分片
-            if (end < text.length() && Character.isHighSurrogate(text.charAt(end - 1))) {
-                end++;
-            }
-            chunks.add(text.substring(start, end));
-            start = end;
-        }
-        return chunks;
     }
 
     private ToolCallback[] buildToolCallbacks(Long userId, Long sessionId, List<Long> preferredKbIds,
@@ -484,6 +442,15 @@ public class LearningAgentService {
             return objectMapper.writeValueAsString(steps);
         } catch (JsonProcessingException e) {
             log.warn("序列化 Agent 步骤失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private String serializeTimeline(List<AgentTimelineBlock> timeline) {
+        try {
+            return objectMapper.writeValueAsString(List.copyOf(timeline));
+        } catch (JsonProcessingException e) {
+            log.warn("序列化 Agent 时间线失败: {}", e.getMessage());
             return null;
         }
     }

@@ -57,6 +57,9 @@ public class LlmProviderRegistry {
     private final ToolCallingManager toolCallingManager;
     private final ObservationRegistry observationRegistry;
     private final ToolCallback interviewSkillsToolCallback;
+    /** SafeGuardAdvisor 命中敏感词时的兜底话术（原生流式路径共用） */
+    private static final String SAFEGUARD_FAILURE_RESPONSE = "抱歉，我只能协助面试相关的任务。";
+
     private static final Map<String, String> RECOMMENDED_EMBEDDING_MODELS = Map.of(
         "dashscope", "text-embedding-v3",
         "glm", "embedding-3",
@@ -150,29 +153,6 @@ public class LlmProviderRegistry {
     }
 
     /**
-     * 获取学习 Agent 手动 ReAct 循环专用 ChatClient：仅 SafeGuard，
-     * 不带 SkillsTool、Memory 与 ToolCallingAdvisor。
-     * <p>
-     * 不挂 ToolCallingAdvisor 的原因：Spring AI 2.0 中它会接管整个工具调用循环，
-     * 且其流式聚合对部分模型（如 deepseek）把工具名拆分到多个分片的响应存在兼容问题
-     * （toolName cannot be null or empty）。工具轮改由业务侧用 ToolCallingManager
-     * 非流式编排，见 LearningAgentService。
-     */
-    public ChatClient getAgentLoopChatClient(String providerId) {
-        String id = resolveProviderId(providerId);
-        return clientCache.computeIfAbsent(id + ":agent-loop", key -> createAgentLoopChatClient(id));
-    }
-
-    private ChatClient createAgentLoopChatClient(String providerId) {
-        OpenAiChatModel chatModel = getChatModel(providerId);
-
-        ChatClient.Builder builder = ChatClient.builder(chatModel);
-        buildSafeGuardAdvisor().ifPresent(advisor -> builder.defaultAdvisors(List.of(advisor)));
-        log.info("[LlmProviderRegistry] Created agent-loop ChatClient (SafeGuard only, manual tool loop) for {}", providerId);
-        return builder.build();
-    }
-
-    /**
      * 清空缓存，重新加载所有 provider。
      */
     public void reload() {
@@ -181,6 +161,19 @@ public class LlmProviderRegistry {
         chatModelCache.clear();
         embeddingModelCache.clear();
         log.info("[LlmProviderRegistry] Cache cleared ({} entries). Next access will re-create clients.", size);
+    }
+
+    /**
+     * 取 provider 的连接信息（解密后的 Key + 带版本号的 Base URL + 模型名），
+     * 供不经过 Spring AI 聚合层的原生流式客户端使用，见 {@link OpenAiCompatibleStreamClient}。
+     */
+    public OpenAiCompatibleStreamClient.Connection getChatConnection(String providerId) {
+        ProviderSnapshot snapshot = loadProviderOrThrow(resolveProviderId(providerId));
+        return new OpenAiCompatibleStreamClient.Connection(
+            ApiPathResolver.resolveVersionedBaseUrl(snapshot.baseUrl()),
+            snapshot.apiKey(),
+            snapshot.model(),
+            snapshot.temperature());
     }
 
     public EmbeddingModel getEmbeddingModel(String providerId) {
@@ -345,10 +338,34 @@ public class LlmProviderRegistry {
         }
         SafeGuardAdvisor advisor = SafeGuardAdvisor.builder()
             .sensitiveWords(config.getSafeguardWords())
-            .failureResponse("抱歉，我只能协助面试相关的任务。")
+            .failureResponse(SAFEGUARD_FAILURE_RESPONSE)
             .order(100)
             .build();
         return Optional.of(advisor);
+    }
+
+    /**
+     * 敏感词命中检查：原生流式调用（不经过 ChatClient）绕过了 SafeGuardAdvisor，
+     * 调用方需用本方法做等价检查，命中时直接返回 {@link #safeguardFailureResponse()}、不请求模型。
+     */
+    public boolean isSafeguardTriggered(String text) {
+        AdvisorConfig config = properties.getAdvisors();
+        if (config == null || !config.isSafeguardEnabled() || isBlank(text)) {
+            return false;
+        }
+        List<String> words = config.getSafeguardWords();
+        if (words == null || words.isEmpty()) {
+            return false;
+        }
+        String lower = text.toLowerCase();
+        return words.stream()
+            .filter(word -> !isBlank(word))
+            .anyMatch(word -> lower.contains(word.toLowerCase()));
+    }
+
+    /** 与 SafeGuardAdvisor 一致的兜底话术 */
+    public String safeguardFailureResponse() {
+        return SAFEGUARD_FAILURE_RESPONSE;
     }
 
     private String resolveProviderId(String providerId) {

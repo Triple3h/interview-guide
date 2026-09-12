@@ -1,5 +1,7 @@
 package interview.guide.modules.learning.agent;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ToolContext;
@@ -16,6 +18,8 @@ import java.util.function.Consumer;
 @RequiredArgsConstructor
 public class LearningAgentToolCallback implements ToolCallback {
 
+    private static final ObjectMapper RESULT_MAPPER = new ObjectMapper();
+
     private final ToolCallback delegate;
     private final Consumer<AgentStep> stepConsumer;
 
@@ -30,7 +34,8 @@ public class LearningAgentToolCallback implements ToolCallback {
         stepConsumer.accept(new AgentStep(name, "start", LearningAgentTools.describeArgs(name, toolInput), null));
         try {
             String result = delegate.call(toolInput);
-            stepConsumer.accept(new AgentStep(name, "end", endSummary(name, result), endDetail(result)));
+            String readable = unwrapJsonString(result);
+            stepConsumer.accept(new AgentStep(name, "end", endSummary(name, readable), endDetail(readable)));
             return result;
         } catch (RuntimeException e) {
             log.warn("[LearningAgent] 工具执行失败: tool={}, error={}", name, e.getMessage());
@@ -42,6 +47,25 @@ public class LearningAgentToolCallback implements ToolCallback {
     @Override
     public String call(String toolInput, ToolContext toolContext) {
         return call(toolInput);
+    }
+
+    /**
+     * 工具返回的 String 会被序列化成 JSON 字符串字面量（外层引号 + \n 转义），
+     * 展示前还原成纯文本，免得前端看到 {@code \"} 与 {@code \n}
+     */
+    private String unwrapJsonString(String result) {
+        if (result == null) {
+            return "";
+        }
+        String trimmed = result.trim();
+        if (trimmed.length() >= 2 && trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
+            try {
+                return RESULT_MAPPER.readValue(trimmed, String.class);
+            } catch (JsonProcessingException e) {
+                log.debug("[LearningAgent] 工具结果非 JSON 字符串，按原文展示: {}", e.getMessage());
+            }
+        }
+        return result;
     }
 
     private String endSummary(String name, String result) {
@@ -56,10 +80,16 @@ public class LearningAgentToolCallback implements ToolCallback {
         };
     }
 
+    /** 工具返回原文：保留换行（前端展开后用 pre 展示），超长截断 */
     private String endDetail(String result) {
-        return abbreviate(result, 500);
+        if (result == null) {
+            return "";
+        }
+        String trimmed = result.trim();
+        return trimmed.length() <= 500 ? trimmed : trimmed.substring(0, 500) + "…";
     }
 
+    /** 单行摘要：折叠空白，避免摘要里出现换行 */
     private String abbreviate(String text, int max) {
         if (text == null) {
             return "";

@@ -73,6 +73,13 @@ public class RagChatMessageEntity {
     @Column(name = "tool_steps_json", columnDefinition = "TEXT")
     private String toolStepsJson;
 
+    /**
+     * Agent 回答时间线（JSON 数组：思考 / 工具调用 / 正文，按发生顺序，仅 ASSISTANT 消息使用），
+     * 供前端回放带思维链的完整过程
+     */
+    @Column(name = "timeline_json", columnDefinition = "TEXT")
+    private String timelineJson;
+
     public enum MessageType {
         USER,      // 用户消息
         ASSISTANT  // AI 回答

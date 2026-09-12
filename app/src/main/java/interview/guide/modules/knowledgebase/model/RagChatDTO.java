@@ -91,6 +91,7 @@ public class RagChatDTO {
         String type,  // "user" | "assistant"
         String content,
         String toolSteps,  // JSON 字符串，Agent 工具调用步骤（仅 ASSISTANT 消息）
+        String timeline,  // JSON 字符串，Agent 回答时间线（思考/工具/正文，仅新消息有）
         LocalDateTime createdAt
     ) {}
 }

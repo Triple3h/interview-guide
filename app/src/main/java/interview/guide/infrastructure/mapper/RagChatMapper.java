@@ -35,6 +35,7 @@ public interface RagChatMapper {
      */
     @Mapping(target = "type", source = "message", qualifiedByName = "getTypeString")
     @Mapping(target = "toolSteps", source = "toolStepsJson")
+    @Mapping(target = "timeline", source = "timelineJson")
     MessageDTO toMessageDTO(RagChatMessageEntity message);
     
     /**

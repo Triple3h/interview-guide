@@ -8,15 +8,14 @@ import {ragChatApi, type RagChatSessionListItem} from '../api/ragChat';
 import {learningAgentApi} from '../api/learningAgent';
 import {userApi} from '../api/user';
 import {getStoredUser, storeUser} from '../utils/currentUser';
-import type {AgentStep, AskLearnerPayload} from '../types/learning';
+import type {AgentBlock, AgentStep, AskLearnerPayload, ToolInvocation} from '../types/learning';
 import type {UserProfile} from '../types/user';
 import {formatDateOnly} from '../utils/date';
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
 import CodeBlock from '../components/CodeBlock';
 import UserMenu from '../components/UserMenu';
-import ToolStepsPanel from '../components/learning/ToolStepsPanel';
+import {groupInvocations, ReasoningBlock, ToolCallBlock} from '../components/learning/AgentBlocks';
 import {
-  Brain,
   Check,
   CircleHelp,
   Edit,
@@ -35,20 +34,19 @@ interface LearningAgentPageProps {
 interface AskCardState extends AskLearnerPayload {
   /** 会话内自增 id，弹窗与正文回答框按它定位卡片 */
   askId: number;
-  /** 收到提问时已流出的正文字符数，回答后回答框按此位置插回正文中间 */
-  atOffset: number;
   answer?: string;
   closed?: boolean;
 }
+
+/** 时间线块：思考 / 工具调用 / 正文 / 提问卡片，按发生顺序渲染 */
+type MessageBlock = AgentBlock | { kind: 'ask'; ask: AskCardState };
 
 interface Message {
   id?: number;
   type: 'user' | 'assistant';
   content: string;
   timestamp: Date;
-  reasoning?: string;
-  steps?: AgentStep[];
-  asks?: AskCardState[];
+  blocks: MessageBlock[];
 }
 
 const SUGGESTIONS = [
@@ -57,6 +55,45 @@ const SUGGESTIONS = [
   '用我学过的知识解释一个新概念',
   '总结一下我的薄弱环节',
 ];
+
+/** askLearner 的提问与回答统一由问答卡承载，不再生成工具卡 */
+const ASK_TOOL = 'askLearner';
+const ASK_QUESTION_PREFIX = '向学员提问';
+const ASK_ANSWER_PREFIX = '学员的回答';
+
+/** 去掉与工具标签重复的前缀（后端摘要形如「加载知识基线：AGENT_BASIS」） */
+const stripPrefix = (text: string | undefined, label: string): string => {
+  const raw = (text ?? '').trim();
+  return raw.startsWith(label) ? raw.slice(label.length).replace(/^[:：]\s*/, '') : raw;
+};
+
+/** 时间线分片合并：同类分片（思考 / 正文）并进最后一块，否则新起一块 */
+const mergeBlock = (blocks: MessageBlock[], block: MessageBlock): MessageBlock[] => {
+  const last = blocks[blocks.length - 1];
+  if (block.kind === 'reasoning' && last?.kind === 'reasoning') {
+    return [...blocks.slice(0, -1), {kind: 'reasoning', text: last.text + block.text}];
+  }
+  if (block.kind === 'text' && last?.kind === 'text') {
+    return [...blocks.slice(0, -1), {kind: 'text', text: last.text + block.text}];
+  }
+  return [...blocks, block];
+};
+
+/** askLearner 的工具步骤还原成问答卡：历史消息只落库工具步骤，回放时也长成同一形态 */
+const toAskBlock = (invocation: ToolInvocation, seq: number): MessageBlock => {
+  const answer = stripPrefix(invocation.resultSummary, ASK_ANSWER_PREFIX);
+  return {
+    kind: 'ask',
+    ask: {
+      // 历史回放的卡片不参与弹窗交互，用负数 id 与实时流的自增 id 区分
+      askId: -seq,
+      question: stripPrefix(invocation.argsSummary, ASK_QUESTION_PREFIX),
+      options: [],
+      answer: answer || undefined,
+      closed: !answer,
+    },
+  };
+};
 
 /** 回答框：学员点选后插回正文中间，小字问题 + 高亮所选答案 */
 function AskAnswerCard({ask}: {ask: AskCardState}) {
@@ -99,7 +136,6 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
 
   // refs
   const virtuosoRef = useRef<VirtuosoHandle>(null);
-  const rafRef = useRef<number>();
 
   const [, startTransition] = useTransition();
 
@@ -109,9 +145,10 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
       return null;
     }
     for (const m of messages) {
-      const found = m.asks?.find((a) => a.askId === pendingAskId);
-      if (found) {
-        return found;
+      for (const block of m.blocks) {
+        if (block.kind === 'ask' && block.ask.askId === pendingAskId) {
+          return block.ask;
+        }
       }
     }
     return null;
@@ -167,15 +204,51 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
       const detail = await ragChatApi.getSessionDetail(sessionId);
       setCurrentSessionId(detail.id);
       setCurrentSessionTitle(detail.title);
-      setMessages(detail.messages.map((m) => ({
-        id: m.id,
-        type: m.type,
-        content: m.content,
-        timestamp: new Date(m.createdAt),
-        steps: parseSteps(m.toolSteps),
-      })));
+      setMessages(detail.messages.map((m) => {
+        const timeline = parseTimeline(m.timeline);
+        return {
+          id: m.id,
+          type: m.type,
+          content: m.content,
+          timestamp: new Date(m.createdAt),
+          // 新消息按落库的时间线原顺序回放（思考 → 工具 → 正文）；旧消息退化为「工具卡 + 正文」
+          blocks: timeline.length > 0 ? timeline : [
+            ...groupInvocations(parseSteps(m.toolSteps))
+              .flatMap((invocation, i): MessageBlock[] => (
+                invocation.tool === ASK_TOOL ? [toAskBlock(invocation, i + 1)] : [{kind: 'tool', invocation}]
+              )),
+            ...(m.content ? [{kind: 'text', text: m.content} as MessageBlock] : []),
+          ],
+        };
+      }));
     } catch (err) {
       console.error('加载会话失败', err);
+    }
+  };
+
+  // 落库的时间线（与流式块同构）→ 消息块；解析失败或旧消息返回空数组，由调用方退化处理
+  const parseTimeline = (raw?: string | null): MessageBlock[] => {
+    if (!raw) {
+      return [];
+    }
+    try {
+      const parsed = JSON.parse(raw) as Array<{ kind?: string; text?: string; invocation?: ToolInvocation }>;
+      if (!Array.isArray(parsed)) {
+        return [];
+      }
+      return parsed.flatMap((item, index): MessageBlock[] => {
+        if ((item.kind === 'reasoning' || item.kind === 'text') && item.text) {
+          return [{kind: item.kind, text: item.text}];
+        }
+        if (item.kind === 'tool' && item.invocation) {
+          return item.invocation.tool === ASK_TOOL
+            ? [toAskBlock(item.invocation, index + 1)]
+            : [{kind: 'tool', invocation: item.invocation}];
+        }
+        return [];
+      });
+    } catch {
+      return [];
     }
   };
 
@@ -241,7 +314,10 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
       .replace(/\\n/g, '\n')
       .replace(/^(#{1,6})([^\s#\n])/gm, '$1 $2')
       .replace(/^(\s*)(\d+)\.([^\s\n])/gm, '$1$2. $3')
-      .replace(/^(\s*[-*])([^\s\n-])/gm, '$1 $2')
+      // 只给「紧凑列表」补空格：**加粗** / -- 分隔线 / *强调* 都保持原样，只有 *项 / -项 才补
+      .replace(/^(\s*)([-*])([^\s\n*-])([^\n]*)$/gm, (line, indent: string, marker: string, first: string, rest: string) => (
+        marker === '*' && rest.includes('*') ? line : `${indent}${marker} ${first}${rest}`
+      ))
       .replace(/\n{3,}/g, '\n\n');
   };
 
@@ -255,6 +331,54 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
       return next;
     });
   };
+
+  // 工具步骤：start 新建卡片，end / error 回填最近一个同名且仍在执行的调用
+  const applyToolStep = (step: AgentStep) => {
+    // 提问/回答由问答卡承载，不再生成工具卡，避免同一问题在时间线上出现两遍
+    if (step.tool === ASK_TOOL) {
+      return;
+    }
+    updateLastAssistant((msg) => {
+      const blocks = msg.blocks;
+      if (step.phase === 'start') {
+        return {...msg, blocks: [...blocks, {
+          kind: 'tool',
+          invocation: {tool: step.tool, argsSummary: step.summary, status: 'running', resultSummary: ''},
+        }]};
+      }
+      let index = -1;
+      for (let i = blocks.length - 1; i >= 0; i -= 1) {
+        const block = blocks[i];
+        if (block.kind === 'tool' && block.invocation.tool === step.tool && block.invocation.status === 'running') {
+          index = i;
+          break;
+        }
+      }
+      if (index < 0) {
+        return msg;
+      }
+      const target = blocks[index];
+      if (target.kind !== 'tool') {
+        return msg;
+      }
+      const next = [...blocks];
+      next[index] = {
+        kind: 'tool',
+        invocation: {
+          ...target.invocation,
+          status: step.phase === 'error' ? 'error' : 'ok',
+          resultSummary: step.summary,
+          detail: step.detail ?? target.invocation.detail,
+        },
+      };
+      return {...msg, blocks: next};
+    });
+  };
+
+  // 关闭未回答的提问卡片（流结束或失败时）
+  const closePendingAsks = (blocks: MessageBlock[]): MessageBlock[] => blocks.map((block) => (
+    block.kind === 'ask' && !block.ask.answer ? {...block, ask: {...block.ask, closed: true}} : block
+  ));
 
   const handleSubmitQuestion = async (preset?: string) => {
     const raw = (preset ?? question).trim();
@@ -288,68 +412,86 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
     }
 
     setMessages((prev) => [...prev,
-      {type: 'user', content: userQuestion, timestamp: new Date()},
-      {type: 'assistant', content: '', timestamp: new Date(), steps: []},
+      {type: 'user', content: userQuestion, timestamp: new Date(), blocks: []},
+      {type: 'assistant', content: '', timestamp: new Date(), blocks: []},
     ]);
 
     let fullContent = '';
-    let fullReasoning = '';
     // Agent 在本轮补充过学员档案时，流结束后刷新成员资料，让页头与资料弹窗显示最新值
     let profileUpdated = false;
 
+    // SSE 分片远密于帧率：先把分片攒进队列，每帧批量合并进时间线（一次 setState）。
+    // 注意不能用「取消上一帧」的方式节流——同一帧内到达的其余分片会被一起取消，正文会残缺
+    let pendingChunks: Array<{ kind: 'reasoning' | 'text'; text: string }> = [];
+    let flushRaf: number | null = null;
+    let streamClosed = false;
+
+    const flushPendingChunks = () => {
+      if (flushRaf != null) {
+        cancelAnimationFrame(flushRaf);
+        flushRaf = null;
+      }
+      if (pendingChunks.length === 0) {
+        return;
+      }
+      const batch = pendingChunks;
+      pendingChunks = [];
+      startTransition(() => {
+        updateLastAssistant((msg) => ({
+          ...msg,
+          blocks: batch.reduce(mergeBlock, msg.blocks),
+          content: fullContent,
+        }));
+      });
+    };
+
+    const enqueueChunk = (chunk: { kind: 'reasoning' | 'text'; text: string }) => {
+      if (streamClosed) {
+        return;
+      }
+      pendingChunks.push(chunk);
+      if (flushRaf == null) {
+        flushRaf = requestAnimationFrame(() => {
+          flushRaf = null;
+          flushPendingChunks();
+        });
+      }
+    };
+
     try {
       await learningAgentApi.streamChat(sessionId, userQuestion, {
-        onReasoning: (text) => {
-          fullReasoning += fullReasoning ? `\n\n${text}` : text;
-          if (rafRef.current) {
-            cancelAnimationFrame(rafRef.current);
-          }
-          rafRef.current = requestAnimationFrame(() => {
-            startTransition(() => {
-              updateLastAssistant((msg) => ({...msg, reasoning: fullReasoning}));
-            });
-          });
-        },
+        // 后端按分片推送思维链与正文，前端缓冲后按帧合并（同一段思考/正文合并进同一块）
+        onReasoning: (text) => enqueueChunk({kind: 'reasoning', text}),
         onStep: (step) => {
           if (step.tool === 'updateLearnerProfile' && step.phase === 'end') {
             profileUpdated = true;
           }
-          startTransition(() => {
-            updateLastAssistant((msg) => ({
-              ...msg,
-              steps: [...(msg.steps ?? []), step],
-            }));
-          });
+          // 工具卡必须紧跟其前的思考/正文，先冲刷缓冲再插入，避免顺序错位
+          flushPendingChunks();
+          startTransition(() => applyToolStep(step));
         },
         onDelta: (text) => {
           fullContent += text;
-          if (rafRef.current) {
-            cancelAnimationFrame(rafRef.current);
-          }
-          rafRef.current = requestAnimationFrame(() => {
-            startTransition(() => {
-              updateLastAssistant((msg) => ({...msg, content: fullContent}));
-            });
-          });
+          enqueueChunk({kind: 'text', text});
         },
         onAsk: (payload) => {
           const askId = ++askSeq.current;
-          const atOffset = fullContent.length;
+          flushPendingChunks();
           startTransition(() => {
             updateLastAssistant((msg) => ({
               ...msg,
-              asks: [...(msg.asks ?? []), {...payload, askId, atOffset}],
+              blocks: [...msg.blocks, {kind: 'ask', ask: {...payload, askId}}],
             }));
           });
           setPendingAskId(askId);
         },
         onComplete: () => {
-          // 流结束：还没被回答的提问卡片按超时关闭（Agent 已按超时降级继续），弹窗随之消失
+          streamClosed = true;
+          // 流结束前先把缓冲里剩下的分片落进时间线，否则结尾会被吞掉
+          flushPendingChunks();
+          // 还没被回答的提问卡片按超时关闭（Agent 已按超时降级继续），弹窗随之消失
           startTransition(() => {
-            updateLastAssistant((msg) => ({
-              ...msg,
-              asks: (msg.asks ?? []).map((a) => (a.answer ? a : {...a, closed: true})),
-            }));
+            updateLastAssistant((msg) => ({...msg, blocks: closePendingAsks(msg.blocks)}));
           });
           setPendingAskId(null);
           setLoading(false);
@@ -362,11 +504,17 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
         },
         onError: (error: Error) => {
           console.error('学习帮手回答失败:', error);
+          streamClosed = true;
+          flushPendingChunks();
+          const fallback = fullContent || `回答失败：${error.message || '请重试'}`;
           startTransition(() => {
             updateLastAssistant((msg) => ({
               ...msg,
-              content: fullContent || `回答失败：${error.message || '请重试'}`,
-              asks: (msg.asks ?? []).map((a) => (a.answer ? a : {...a, closed: true})),
+              content: fallback,
+              blocks: [
+                ...closePendingAsks(msg.blocks),
+                ...(fullContent ? [] : [{kind: 'text', text: fallback} as MessageBlock]),
+              ],
             }));
           });
           setPendingAskId(null);
@@ -376,9 +524,13 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
       });
     } catch (err) {
       console.error('发起流式请求失败:', err);
+      streamClosed = true;
+      flushPendingChunks();
+      const fallback = fullContent || (err instanceof Error ? err.message : '回答失败，请重试');
       updateLastAssistant((msg) => ({
         ...msg,
-        content: fullContent || (err instanceof Error ? err.message : '回答失败，请重试'),
+        content: fallback,
+        blocks: fullContent ? msg.blocks : [...msg.blocks, {kind: 'text', text: fallback} as MessageBlock],
       }));
       setLoading(false);
     }
@@ -405,10 +557,14 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
     const patchAsk = (patch: Partial<AskCardState>) => {
       startTransition(() => {
         setMessages((prev) => prev.map((m) => {
-          if (!m.asks?.some((a) => a.askId === askId)) return m;
+          if (!m.blocks.some((block) => block.kind === 'ask' && block.ask.askId === askId)) return m;
           return {
             ...m,
-            asks: m.asks.map((a) => (a.askId === askId ? {...a, ...patch} : a)),
+            blocks: m.blocks.map((block) => (
+              block.kind === 'ask' && block.ask.askId === askId
+                ? {...block, ask: {...block.ask, ...patch}}
+                : block
+            )),
           };
         }));
       });
@@ -442,7 +598,8 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
   }, [pendingAsk?.askId, pendingAsk?.answer, pendingAsk?.closed]);
 
   const renderMarkdownBody = (text: string, streaming: boolean) => (
-    <div className="prose prose-slate dark:prose-invert prose-sm max-w-none">
+    // mb-3 与思考块 / 工具卡对齐，保证时间线各段间距一致（prose 自身末元素 margin 已被清零）
+    <div className="prose prose-slate dark:prose-invert prose-sm max-w-none mb-3">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -476,49 +633,29 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
     </div>
   );
 
-  // 正文渲染：回答过的提问框按提问时刻的正文位置插回中间；未回答/超时的不占正文
+  // 时间线渲染：思考 / 工具调用 / 正文 / 提问卡片按发生顺序排列；正在流式推进的最后一块带光标
   const renderAssistantBody = (msg: Message, index: number) => {
     const streaming = loading && index === messages.length - 1;
-    const answeredAsks = (msg.asks ?? [])
-      .filter((a) => a.answer)
-      .sort((a, b) => a.atOffset - b.atOffset);
-    if (answeredAsks.length === 0) {
-      return renderMarkdownBody(msg.content, streaming);
-    }
-    const parts: React.ReactNode[] = [];
-    let cursor = 0;
-    answeredAsks.forEach((ask, i) => {
-      const at = Math.min(Math.max(ask.atOffset, cursor), msg.content.length);
-      // 对齐到行首切分，避免把一行 markdown 拆成两半
-      const split = Math.max(msg.content.lastIndexOf('\n', at) + 1, cursor);
-      parts.push(
-        <Fragment key={`seg-${i}`}>{renderMarkdownBody(msg.content.slice(cursor, split), false)}</Fragment>,
-      );
-      parts.push(<AskAnswerCard key={`ask-${ask.askId}`} ask={ask}/>);
-      cursor = split;
-    });
-    parts.push(
-      <Fragment key="seg-tail">{renderMarkdownBody(msg.content.slice(cursor), streaming)}</Fragment>,
-    );
-    return <>{parts}</>;
-  };
-
-  // 思维链折叠块：思考中默认展开，答案开始输出后自动收起
-  const renderReasoning = (msg: Message, index: number) => {
-    if (!msg.reasoning) {
-      return null;
-    }
-    const isThinking = loading && index === messages.length - 1 && !msg.content;
+    const blocks = msg.blocks;
     return (
-      <details className="mb-3" open={isThinking}>
-        <summary className="cursor-pointer select-none list-none inline-flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300">
-          <Brain className={`w-3.5 h-3.5 ${isThinking ? 'animate-pulse text-primary-500' : ''}`}/>
-          {isThinking ? '思考中…' : '已深度思考'}
-        </summary>
-        <div className="mt-2 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-700/60 text-xs leading-relaxed text-slate-500 dark:text-slate-400 whitespace-pre-wrap max-h-60 overflow-y-auto">
-          {msg.reasoning}
-        </div>
-      </details>
+      // 各块自带 mb-3，最后一块去掉，避免气泡底部多出一段空白
+      <div className="[&>*:last-child]:mb-0">
+        {blocks.map((block, i) => {
+          const isLast = streaming && i === blocks.length - 1;
+          if (block.kind === 'reasoning') {
+            return <ReasoningBlock key={i} text={block.text} streaming={isLast}/>;
+          }
+          if (block.kind === 'tool') {
+            // 提问/回答由问答卡承载（历史回放已在上游转成问答卡，这里兜底不重复渲染）
+            return block.invocation.tool === ASK_TOOL ? null : <ToolCallBlock key={i} invocation={block.invocation}/>;
+          }
+          if (block.kind === 'text') {
+            return <Fragment key={i}>{renderMarkdownBody(block.text, isLast)}</Fragment>;
+          }
+          // 未回答 / 超时的提问卡片不占正文（弹窗负责交互）
+          return block.ask.answer ? <AskAnswerCard key={i} ask={block.ask}/> : null;
+        })}
+      </div>
     );
   };
 
@@ -729,22 +866,15 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
                         className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}
                       >
                         <div
-                          className={`max-w-[85%] rounded-2xl p-4 shadow-sm ${msg.type === 'user'
-                            ? 'bg-primary-600 text-white'
-                            : 'bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-600 text-slate-800 dark:text-slate-100'
+                          className={`rounded-2xl p-4 shadow-sm ${msg.type === 'user'
+                            ? 'max-w-[85%] bg-primary-600 text-white'
+                            : 'w-full min-w-0 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-600 text-slate-800 dark:text-slate-100'
                           }`}
                         >
                           {msg.type === 'user' ? (
                             <p className="whitespace-pre-wrap leading-relaxed text-sm">{msg.content}</p>
                           ) : (
-                            <div>
-                              {renderReasoning(msg, index)}
-                              <ToolStepsPanel
-                                steps={msg.steps ?? []}
-                                running={loading && index === messages.length - 1}
-                              />
-                              {renderAssistantBody(msg, index)}
-                            </div>
+                            <div>{renderAssistantBody(msg, index)}</div>
                           )}
                         </div>
                       </motion.div>

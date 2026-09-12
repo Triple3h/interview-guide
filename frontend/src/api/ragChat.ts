@@ -24,6 +24,8 @@ export interface RagChatMessage {
   content: string;
   /** Agent 工具调用步骤（JSON 字符串，仅 assistant 消息） */
   toolSteps?: string | null;
+  /** Agent 回答时间线（JSON 字符串：思考 / 工具调用 / 正文，仅新消息有） */
+  timeline?: string | null;
   createdAt: string;
 }
 
