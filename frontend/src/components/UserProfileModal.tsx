@@ -76,15 +76,16 @@ export default function UserProfileModal({ open, mode, initial, onClose, onSaved
     setSaving(true);
     setError('');
     try {
+      // 始终随资料整体提交：选预置方向传 skill id，自定义方向传空串让后端清除
+      // 清空的字段必须显式传空串——后端约定「null/缺省 = 不修改」，undefined 会被 JSON.stringify 丢掉导致清空失败
       const payload: SaveUserPayload = {
         nickname: nickname.trim(),
         avatarEmoji,
-        occupation: occupation.trim() || undefined,
-        learningDirection: learningDirection.trim() || undefined,
-        // 始终随资料整体提交：选预置方向传 skill id，自定义方向传空串让后端清除
+        occupation: occupation.trim(),
+        learningDirection: learningDirection.trim(),
         learningSkillId,
-        currentLevel: currentLevel.trim() || undefined,
-        learningGoal: learningGoal.trim() || undefined,
+        currentLevel: currentLevel.trim(),
+        learningGoal: learningGoal.trim(),
       };
       const saved = mode === 'create'
         ? await userApi.create(payload)

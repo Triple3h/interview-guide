@@ -10,12 +10,13 @@ export interface UserProfile {
   createdAt: string;
 }
 
+/** 资料整体提交：字段一律显式给出，空串表示清空（后端把缺省/null 视为「不修改」） */
 export interface SaveUserPayload {
   nickname: string;
-  avatarEmoji?: string;
-  occupation?: string;
-  learningDirection?: string;
-  learningSkillId?: string;
-  currentLevel?: string;
-  learningGoal?: string;
+  avatarEmoji: string;
+  occupation: string;
+  learningDirection: string;
+  learningSkillId: string;
+  currentLevel: string;
+  learningGoal: string;
 }
