@@ -141,23 +141,23 @@ export default function InterviewHubPage() {
   return (
     <div className="max-w-5xl mx-auto">
       {/* 页面标题 */}
-      <div className="mb-4 md:mb-8">
-        <h1 className="flex text-xl md:text-2xl font-bold text-slate-800 dark:text-white items-center gap-2 md:gap-3">
-          <Sparkles className="w-6 h-6 md:w-7 md:h-7 text-primary-500" />
+      <div className="mb-3 md:mb-8">
+        <h1 className="flex text-lg md:text-2xl font-bold text-slate-800 dark:text-white items-center gap-2 md:gap-3">
+          <Sparkles className="w-5 h-5 md:w-7 md:h-7 text-primary-500" />
           模拟面试
         </h1>
         <p className="hidden md:block text-sm md:text-base text-slate-500 dark:text-slate-400 mt-1">选择面试模式和方向，快速开始练习</p>
       </div>
 
       {/* 配置区域 */}
-      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 p-4 md:p-6 mb-6 md:mb-8">
-        <div className="space-y-4 md:space-y-6">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 p-3 md:p-6 mb-4 md:mb-8">
+        <div className="space-y-3 md:space-y-6">
           {/* 面试模式 */}
           <div>
             <label className="flex items-center gap-2 mb-2 md:mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
               面试模式
             </label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2 md:gap-3">
               {([
                 {
                   value: 'text' as InterviewMode,
@@ -180,15 +180,15 @@ export default function InterviewHubPage() {
                   <button
                     key={opt.value}
                     onClick={() => config.setMode(opt.value)}
-                    className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all duration-200 text-left
+                    className={`flex items-center gap-2.5 md:gap-3 p-2.5 md:p-4 rounded-xl border-2 transition-all duration-200 text-left
                       ${selected
                         ? 'border-primary-500 bg-primary-50/80 dark:bg-primary-900/20'
                         : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600'
                       }`}
                   >
-                    <Icon className={`w-6 h-6 flex-shrink-0 ${selected ? 'text-primary-500' : 'text-slate-400'}`} />
+                    <Icon className={`w-5 h-5 md:w-6 md:h-6 flex-shrink-0 ${selected ? 'text-primary-500' : 'text-slate-400'}`} />
                     <div className="min-w-0">
-                      <p className={`font-semibold text-sm flex items-center gap-2 ${selected ? 'text-primary-700 dark:text-primary-300' : 'text-slate-900 dark:text-white'}`}>
+                      <p className={`font-semibold text-sm flex items-center gap-1.5 md:gap-2 ${selected ? 'text-primary-700 dark:text-primary-300' : 'text-slate-900 dark:text-white'}`}>
                         <span>{opt.label}</span>
                         {opt.recommended && (
                           <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
@@ -196,7 +196,7 @@ export default function InterviewHubPage() {
                           </span>
                         )}
                       </p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">{opt.desc}</p>
+                      <p className="hidden sm:block text-xs text-slate-500 dark:text-slate-400">{opt.desc}</p>
                     </div>
                   </button>
                 );
@@ -224,17 +224,17 @@ export default function InterviewHubPage() {
                     <button
                       key={skill.id}
                       onClick={() => config.setSkillId(skill.id)}
-                      className={`flex items-center gap-2.5 p-3 rounded-xl border-2 transition-all duration-200 text-left
+                      className={`flex items-center gap-2 md:gap-2.5 p-2 md:p-3 rounded-xl border-2 transition-all duration-200 text-left
                         ${selected
                           ? 'border-primary-500 bg-primary-50/80 dark:bg-primary-900/20'
                           : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600'
                         }`}
                     >
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm flex-shrink-0 ${
+                      <div className={`w-6 h-6 md:w-8 md:h-8 rounded-lg flex items-center justify-center text-sm flex-shrink-0 ${
                         selected ? skill.display?.iconBg || 'bg-primary-100 dark:bg-primary-900/50' : 'bg-slate-100 dark:bg-slate-700'
                       }`}>
                         {IconComponent
-                          ? <IconComponent className={`w-4 h-4 ${selected ? (skill.display?.iconColor || 'text-primary-600') : 'text-slate-500 dark:text-slate-400'}`} />
+                          ? <IconComponent className={`w-3.5 h-3.5 md:w-4 md:h-4 ${selected ? (skill.display?.iconColor || 'text-primary-600') : 'text-slate-500 dark:text-slate-400'}`} />
                           : <span className={selected ? (skill.display?.iconColor || 'text-primary-600') : ''}>{fallbackEmoji}</span>
                         }
                       </div>
@@ -249,19 +249,19 @@ export default function InterviewHubPage() {
                 {/* 自定义按钮 */}
                 <button
                   onClick={() => config.setSkillId(CUSTOM_SKILL_ID)}
-                  className={`flex items-center gap-2.5 p-3 rounded-xl border-2 border-dashed transition-all duration-200 text-left
+                  className={`flex items-center gap-2 md:gap-2.5 p-2 md:p-3 rounded-xl border-2 border-dashed transition-all duration-200 text-left
                     ${config.isCustomSkill
                       ? 'border-primary-500 bg-primary-50/80 dark:bg-primary-900/20'
                       : 'border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-600'
                     }`}
                 >
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                  <div className={`w-6 h-6 md:w-8 md:h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
                     config.isCustomSkill ? 'bg-primary-100 dark:bg-primary-900/50' : 'bg-slate-100 dark:bg-slate-700'
                   }`}>
                     {(() => {
                       const CustomIcon = getSkillIcon(CUSTOM_SKILL_ID);
                       return CustomIcon
-                        ? <CustomIcon className={`w-4 h-4 ${config.isCustomSkill ? 'text-primary-600 dark:text-primary-400' : 'text-slate-500 dark:text-slate-400'}`} />
+                        ? <CustomIcon className={`w-3.5 h-3.5 md:w-4 md:h-4 ${config.isCustomSkill ? 'text-primary-600 dark:text-primary-400' : 'text-slate-500 dark:text-slate-400'}`} />
                         : <span className="text-sm">✨</span>;
                     })()}
                   </div>
@@ -331,14 +331,14 @@ export default function InterviewHubPage() {
             <label className="flex items-center gap-2 mb-2 md:mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
               难度
             </label>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-3 gap-2 md:gap-3">
               {DIFFICULTY_OPTIONS.map(opt => {
                 const selected = config.difficulty === opt.value;
                 return (
                   <button
                     key={opt.value}
                     onClick={() => config.setDifficulty(opt.value)}
-                    className={`py-2.5 px-2 md:py-3 md:px-4 rounded-xl border-2 transition-all duration-200 text-center
+                    className={`py-2 px-1.5 md:py-3 md:px-4 rounded-xl border-2 transition-all duration-200 text-center
                       ${selected
                         ? 'border-primary-500 bg-primary-50/80 dark:bg-primary-900/20'
                         : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600'
@@ -347,7 +347,7 @@ export default function InterviewHubPage() {
                     <p className={`text-sm font-semibold ${selected ? 'text-primary-700 dark:text-primary-300' : 'text-slate-700 dark:text-slate-300'}`}>
                       {opt.label}
                     </p>
-                    <p className="text-xs text-slate-400">{opt.desc}</p>
+                    <p className="text-[11px] md:text-xs text-slate-400">{opt.desc}</p>
                   </button>
                 );
               })}
@@ -357,7 +357,7 @@ export default function InterviewHubPage() {
           {/* 更多选项 */}
           <button
             onClick={() => config.setShowMore(!config.showMore)}
-            className="w-full flex items-center gap-2 py-2 text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
+            className="w-full flex items-center gap-2 py-1.5 md:py-2 text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
           >
             {config.showMore ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             <span>更多选项</span>
@@ -447,7 +447,7 @@ export default function InterviewHubPage() {
         </div>
 
         {/* 开始面试按钮 */}
-        <div className="mt-4 pt-4 md:mt-6 md:pt-6 border-t border-slate-100 dark:border-slate-700">
+        <div className="mt-3 pt-3 md:mt-6 md:pt-6 border-t border-slate-100 dark:border-slate-700">
           <motion.button
             onClick={handleStart}
             whileHover={{ scale: 1.01 }}
@@ -463,8 +463,8 @@ export default function InterviewHubPage() {
       </div>
 
       {/* 最近面试记录 */}
-      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 p-4 md:p-6">
-        <div className="flex items-center justify-between mb-4">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 p-3 md:p-6">
+        <div className="flex items-center justify-between mb-3 md:mb-4">
           <h2 className="text-base md:text-lg font-bold text-slate-800 dark:text-white">最近面试记录</h2>
           <Link
             to="/interviews"

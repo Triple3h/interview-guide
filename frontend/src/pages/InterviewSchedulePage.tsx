@@ -169,7 +169,7 @@ export const InterviewSchedulePage: React.FC = () => {
   }
 
   return (
-    <div className="max-w-7xl mx-auto pb-6 md:p-6">
+    <div className="max-w-7xl mx-auto md:p-6">
       <ScheduleHeader
         view={view}
         onViewChange={setView}

@@ -60,15 +60,15 @@ export const ScheduleHeader: React.FC<ScheduleHeaderProps> = ({
       initial={{ opacity: 0, y: -20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-2xl border border-slate-200/50 dark:border-slate-700/50 p-3 md:p-6 mb-3 md:mb-6 shadow-xl shadow-slate-200/50 dark:shadow-slate-900/50"
+      className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-2xl border border-slate-200/50 dark:border-slate-700/50 p-2.5 md:p-6 mb-2.5 md:mb-6 shadow-xl shadow-slate-200/50 dark:shadow-slate-900/50"
     >
-      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-col gap-1.5 md:gap-2 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 md:gap-x-6">
           <motion.h2
             key={getTitle()}
             initial={{ opacity: 0, x: -10 }}
             animate={{ opacity: 1, x: 0 }}
-            className="text-xl md:text-2xl font-display font-bold text-slate-900 dark:text-white tracking-tight"
+            className="text-lg md:text-2xl font-display font-bold text-slate-900 dark:text-white tracking-tight"
           >
             {getTitle()}
           </motion.h2>

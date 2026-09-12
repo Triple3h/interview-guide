@@ -50,11 +50,11 @@ export const InterviewListItem: React.FC<InterviewListItemProps> = ({
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -2 }}
       transition={{ duration: 0.2 }}
-      className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-slate-200/50 dark:border-slate-700/50 rounded-2xl p-4 md:p-6 hover:shadow-2xl hover:shadow-slate-200/50 dark:hover:shadow-slate-900/50 hover:-translate-y-0.5 transition-all"
+      className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-slate-200/50 dark:border-slate-700/50 rounded-2xl p-3 md:p-6 hover:shadow-2xl hover:shadow-slate-200/50 dark:hover:shadow-slate-900/50 hover:-translate-y-0.5 transition-all"
     >
       <div className="flex items-start justify-between gap-3 md:gap-4">
         <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap items-center gap-2 md:gap-3 mb-3">
+          <div className="flex flex-wrap items-center gap-2 md:gap-3 mb-2 md:mb-3">
             <span className={`status-badge backdrop-blur-sm ${statusConfig[interview.status].className}`}>
               {statusConfig[interview.status].label}
             </span>
@@ -63,13 +63,13 @@ export const InterviewListItem: React.FC<InterviewListItemProps> = ({
             </span>
           </div>
 
-          <h3 className="font-display font-bold text-lg md:text-xl mb-2 text-slate-900 dark:text-white tracking-tight">
+          <h3 className="font-display font-bold text-base md:text-xl mb-1.5 md:mb-2 text-slate-900 dark:text-white tracking-tight">
             {interview.companyName}
           </h3>
-          <p className="text-slate-600 dark:text-slate-300 mb-3 font-medium">{interview.position}</p>
+          <p className="text-sm md:text-base text-slate-600 dark:text-slate-300 mb-2 md:mb-3 font-medium">{interview.position}</p>
 
-          <div className="flex flex-wrap items-center gap-3 text-sm text-slate-500 dark:text-slate-400">
-            <span className="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg font-medium">
+          <div className="flex flex-wrap items-center gap-2 md:gap-3 text-xs md:text-sm text-slate-500 dark:text-slate-400">
+            <span className="px-2 py-0.5 md:px-3 md:py-1 bg-slate-100 dark:bg-slate-800 rounded-lg font-medium">
               第 {interview.roundNumber} 轮
             </span>
             <span className="text-slate-300 dark:text-slate-600">•</span>
@@ -126,7 +126,7 @@ export const InterviewListItem: React.FC<InterviewListItemProps> = ({
         <motion.div
           initial={{ opacity: 0, height: 0 }}
           animate={{ opacity: 1, height: 'auto' }}
-          className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 flex flex-wrap gap-2 md:gap-3"
+          className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700 flex flex-wrap gap-2 md:gap-3"
         >
           <motion.button
             whileHover={{ scale: 1.02 }}

@@ -152,15 +152,15 @@ function StatCard({
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-white dark:bg-slate-800 rounded-xl p-3 md:p-6 shadow-sm border border-slate-100 dark:border-slate-700"
+      className="bg-white dark:bg-slate-800 rounded-xl p-2.5 md:p-6 shadow-sm border border-slate-100 dark:border-slate-700"
     >
-      <div className="flex flex-col items-center gap-1.5 md:flex-row md:items-center md:gap-4">
-        <div className={`p-2 md:p-3 rounded-lg ${color}`}>
-          <Icon className="w-4 h-4 md:w-6 md:h-6 text-white" />
+      <div className="flex flex-col items-center gap-1 md:flex-row md:items-center md:gap-4">
+        <div className={`p-1.5 md:p-3 rounded-lg ${color}`}>
+          <Icon className="w-3.5 h-3.5 md:w-6 md:h-6 text-white" />
         </div>
         <div className="text-center md:text-left">
-          <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400">{label}</p>
-          <p className="text-lg md:text-2xl font-bold text-slate-800 dark:text-white">
+          <p className="text-[11px] md:text-sm text-slate-500 dark:text-slate-400">{label}</p>
+          <p className="text-base md:text-2xl font-bold text-slate-800 dark:text-white">
             {value}{suffix && <span className="text-xs md:text-base font-normal text-slate-400 dark:text-slate-500 ml-0.5 md:ml-1">{suffix}</span>}
           </p>
         </div>
@@ -572,14 +572,14 @@ export default function InterviewHistoryPage({
   return (
     <motion.div className="w-full" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-4 md:mb-8 gap-3 md:gap-6">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-3 md:mb-8 gap-2.5 md:gap-6">
         <div>
           <motion.h1
-            className="text-xl md:text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2 md:gap-3"
+            className="text-lg md:text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2 md:gap-3"
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
           >
-            <Users className="w-6 h-6 md:w-7 md:h-7 text-primary-500" />
+            <Users className="w-5 h-5 md:w-7 md:h-7 text-primary-500" />
             {isKnowledgeBaseView ? '知识库面试记录' : '面试记录'}
           </motion.h1>
           <motion.p
@@ -593,11 +593,11 @@ export default function InterviewHistoryPage({
         </div>
 
         <motion.div
-          className="flex items-center gap-3 w-full sm:w-auto bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl px-4 py-2.5 sm:min-w-[280px] focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-primary-100 dark:focus-within:ring-primary-900/30 transition-all"
+          className="flex items-center gap-2 md:gap-3 w-full sm:w-auto bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 md:px-4 md:py-2.5 sm:min-w-[280px] focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-primary-100 dark:focus-within:ring-primary-900/30 transition-all"
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
         >
-          <Search className="w-5 h-5 text-slate-400" />
+          <Search className="w-4 h-4 md:w-5 md:h-5 text-slate-400" />
           <input
             type="text"
             placeholder="搜索名称..."
@@ -610,7 +610,7 @@ export default function InterviewHistoryPage({
 
       {/* Stats */}
       {!loading && (
-        <div className="grid grid-cols-3 gap-2 md:gap-6 mb-4 md:mb-8">
+        <div className="grid grid-cols-3 gap-1.5 md:gap-6 mb-3 md:mb-8">
           <StatCard icon={Users} label="面试总数" value={stats.totalCount} color="bg-primary-500" />
           <StatCard icon={CheckCircle} label="已完成" value={stats.completedCount} color="bg-emerald-500" />
           <StatCard icon={TrendingUp} label="平均分数" value={stats.averageScore} suffix="分" color="bg-amber-500" />
@@ -706,7 +706,7 @@ export default function InterviewHistoryPage({
       )}
 
       {/* Type filter tabs */}
-      {!isKnowledgeBaseView && <div className="flex items-center gap-2 mb-3 md:mb-6">
+      {!isKnowledgeBaseView && <div className="flex items-center gap-1.5 md:gap-2 mb-3 md:mb-6">
         {([
           { key: 'all', label: '全部' },
           { key: 'text', label: '文字面试' },
@@ -715,7 +715,7 @@ export default function InterviewHistoryPage({
           <button
             key={tab.key}
             onClick={() => setTypeFilter(tab.key)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors ${
               typeFilter === tab.key
                 ? 'bg-primary-500 text-white'
                 : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-600'
@@ -736,13 +736,13 @@ export default function InterviewHistoryPage({
       {/* 筛选无结果（知识库视图且筛选条件生效） */}
       {!loading && showFilterEmpty && (
         <motion.div
-          className="text-center py-20 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700"
+          className="text-center py-12 md:py-20 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700"
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
         >
-          <Search className="w-16 h-16 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
-          <h3 className="text-xl font-semibold text-slate-700 dark:text-slate-300 mb-2">没有符合当前筛选条件的面试记录</h3>
-          <p className="text-slate-500 dark:text-slate-400 mb-6">可以尝试调整面试方向、时间范围或完成状态</p>
+          <Search className="w-12 h-12 md:w-16 md:h-16 text-slate-300 dark:text-slate-600 mx-auto mb-3 md:mb-4" />
+          <h3 className="text-lg md:text-xl font-semibold text-slate-700 dark:text-slate-300 mb-1.5 md:mb-2">没有符合当前筛选条件的面试记录</h3>
+          <p className="text-sm md:text-base text-slate-500 dark:text-slate-400 mb-5 md:mb-6">可以尝试调整面试方向、时间范围或完成状态</p>
           <button
             onClick={resetKbFilters}
             className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-lg transition-colors"
@@ -756,13 +756,13 @@ export default function InterviewHistoryPage({
       {/* Empty */}
       {!loading && showOriginalEmpty && (
         <motion.div
-          className="text-center py-20 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700"
+          className="text-center py-12 md:py-20 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700"
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
         >
-          <Users className="w-16 h-16 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
-          <h3 className="text-xl font-semibold text-slate-700 dark:text-slate-300 mb-2">暂无面试记录</h3>
-          <p className="text-slate-500 dark:text-slate-400">
+          <Users className="w-12 h-12 md:w-16 md:h-16 text-slate-300 dark:text-slate-600 mx-auto mb-3 md:mb-4" />
+          <h3 className="text-lg md:text-xl font-semibold text-slate-700 dark:text-slate-300 mb-1.5 md:mb-2">暂无面试记录</h3>
+          <p className="text-sm md:text-base text-slate-500 dark:text-slate-400">
             {isKnowledgeBaseView ? '开始一次知识库面试后，记录将显示在这里' : '开始一次模拟面试后，记录将显示在这里'}
           </p>
         </motion.div>
@@ -958,7 +958,7 @@ export default function InterviewHistoryPage({
 
       {/* 移动端卡片列表（7 列表格在窄屏不可用，改为卡片） */}
       {!loading && filtered.length > 0 && (
-        <div className="md:hidden space-y-2.5">
+        <div className="md:hidden space-y-2">
           {filtered.map((item, index) => (
             <motion.div
               key={item.id}
@@ -966,7 +966,7 @@ export default function InterviewHistoryPage({
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: Math.min(index, 10) * 0.05 }}
               onClick={() => handleRowClick(item)}
-              className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 p-4 cursor-pointer"
+              className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 p-3 md:p-4 cursor-pointer"
             >
               {/* 类型 + 标题 + 得分 */}
               <div className="flex items-start justify-between gap-3 mb-2">
@@ -990,7 +990,7 @@ export default function InterviewHistoryPage({
               )}
 
               {/* 状态 / 时间 / 题数 */}
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400 mb-3">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400 mb-2.5">
                 <span className="flex items-center gap-1.5">
                   <StatusIcon item={item} />
                   {getStatusText(item)}
@@ -1001,9 +1001,9 @@ export default function InterviewHistoryPage({
               </div>
 
               {/* 操作 */}
-              <div className="flex items-center flex-wrap gap-1 pt-3 border-t border-slate-100 dark:border-slate-700">
+              <div className="flex items-center flex-wrap gap-1 pt-2.5 border-t border-slate-100 dark:border-slate-700">
                 {renderRowActions(item)}
-                <ChevronRight className="w-5 h-5 text-slate-300 dark:text-slate-600 ml-auto" />
+                <ChevronRight className="w-4 h-4 md:w-5 md:h-5 text-slate-300 dark:text-slate-600 ml-auto" />
               </div>
             </motion.div>
           ))}
