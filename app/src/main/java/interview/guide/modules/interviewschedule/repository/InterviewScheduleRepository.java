@@ -19,6 +19,13 @@ public interface InterviewScheduleRepository extends JpaRepository<InterviewSche
 
     List<InterviewScheduleEntity> findByInterviewTimeBetween(LocalDateTime start, LocalDateTime end);
 
+    List<InterviewScheduleEntity> findByUserId(Long userId);
+
+    List<InterviewScheduleEntity> findByUserIdAndStatus(Long userId, InterviewStatus status);
+
+    List<InterviewScheduleEntity> findByUserIdAndInterviewTimeBetween(
+        Long userId, LocalDateTime start, LocalDateTime end);
+
     @Modifying
     @Query("UPDATE InterviewScheduleEntity e SET e.status = :newStatus WHERE e.status = :oldStatus AND e.interviewTime < :cutoff")
     int updateStatusByStatusAndInterviewTimeBefore(

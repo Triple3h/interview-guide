@@ -2,6 +2,8 @@ package interview.guide.modules.knowledgebase;
 
 import interview.guide.common.annotation.RateLimit;
 import interview.guide.common.result.Result;
+import interview.guide.common.web.CurrentUser;
+import interview.guide.common.web.LoginUser;
 import interview.guide.modules.interview.model.InterviewSessionDTO;
 import interview.guide.modules.knowledgebase.model.BatchGenerateKnowledgeBaseQuestionsRequest;
 import interview.guide.modules.knowledgebase.model.BatchQuestionGenStatusRequest;
@@ -116,14 +118,16 @@ public class KnowledgeBaseInterviewController {
 
   @PostMapping("/api/knowledgebase-interviews/sessions")
   public Result<InterviewSessionDTO> createInterviewSession(
-      @Valid @RequestBody CreateKnowledgeBaseInterviewRequest request) {
-    return Result.success(interviewService.createSession(request));
+      @Valid @RequestBody CreateKnowledgeBaseInterviewRequest request,
+      @LoginUser CurrentUser currentUser) {
+    return Result.success(interviewService.createSession(request, currentUser.id()));
   }
 
   @PostMapping("/api/knowledgebase-interviews/sessions/batch")
   public Result<InterviewSessionDTO> createBatchInterviewSession(
-      @Valid @RequestBody CreateKnowledgeBaseBatchInterviewRequest request) {
-    return Result.success(interviewService.createBatchSession(request));
+      @Valid @RequestBody CreateKnowledgeBaseBatchInterviewRequest request,
+      @LoginUser CurrentUser currentUser) {
+    return Result.success(interviewService.createBatchSession(request, currentUser.id()));
   }
 
   @PostMapping("/api/knowledgebase-interviews/batch-capacity")

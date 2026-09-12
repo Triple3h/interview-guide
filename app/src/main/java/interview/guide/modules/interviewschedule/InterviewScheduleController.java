@@ -1,6 +1,8 @@
 package interview.guide.modules.interviewschedule;
 
 import interview.guide.common.result.Result;
+import interview.guide.common.web.CurrentUser;
+import interview.guide.common.web.LoginUser;
 import interview.guide.modules.interviewschedule.model.CreateInterviewRequest;
 import interview.guide.modules.interviewschedule.model.InterviewScheduleDTO;
 import interview.guide.modules.interviewschedule.model.InterviewStatus;
@@ -59,9 +61,10 @@ public class InterviewScheduleController {
      * @return 创建的面试记录
      */
     @PostMapping
-    public Result<InterviewScheduleDTO> create(@Valid @RequestBody CreateInterviewRequest request) {
+    public Result<InterviewScheduleDTO> create(@Valid @RequestBody CreateInterviewRequest request,
+                                               @LoginUser CurrentUser currentUser) {
         log.info("创建面试记录: {} - {}", request.getCompanyName(), request.getPosition());
-        InterviewScheduleDTO dto = scheduleService.create(request);
+        InterviewScheduleDTO dto = scheduleService.create(request, currentUser.id());
         return Result.success(dto);
     }
 
@@ -72,8 +75,9 @@ public class InterviewScheduleController {
      * @return 面试记录详情
      */
     @GetMapping("/{id}")
-    public Result<InterviewScheduleDTO> getById(@PathVariable Long id) {
-        InterviewScheduleDTO dto = scheduleService.getById(id);
+    public Result<InterviewScheduleDTO> getById(@PathVariable Long id,
+                                                @LoginUser CurrentUser currentUser) {
+        InterviewScheduleDTO dto = scheduleService.getById(id, currentUser.id());
         return Result.success(dto);
     }
 
@@ -89,9 +93,10 @@ public class InterviewScheduleController {
     public Result<List<InterviewScheduleDTO>> getAll(
         @RequestParam(required = false) String status,
         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime start,
-        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime end
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime end,
+        @LoginUser CurrentUser currentUser
     ) {
-        List<InterviewScheduleDTO> list = scheduleService.getAll(status, start, end);
+        List<InterviewScheduleDTO> list = scheduleService.getAll(status, start, end, currentUser.id());
         return Result.success(list);
     }
 
@@ -105,10 +110,11 @@ public class InterviewScheduleController {
     @PutMapping("/{id}")
     public Result<InterviewScheduleDTO> update(
         @PathVariable Long id,
-        @Valid @RequestBody CreateInterviewRequest request
+        @Valid @RequestBody CreateInterviewRequest request,
+        @LoginUser CurrentUser currentUser
     ) {
         log.info("更新面试记录: ID={}", id);
-        InterviewScheduleDTO dto = scheduleService.update(id, request);
+        InterviewScheduleDTO dto = scheduleService.update(id, request, currentUser.id());
         return Result.success(dto);
     }
 
@@ -119,9 +125,10 @@ public class InterviewScheduleController {
      * @return 成功响应
      */
     @DeleteMapping("/{id}")
-    public Result<Void> delete(@PathVariable Long id) {
+    public Result<Void> delete(@PathVariable Long id,
+                               @LoginUser CurrentUser currentUser) {
         log.info("删除面试记录: ID={}", id);
-        scheduleService.delete(id);
+        scheduleService.delete(id, currentUser.id());
         return Result.success(null);
     }
 
@@ -135,10 +142,11 @@ public class InterviewScheduleController {
     @RequestMapping(path = "/{id}/status", method = {RequestMethod.PATCH, RequestMethod.PUT})
     public Result<InterviewScheduleDTO> updateStatus(
         @PathVariable Long id,
-        @RequestParam InterviewStatus status
+        @RequestParam InterviewStatus status,
+        @LoginUser CurrentUser currentUser
     ) {
         log.info("更新面试状态: ID={}, status={}", id, status);
-        InterviewScheduleDTO dto = scheduleService.updateStatus(id, status);
+        InterviewScheduleDTO dto = scheduleService.updateStatus(id, status, currentUser.id());
         return Result.success(dto);
     }
 }

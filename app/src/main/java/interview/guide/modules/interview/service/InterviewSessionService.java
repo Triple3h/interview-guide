@@ -60,10 +60,10 @@ public class InterviewSessionService {
      * 注意：如果已有未完成的会话，不会创建新的，而是返回现有会话
      * 前端应该先调用 findUnfinishedSession 检查，或者使用 forceCreate 参数强制创建
      */
-    public InterviewSessionDTO createSession(CreateInterviewRequest request) {
+    public InterviewSessionDTO createSession(CreateInterviewRequest request, Long userId) {
         String requestId = normalizeRequestId(request.requestId());
         if (requestId == null) {
-            return createSessionInternal(request);
+            return createSessionInternal(request, userId, null);
         }
 
         return redisService.executeWithLock(
@@ -71,40 +71,37 @@ public class InterviewSessionService {
             185,
             600,
             TimeUnit.SECONDS,
-            () -> createIdempotentSession(request, requestId)
+            () -> createIdempotentSession(request, requestId, userId)
         );
     }
 
-    private InterviewSessionDTO createIdempotentSession(CreateInterviewRequest request, String requestId) {
+    private InterviewSessionDTO createIdempotentSession(CreateInterviewRequest request, String requestId,
+                                                       Long userId) {
         String resultKey = CREATE_RESULT_PREFIX + requestId;
         String cachedSessionId = redisService.get(resultKey);
         if (cachedSessionId != null) {
             log.info("复用缓存中的幂等创建请求: requestId={}, sessionId={}", requestId, cachedSessionId);
-            return getSession(cachedSessionId);
+            return getSession(cachedSessionId, userId);
         }
 
-        Optional<InterviewSessionEntity> existing = persistenceService.findByRequestId(requestId);
+        Optional<InterviewSessionEntity> existing = persistenceService.findByRequestId(requestId, userId);
         if (existing.isPresent()) {
             String existingSessionId = existing.get().getSessionId();
             log.info("从数据库恢复幂等创建请求: requestId={}, sessionId={}",
                 requestId, existingSessionId);
             redisService.set(resultKey, existingSessionId, CREATE_RESULT_TTL);
-            return getSession(existingSessionId);
+            return getSession(existingSessionId, userId);
         }
 
-        InterviewSessionDTO created = createSessionInternal(request, requestId);
+        InterviewSessionDTO created = createSessionInternal(request, userId, requestId);
         redisService.set(resultKey, created.sessionId(), CREATE_RESULT_TTL);
         return created;
     }
 
-    private InterviewSessionDTO createSessionInternal(CreateInterviewRequest request) {
-        return createSessionInternal(request, null);
-    }
-
-    private InterviewSessionDTO createSessionInternal(CreateInterviewRequest request, String requestId) {
+    private InterviewSessionDTO createSessionInternal(CreateInterviewRequest request, Long userId, String requestId) {
         // 如果指定了resumeId且未强制创建，检查是否有未完成的会话
         if (request.resumeId() != null && !Boolean.TRUE.equals(request.forceCreate())) {
-            Optional<InterviewSessionDTO> unfinishedOpt = findUnfinishedSession(request.resumeId());
+            Optional<InterviewSessionDTO> unfinishedOpt = findUnfinishedSession(request.resumeId(), userId);
             if (unfinishedOpt.isPresent()) {
                 log.info("检测到未完成的面试会话，返回现有会话: resumeId={}, sessionId={}",
                     request.resumeId(), unfinishedOpt.get().sessionId());
@@ -119,9 +116,9 @@ public class InterviewSessionService {
         log.info("创建新面试会话: {}, skill: {}, difficulty: {}, questionCount: {}, resumeId: {}",
             sessionId, skillId, difficulty, request.questionCount(), request.resumeId());
 
-        // 获取历史问题（通用模式按 skillId 查询，有简历时按 resumeId + skillId 精确匹配）
+        // 获取历史问题（通用模式按 skillId 查询，有简历时按 resumeId + skillId 精确匹配；仅当前用户自己的历史）
         List<HistoricalQuestion> historicalQuestions =
-            persistenceService.getHistoricalQuestions(skillId, request.resumeId());
+            persistenceService.getHistoricalQuestions(skillId, request.resumeId(), userId);
 
         // 基于 Skill 生成面试问题
         List<InterviewQuestionDTO> questions = questionService.generateQuestionsBySkill(
@@ -139,6 +136,7 @@ public class InterviewSessionService {
             try {
                 persistenceService.saveIdempotentSession(
                     sessionId,
+                    userId,
                     request.resumeId(),
                     questions.size(),
                     questions,
@@ -149,17 +147,19 @@ public class InterviewSessionService {
                 );
             } catch (Exception e) {
                 Optional<InterviewSessionEntity> concurrentlyCreated =
-                    persistenceService.findByRequestId(requestId);
+                    persistenceService.findByRequestId(requestId, userId);
                 if (concurrentlyCreated.isPresent()) {
-                    return getSession(concurrentlyCreated.get().getSessionId());
+                    return getSession(concurrentlyCreated.get().getSessionId(), userId);
                 }
                 log.error("持久化幂等面试会话失败: requestId={}", requestId, e);
                 throw new BusinessException(ErrorCode.INTERNAL_ERROR, "创建面试会话失败，请重试");
             }
         } else {
             try {
-                persistenceService.saveSession(sessionId, request.resumeId(),
+                persistenceService.saveSession(sessionId, userId, request.resumeId(),
                     questions.size(), questions, request.llmProvider(), skillId, difficulty);
+            } catch (BusinessException e) {
+                throw e;
             } catch (Exception e) {
                 log.warn("保存面试会话到数据库失败: {}", e.getMessage());
             }
@@ -194,14 +194,15 @@ public class InterviewSessionService {
                                                           String skillId,
                                                           String difficulty,
                                                           Long knowledgeBaseId,
-                                                          String interviewCategory) {
+                                                          String interviewCategory,
+                                                          Long userId) {
         if (questions == null || questions.isEmpty()) {
             throw new BusinessException(ErrorCode.INTERVIEW_QUESTION_NOT_FOUND, "面试题目不能为空");
         }
 
         String sessionId = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
         persistenceService.saveSession(
-            sessionId, null, questions.size(), questions, llmProvider, skillId, difficulty,
+            sessionId, userId, null, questions.size(), questions, llmProvider, skillId, difficulty,
             "KNOWLEDGE_BASE", knowledgeBaseId, interviewCategory);
         sessionCache.saveSession(sessionId, "", null, knowledgeBaseId, interviewCategory,
             questions, 0, SessionStatus.CREATED);
@@ -231,17 +232,20 @@ public class InterviewSessionService {
     }
 
     /**
-     * 获取会话信息（优先从缓存获取，缓存未命中则从数据库恢复）
+     * 获取会话信息（仅本人会话；优先从缓存获取，缓存未命中则从数据库恢复）
      */
-    public InterviewSessionDTO getSession(String sessionId) {
-        // 1. 尝试从 Redis 缓存获取
+    public InterviewSessionDTO getSession(String sessionId, Long userId) {
+        // 1. 归属校验（缓存不校验归属，必须先查库）
+        InterviewSessionEntity owned = persistenceService.requireOwnedSession(sessionId, userId);
+
+        // 2. 尝试从 Redis 缓存获取
         Optional<CachedSession> cachedOpt = sessionCache.getSession(sessionId);
         if (cachedOpt.isPresent()) {
             return toDTO(cachedOpt.get());
         }
 
-        // 2. 缓存未命中，从数据库恢复
-        CachedSession restoredSession = restoreSessionFromDatabase(sessionId);
+        // 3. 缓存未命中，从数据库恢复
+        CachedSession restoredSession = restoreSessionFromEntity(owned);
         if (restoredSession == null) {
             throw new BusinessException(ErrorCode.INTERVIEW_SESSION_NOT_FOUND);
         }
@@ -250,23 +254,23 @@ public class InterviewSessionService {
     }
 
     /**
-     * 查找并恢复未完成的面试会话
+     * 查找并恢复当前用户未完成的面试会话
      */
-    public Optional<InterviewSessionDTO> findUnfinishedSession(Long resumeId) {
+    public Optional<InterviewSessionDTO> findUnfinishedSession(Long resumeId, Long userId) {
         try {
-            // 1. 先从 Redis 缓存查找
+            // 1. 先从 Redis 缓存查找（缓存索引无归属信息，需回库校验）
             Optional<String> cachedSessionIdOpt = sessionCache.findUnfinishedSessionId(resumeId);
             if (cachedSessionIdOpt.isPresent()) {
                 String sessionId = cachedSessionIdOpt.get();
                 Optional<CachedSession> cachedOpt = sessionCache.getSession(sessionId);
-                if (cachedOpt.isPresent()) {
+                if (cachedOpt.isPresent() && isOwnedBy(sessionId, userId)) {
                     log.debug("从 Redis 缓存找到未完成会话: resumeId={}, sessionId={}", resumeId, sessionId);
                     return Optional.of(toDTO(cachedOpt.get()));
                 }
             }
 
             // 2. 缓存未命中，从数据库查找
-            Optional<InterviewSessionEntity> entityOpt = persistenceService.findUnfinishedSession(resumeId);
+            Optional<InterviewSessionEntity> entityOpt = persistenceService.findUnfinishedSession(resumeId, userId);
             if (entityOpt.isEmpty()) {
                 return Optional.empty();
             }
@@ -285,22 +289,18 @@ public class InterviewSessionService {
     /**
      * 查找并恢复未完成的面试会话，如果不存在则抛出异常
      */
-    public InterviewSessionDTO findUnfinishedSessionOrThrow(Long resumeId) {
-        return findUnfinishedSession(resumeId)
+    public InterviewSessionDTO findUnfinishedSessionOrThrow(Long resumeId, Long userId) {
+        return findUnfinishedSession(resumeId, userId)
             .orElseThrow(() -> new BusinessException(ErrorCode.INTERVIEW_SESSION_NOT_FOUND, "未找到未完成的面试会话"));
     }
 
     /**
-     * 从数据库恢复会话并缓存到 Redis
+     * 会话是否归属指定用户（缓存与幂等索引无归属信息时的回库校验）
      */
-    private CachedSession restoreSessionFromDatabase(String sessionId) {
-        try {
-            Optional<InterviewSessionEntity> entityOpt = persistenceService.findBySessionId(sessionId);
-            return entityOpt.map(this::restoreSessionFromEntity).orElse(null);
-        } catch (Exception e) {
-            log.error("从数据库恢复会话失败: {}", e.getMessage(), e);
-            return null;
-        }
+    private boolean isOwnedBy(String sessionId, Long userId) {
+        return persistenceService.findBySessionId(sessionId)
+            .map(session -> session.getUserId() != null && session.getUserId().equals(userId))
+            .orElse(false);
     }
 
     /**
@@ -361,8 +361,8 @@ public class InterviewSessionService {
     /**
      * 获取当前问题的响应（包含完成状态）
      */
-    public Map<String, Object> getCurrentQuestionResponse(String sessionId) {
-        InterviewQuestionDTO question = getCurrentQuestion(sessionId);
+    public Map<String, Object> getCurrentQuestionResponse(String sessionId, Long userId) {
+        InterviewQuestionDTO question = getCurrentQuestion(sessionId, userId);
         if (question == null) {
             return Map.of(
                 "completed", true,
@@ -378,8 +378,8 @@ public class InterviewSessionService {
     /**
      * 获取当前问题
      */
-    public InterviewQuestionDTO getCurrentQuestion(String sessionId) {
-        CachedSession session = getOrRestoreSession(sessionId);
+    public InterviewQuestionDTO getCurrentQuestion(String sessionId, Long userId) {
+        CachedSession session = getOrRestoreSession(sessionId, userId);
         List<InterviewQuestionDTO> questions = session.getQuestions(objectMapper);
 
         if (session.getCurrentIndex() >= questions.size()) {
@@ -407,8 +407,8 @@ public class InterviewSessionService {
      * 提交答案（并进入下一题）
      * 如果是最后一题，自动触发异步评估
      */
-    public SubmitAnswerResponse submitAnswer(SubmitAnswerRequest request) {
-        CachedSession session = getOrRestoreSession(request.sessionId());
+    public SubmitAnswerResponse submitAnswer(SubmitAnswerRequest request, Long userId) {
+        CachedSession session = getOrRestoreSession(request.sessionId(), userId);
         List<InterviewQuestionDTO> questions = session.getQuestions(objectMapper);
 
         int index = request.questionIndex();
@@ -484,8 +484,8 @@ public class InterviewSessionService {
     /**
      * 暂存答案（不进入下一题）
      */
-    public void saveAnswer(SubmitAnswerRequest request) {
-        CachedSession session = getOrRestoreSession(request.sessionId());
+    public void saveAnswer(SubmitAnswerRequest request, Long userId) {
+        CachedSession session = getOrRestoreSession(request.sessionId(), userId);
         List<InterviewQuestionDTO> questions = session.getQuestions(objectMapper);
 
         int index = request.questionIndex();
@@ -525,8 +525,8 @@ public class InterviewSessionService {
     /**
      * 提前交卷（触发异步评估）
      */
-    public void completeInterview(String sessionId) {
-        CachedSession session = getOrRestoreSession(sessionId);
+    public void completeInterview(String sessionId, Long userId) {
+        CachedSession session = getOrRestoreSession(sessionId, userId);
 
         if (session.getStatus() == SessionStatus.COMPLETED || session.getStatus() == SessionStatus.EVALUATED) {
             throw new BusinessException(ErrorCode.INTERVIEW_ALREADY_COMPLETED);
@@ -552,10 +552,13 @@ public class InterviewSessionService {
     }
 
     /**
-     * 获取或恢复会话（优先从缓存获取）
+     * 获取或恢复会话（仅本人会话；优先从缓存获取）
      */
-    private CachedSession getOrRestoreSession(String sessionId) {
-        // 1. 尝试从 Redis 缓存获取
+    private CachedSession getOrRestoreSession(String sessionId, Long userId) {
+        // 1. 归属校验（缓存不校验归属，必须先查库）
+        InterviewSessionEntity owned = persistenceService.requireOwnedSession(sessionId, userId);
+
+        // 2. 尝试从 Redis 缓存获取
         Optional<CachedSession> cachedOpt = sessionCache.getSession(sessionId);
         if (cachedOpt.isPresent()) {
             // 刷新 TTL
@@ -563,8 +566,8 @@ public class InterviewSessionService {
             return cachedOpt.get();
         }
 
-        // 2. 缓存未命中，从数据库恢复
-        CachedSession restoredSession = restoreSessionFromDatabase(sessionId);
+        // 3. 缓存未命中，从数据库恢复
+        CachedSession restoredSession = restoreSessionFromEntity(owned);
         if (restoredSession == null) {
             throw new BusinessException(ErrorCode.INTERVIEW_SESSION_NOT_FOUND);
         }
@@ -575,8 +578,8 @@ public class InterviewSessionService {
     /**
      * 生成评估报告
      */
-    public InterviewReportDTO generateReport(String sessionId) {
-        CachedSession session = getOrRestoreSession(sessionId);
+    public InterviewReportDTO generateReport(String sessionId, Long userId) {
+        CachedSession session = getOrRestoreSession(sessionId, userId);
 
         if (session.getStatus() != SessionStatus.COMPLETED && session.getStatus() != SessionStatus.EVALUATED) {
             throw new BusinessException(ErrorCode.INTERVIEW_NOT_COMPLETED, "面试尚未完成，无法生成报告");

@@ -1,7 +1,5 @@
 package interview.guide.modules.resume.service;
 
-import interview.guide.common.exception.BusinessException;
-import interview.guide.common.exception.ErrorCode;
 import interview.guide.infrastructure.file.FileStorageService;
 import interview.guide.modules.interview.service.InterviewPersistenceService;
 import interview.guide.modules.resume.model.ResumeEntity;
@@ -26,15 +24,14 @@ public class ResumeDeleteService {
      * 删除简历
      * 
      * @param id 简历ID
+     * @param userId 归属用户（非本人简历按不存在处理）
      * @throws interview.guide.common.exception.BusinessException 如果简历不存在
      */
-    public void deleteResume(Long id) {
-        log.info("收到删除简历请求: id={}", id);
+    public void deleteResume(Long id, Long userId) {
+        log.info("收到删除简历请求: id={}, userId={}", id, userId);
         
-        // 获取简历信息（用于删除存储文件）
-        ResumeEntity resume = persistenceService.findById(id)
-            .orElseThrow(() -> new BusinessException(
-                ErrorCode.RESUME_NOT_FOUND));
+        // 获取简历信息（用于删除存储文件），非本人简历按不存在处理
+        ResumeEntity resume = persistenceService.requireOwnedResume(id, userId);
         
         // 1. 删除存储的文件（FileStorageService 已内置存在性检查）
         try {

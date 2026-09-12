@@ -2,6 +2,7 @@ package interview.guide.modules.voiceinterview.controller;
 
 import interview.guide.common.model.AsyncTaskStatus;
 import interview.guide.common.result.Result;
+import interview.guide.common.web.CurrentUser;
 import interview.guide.modules.voiceinterview.dto.VoiceEvaluationStatusDTO;
 import interview.guide.modules.voiceinterview.listener.VoiceEvaluateStreamProducer;
 import interview.guide.modules.voiceinterview.model.VoiceInterviewSessionEntity;
@@ -37,6 +38,8 @@ class VoiceInterviewControllerEvaluationTest {
     @InjectMocks
     private VoiceInterviewController controller;
 
+    private static final CurrentUser CURRENT_USER = new CurrentUser(1L, "测试学员");
+
     @Test
     @DisplayName("查询评估状态时应返回状态更新时间")
     void shouldExposeEvaluationStatusUpdatedAt() throws ReflectiveOperationException {
@@ -46,9 +49,9 @@ class VoiceInterviewControllerEvaluationTest {
             .evaluateStatus(AsyncTaskStatus.PENDING)
             .updatedAt(updatedAt)
             .build();
-        when(voiceInterviewService.getSession(1L)).thenReturn(session);
+        when(voiceInterviewService.requireOwnedSession(1L, CURRENT_USER.id())).thenReturn(session);
 
-        Result<VoiceEvaluationStatusDTO> result = controller.getEvaluation(1L);
+        Result<VoiceEvaluationStatusDTO> result = controller.getEvaluation(1L, CURRENT_USER);
 
         Field field = VoiceEvaluationStatusDTO.class.getDeclaredField("evaluateStatusUpdatedAt");
         field.setAccessible(true);
@@ -62,11 +65,11 @@ class VoiceInterviewControllerEvaluationTest {
             .id(2L)
             .evaluateStatus(AsyncTaskStatus.PENDING)
             .build();
-        when(voiceInterviewService.getSession(2L)).thenReturn(session);
+        when(voiceInterviewService.requireOwnedSession(2L, CURRENT_USER.id())).thenReturn(session);
 
-        Result<VoiceEvaluationStatusDTO> result = controller.generateEvaluation(2L);
+        Result<VoiceEvaluationStatusDTO> result = controller.generateEvaluation(2L, CURRENT_USER);
 
         assertThat(result.getData().getEvaluateStatus()).isEqualTo(AsyncTaskStatus.PENDING.name());
-        verify(voiceInterviewService).triggerEvaluation(2L);
+        verify(voiceInterviewService).triggerEvaluation(2L, CURRENT_USER.id());
     }
 }

@@ -22,8 +22,9 @@ public class VoiceInterviewSessionEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    // 归属用户（app_users.id）；历史版本为 VARCHAR 且固定 'default'，V20260914 已归一为 BIGINT
     @Column(name = "user_id")
-    private String userId;
+    private Long userId;
 
     @Column(name = "role_type", nullable = false)
     private String roleType;

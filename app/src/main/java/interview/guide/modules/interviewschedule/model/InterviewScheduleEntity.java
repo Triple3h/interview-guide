@@ -12,6 +12,10 @@ public class InterviewScheduleEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    // 归属用户（app_users.id），列表查询与越权判断均按用户隔离
+    @Column(name = "user_id")
+    private Long userId;
+
     @Column(name = "company_name", nullable = false)
     private String companyName;
 

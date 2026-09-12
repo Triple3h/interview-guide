@@ -1,9 +1,9 @@
 package interview.guide.modules.voiceinterview.controller;
 
-import interview.guide.common.exception.BusinessException;
-import interview.guide.common.exception.ErrorCode;
 import interview.guide.common.model.AsyncTaskStatus;
 import interview.guide.common.result.Result;
+import interview.guide.common.web.CurrentUser;
+import interview.guide.common.web.LoginUser;
 import interview.guide.modules.voiceinterview.dto.CreateSessionRequest;
 import interview.guide.modules.voiceinterview.dto.SessionMetaDTO;
 import interview.guide.modules.voiceinterview.dto.SessionResponseDTO;
@@ -55,9 +55,10 @@ public class VoiceInterviewController {
      * Create a new voice interview session
      */
     @PostMapping("/sessions")
-    public Result<SessionResponseDTO> createSession(@Valid @RequestBody CreateSessionRequest request) {
+    public Result<SessionResponseDTO> createSession(@Valid @RequestBody CreateSessionRequest request,
+                                                    @LoginUser CurrentUser currentUser) {
         log.info("Creating voice interview session for role: {}", request.getRoleType());
-        SessionResponseDTO session = voiceInterviewService.createSession(request);
+        SessionResponseDTO session = voiceInterviewService.createSession(request, currentUser.id());
         return Result.success(session);
     }
 
@@ -65,12 +66,10 @@ public class VoiceInterviewController {
      * Get session details by ID
      */
     @GetMapping("/sessions/{sessionId}")
-    public Result<SessionResponseDTO> getSession(@PathVariable Long sessionId) {
+    public Result<SessionResponseDTO> getSession(@PathVariable Long sessionId,
+                                                 @LoginUser CurrentUser currentUser) {
         log.info("Getting session details for: {}", sessionId);
-        SessionResponseDTO session = voiceInterviewService.getSessionDTO(sessionId);
-        if (session == null) {
-            return Result.error("Session not found: " + sessionId);
-        }
+        SessionResponseDTO session = voiceInterviewService.getSessionDTO(sessionId, currentUser.id());
         return Result.success(session);
     }
 
@@ -81,9 +80,10 @@ public class VoiceInterviewController {
      * </p>
      */
     @PostMapping("/sessions/{sessionId}/end")
-    public Result<Void> endSession(@PathVariable Long sessionId) {
+    public Result<Void> endSession(@PathVariable Long sessionId,
+                                   @LoginUser CurrentUser currentUser) {
         log.info("Ending session: {}", sessionId);
-        voiceInterviewService.endSession(sessionId.toString());
+        voiceInterviewService.endSession(sessionId.toString(), currentUser.id());
         return Result.success();
     }
 
@@ -93,11 +93,12 @@ public class VoiceInterviewController {
     @PutMapping("/sessions/{sessionId}/pause")
     public Result<Void> pauseSession(
         @PathVariable Long sessionId,
-        @RequestBody Map<String, String> request
+        @RequestBody Map<String, String> request,
+        @LoginUser CurrentUser currentUser
     ) {
         log.info("Pausing session: {}", sessionId);
         String reason = request.getOrDefault("reason", "user_initiated");
-        voiceInterviewService.pauseSession(sessionId.toString(), reason);
+        voiceInterviewService.pauseSession(sessionId.toString(), currentUser.id(), reason);
         return Result.success();
     }
 
@@ -105,22 +106,23 @@ public class VoiceInterviewController {
      * Resume interview session
      */
     @PutMapping("/sessions/{sessionId}/resume")
-    public Result<SessionResponseDTO> resumeSession(@PathVariable Long sessionId) {
+    public Result<SessionResponseDTO> resumeSession(@PathVariable Long sessionId,
+                                                    @LoginUser CurrentUser currentUser) {
         log.info("Resuming session: {}", sessionId);
-        SessionResponseDTO session = voiceInterviewService.resumeSession(sessionId.toString());
+        SessionResponseDTO session = voiceInterviewService.resumeSession(sessionId.toString(), currentUser.id());
         return Result.success(session);
     }
 
     /**
-     * Get all sessions for user
+     * Get all sessions for current user
      */
     @GetMapping("/sessions")
     public Result<List<SessionMetaDTO>> getAllSessions(
-        @RequestParam(required = false) String userId,
-        @RequestParam(required = false) String status
+        @RequestParam(required = false) String status,
+        @LoginUser CurrentUser currentUser
     ) {
-        log.info("Getting sessions for user: {}, status: {}", userId, status);
-        List<SessionMetaDTO> sessions = voiceInterviewService.getAllSessions(userId, status);
+        log.info("Getting sessions for user: {}, status: {}", currentUser.id(), status);
+        List<SessionMetaDTO> sessions = voiceInterviewService.getAllSessions(currentUser.id(), status);
         return Result.success(sessions);
     }
 
@@ -128,9 +130,10 @@ public class VoiceInterviewController {
      * 删除语音面试会话
      */
     @DeleteMapping("/sessions/{sessionId}")
-    public Result<Void> deleteSession(@PathVariable Long sessionId) {
+    public Result<Void> deleteSession(@PathVariable Long sessionId,
+                                      @LoginUser CurrentUser currentUser) {
         log.info("Deleting voice interview session: {}", sessionId);
-        voiceInterviewService.deleteSession(sessionId);
+        voiceInterviewService.deleteSession(sessionId, currentUser.id());
         return Result.success();
     }
 
@@ -138,10 +141,11 @@ public class VoiceInterviewController {
      * Get conversation history for a session
      */
     @GetMapping("/sessions/{sessionId}/messages")
-    public Result<List<VoiceInterviewMessageDTO>> getMessages(@PathVariable Long sessionId) {
+    public Result<List<VoiceInterviewMessageDTO>> getMessages(@PathVariable Long sessionId,
+                                                              @LoginUser CurrentUser currentUser) {
         log.info("Getting messages for session: {}", sessionId);
         List<VoiceInterviewMessageDTO> messages =
-                voiceInterviewService.getConversationHistoryDTO(sessionId.toString());
+                voiceInterviewService.getConversationHistoryDTO(sessionId.toString(), currentUser.id());
         return Result.success(messages);
     }
 
@@ -154,13 +158,12 @@ public class VoiceInterviewController {
      * </p>
      */
     @GetMapping("/sessions/{sessionId}/evaluation")
-    public Result<VoiceEvaluationStatusDTO> getEvaluation(@PathVariable Long sessionId) {
+    public Result<VoiceEvaluationStatusDTO> getEvaluation(@PathVariable Long sessionId,
+                                                          @LoginUser CurrentUser currentUser) {
         log.info("Getting evaluation status for session: {}", sessionId);
 
-        VoiceInterviewSessionEntity session = voiceInterviewService.getSession(sessionId);
-        if (session == null) {
-            throw new BusinessException(ErrorCode.VOICE_SESSION_NOT_FOUND, "会话不存在: " + sessionId);
-        }
+        VoiceInterviewSessionEntity session =
+                voiceInterviewService.requireOwnedSession(sessionId, currentUser.id());
 
         AsyncTaskStatus status = session.getEvaluateStatus();
         VoiceEvaluationStatusDTO.VoiceEvaluationStatusDTOBuilder builder = VoiceEvaluationStatusDTO.builder()
@@ -185,13 +188,12 @@ public class VoiceInterviewController {
      * </p>
      */
     @PostMapping("/sessions/{sessionId}/evaluation")
-    public Result<VoiceEvaluationStatusDTO> generateEvaluation(@PathVariable Long sessionId) {
+    public Result<VoiceEvaluationStatusDTO> generateEvaluation(@PathVariable Long sessionId,
+                                                               @LoginUser CurrentUser currentUser) {
         log.info("Triggering async evaluation for session: {}", sessionId);
 
-        VoiceInterviewSessionEntity session = voiceInterviewService.getSession(sessionId);
-        if (session == null) {
-            throw new BusinessException(ErrorCode.VOICE_SESSION_NOT_FOUND, "会话不存在: " + sessionId);
-        }
+        VoiceInterviewSessionEntity session =
+                voiceInterviewService.requireOwnedSession(sessionId, currentUser.id());
 
         // If already completed, return cached result
         if (session.getEvaluateStatus() == AsyncTaskStatus.COMPLETED) {
@@ -213,7 +215,7 @@ public class VoiceInterviewController {
         }
 
         // Trigger new async evaluation via service
-        voiceInterviewService.triggerEvaluation(sessionId);
+        voiceInterviewService.triggerEvaluation(sessionId, currentUser.id());
 
         return Result.success(VoiceEvaluationStatusDTO.builder()
                 .evaluateStatus(AsyncTaskStatus.PENDING.name())

@@ -40,10 +40,10 @@ public class ResumeHistoryService {
     private final InterviewMapper interviewMapper;
 
     /**
-     * 获取所有简历列表
+     * 获取当前用户的简历列表
      */
-    public List<ResumeListItemDTO> getAllResumes() {
-        List<ResumeEntity> resumes = resumePersistenceService.findAllResumes();
+    public List<ResumeListItemDTO> getAllResumes(Long userId) {
+        List<ResumeEntity> resumes = resumePersistenceService.findAllResumes(userId);
 
         return resumes.stream().map(resume -> {
             // 获取最新分析结果的分数
@@ -57,7 +57,8 @@ public class ResumeHistoryService {
             }
 
             // 获取面试次数
-            int interviewCount = interviewPersistenceService.findByResumeId(resume.getId()).size();
+            int interviewCount = interviewPersistenceService
+                .findByResumeIdAndUserId(resume.getId(), userId).size();
 
             // 使用 MapStruct 映射
             return new ResumeListItemDTO(
@@ -76,15 +77,10 @@ public class ResumeHistoryService {
     }
 
     /**
-     * 获取简历详情（包含分析历史）
+     * 获取简历详情（包含分析历史，仅本人简历）
      */
-    public ResumeDetailDTO getResumeDetail(Long id) {
-        Optional<ResumeEntity> resumeOpt = resumePersistenceService.findById(id);
-        if (resumeOpt.isEmpty()) {
-            throw new BusinessException(ErrorCode.RESUME_NOT_FOUND);
-        }
-
-        ResumeEntity resume = resumeOpt.get();
+    public ResumeDetailDTO getResumeDetail(Long id, Long userId) {
+        ResumeEntity resume = resumePersistenceService.requireOwnedResume(id, userId);
 
         // 获取所有分析记录，使用 MapStruct 批量转换
         List<ResumeAnalysisEntity> analyses = resumePersistenceService.findAnalysesByResumeId(id);
@@ -96,7 +92,7 @@ public class ResumeHistoryService {
 
         // 使用 InterviewMapper 转换面试历史
         List<InterviewHistoryItemDTO> interviewHistory = interviewMapper.toInterviewHistoryList(
-            interviewPersistenceService.findByResumeId(id)
+            interviewPersistenceService.findByResumeIdAndUserId(id, userId)
         );
 
         return new ResumeDetailDTO(
@@ -152,15 +148,10 @@ public class ResumeHistoryService {
     }
 
     /**
-     * 导出简历分析报告为PDF
+     * 导出简历分析报告为PDF（仅本人简历）
      */
-    public ExportResult exportAnalysisPdf(Long resumeId) {
-        Optional<ResumeEntity> resumeOpt = resumePersistenceService.findById(resumeId);
-        if (resumeOpt.isEmpty()) {
-            throw new BusinessException(ErrorCode.RESUME_NOT_FOUND);
-        }
-
-        ResumeEntity resume = resumeOpt.get();
+    public ExportResult exportAnalysisPdf(Long resumeId, Long userId) {
+        ResumeEntity resume = resumePersistenceService.requireOwnedResume(resumeId, userId);
         Optional<ResumeAnalysisResponse> analysisOpt = resumePersistenceService.getLatestAnalysisAsDTO(resumeId);
         if (analysisOpt.isEmpty()) {
             throw new BusinessException(ErrorCode.RESUME_ANALYSIS_NOT_FOUND);

@@ -37,18 +37,19 @@ public class ResumePersistenceService {
     private final FileHashService fileHashService;
     
     /**
-     * 检查简历是否已存在（基于文件内容hash）
+     * 检查简历是否已存在（基于文件内容hash，同用户内去重）
      * 
      * @param file 上传的文件
+     * @param userId 归属用户
      * @return 如果存在返回已有的简历实体，否则返回空
      */
-    public Optional<ResumeEntity> findExistingResume(MultipartFile file) {
+    public Optional<ResumeEntity> findExistingResume(MultipartFile file, Long userId) {
         try {
             String fileHash = fileHashService.calculateHash(file);
-            Optional<ResumeEntity> existing = resumeRepository.findByFileHash(fileHash);
+            Optional<ResumeEntity> existing = resumeRepository.findByFileHashAndUserId(fileHash, userId);
             
             if (existing.isPresent()) {
-                log.info("检测到重复简历: hash={}", fileHash);
+                log.info("检测到重复简历: hash={}, userId={}", fileHash, userId);
                 ResumeEntity resume = existing.get();
                 resume.incrementAccessCount();
                 resumeRepository.save(resume);
@@ -66,11 +67,12 @@ public class ResumePersistenceService {
      */
     @Transactional(rollbackFor = Exception.class)
     public ResumeEntity saveResume(MultipartFile file, String resumeText,
-                                   String storageKey, String storageUrl) {
+                                   String storageKey, String storageUrl, Long userId) {
         try {
             String fileHash = fileHashService.calculateHash(file);
             
             ResumeEntity resume = new ResumeEntity();
+            resume.setUserId(userId);
             resume.setFileHash(fileHash);
             resume.setOriginalFilename(file.getOriginalFilename());
             resume.setFileSize(file.getSize());
@@ -80,7 +82,7 @@ public class ResumePersistenceService {
             resume.setResumeText(resumeText);
             
             ResumeEntity saved = resumeRepository.save(resume);
-            log.info("简历已保存: id={}, hash={}", saved.getId(), fileHash);
+            log.info("简历已保存: id={}, hash={}, userId={}", saved.getId(), fileHash, userId);
             
             return saved;
         } catch (Exception e) {
@@ -129,10 +131,10 @@ public class ResumePersistenceService {
     }
     
     /**
-     * 获取所有简历列表
+     * 获取当前用户的简历列表
      */
-    public List<ResumeEntity> findAllResumes() {
-        return resumeRepository.findAll();
+    public List<ResumeEntity> findAllResumes(Long userId) {
+        return resumeRepository.findAllByUserIdOrderByUploadedAtDesc(userId);
     }
     
     /**
@@ -178,6 +180,18 @@ public class ResumePersistenceService {
      */
     public Optional<ResumeEntity> findById(Long id) {
         return resumeRepository.findById(id);
+    }
+
+    /**
+     * 获取归属校验后的简历：非本人简历一律按不存在处理（404 语义）
+     */
+    public ResumeEntity requireOwnedResume(Long id, Long userId) {
+        ResumeEntity resume = resumeRepository.findById(id)
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESUME_NOT_FOUND));
+        if (resume.getUserId() == null || !resume.getUserId().equals(userId)) {
+            throw new BusinessException(ErrorCode.RESUME_NOT_FOUND);
+        }
+        return resume;
     }
     
     /**

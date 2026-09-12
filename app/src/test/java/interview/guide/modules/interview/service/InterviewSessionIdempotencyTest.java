@@ -80,9 +80,11 @@ class InterviewSessionIdempotencyTest {
     InterviewQuestionDTO question = InterviewQuestionDTO.create(0, "什么是 JVM？", "JVM", "JVM");
     InterviewSessionEntity entity = new InterviewSessionEntity();
     entity.setSessionId(existingSessionId);
+    entity.setUserId(1L);
     entity.setRequestId(requestId);
     when(redisService.get("interview:create:result:" + requestId)).thenReturn(null);
-    when(persistenceService.findByRequestId(requestId)).thenReturn(Optional.of(entity));
+    when(persistenceService.findByRequestId(requestId, 1L)).thenReturn(Optional.of(entity));
+    when(persistenceService.requireOwnedSession(existingSessionId, 1L)).thenReturn(entity);
     CachedSession cached = new CachedSession(
         existingSessionId,
         "",
@@ -108,7 +110,7 @@ class InterviewSessionIdempotencyTest {
         requestId
     );
 
-    InterviewSessionDTO result = service.createSession(request);
+    InterviewSessionDTO result = service.createSession(request, 1L);
 
     assertThat(result.sessionId()).isEqualTo(existingSessionId);
     verify(questionService, never()).generateQuestionsBySkill(

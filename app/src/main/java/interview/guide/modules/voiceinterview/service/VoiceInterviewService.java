@@ -5,6 +5,7 @@ import interview.guide.common.constant.CommonConstants.InterviewDefaults;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.common.model.AsyncTaskStatus;
+import interview.guide.modules.resume.repository.ResumeRepository;
 import interview.guide.modules.voiceinterview.config.VoiceInterviewProperties;
 import interview.guide.modules.voiceinterview.dto.CreateSessionRequest;
 import interview.guide.modules.voiceinterview.dto.VoiceInterviewMessageDTO;
@@ -51,6 +52,7 @@ public class VoiceInterviewService {
     private final VoiceInterviewSessionRepository sessionRepository;
     private final VoiceInterviewMessageRepository messageRepository;
     private final VoiceInterviewEvaluationRepository evaluationRepository;
+    private final ResumeRepository resumeRepository;
     private final RedissonClient redissonClient;
     private final VoiceInterviewProperties properties;
     private final VoiceEvaluateStreamProducer voiceEvaluateStreamProducer;
@@ -58,7 +60,6 @@ public class VoiceInterviewService {
 
     private static final String SESSION_CACHE_KEY_PREFIX = "voice:interview:session:";
     private static final int CACHE_TTL_HOURS = 1;
-    private static final String DEFAULT_USER_ID = "default";
     private static final Duration PENDING_EVALUATION_REQUEUE_DELAY = Duration.ofMinutes(3);
     private static final Duration PROCESSING_EVALUATION_TIMEOUT = Duration.ofMinutes(30);
 
@@ -67,17 +68,19 @@ public class VoiceInterviewService {
      * 创建新的语音面试会话
      *
      * @param request Session creation request with role type and phase configuration
+     * @param userId 归属用户（app_users.id）
      * @return SessionResponseDTO with session details and WebSocket URL
      */
     @Transactional
-    public SessionResponseDTO createSession(CreateSessionRequest request) {
+    public SessionResponseDTO createSession(CreateSessionRequest request, Long userId) {
         String effectiveSkillId = request.getSkillId() != null ? request.getSkillId() : InterviewDefaults.SKILL_ID;
         String effectiveLlmProvider = (request.getLlmProvider() != null && !request.getLlmProvider().isBlank())
             ? request.getLlmProvider()
             : null;
+        ensureResumeOwned(request.getResumeId(), userId);
 
         VoiceInterviewSessionEntity session = VoiceInterviewSessionEntity.builder()
-                .userId(DEFAULT_USER_ID)
+                .userId(userId)
                 .roleType(effectiveSkillId)
                 .skillId(effectiveSkillId)
                 .difficulty(request.getDifficulty() != null ? request.getDifficulty() : InterviewDefaults.DIFFICULTY)
@@ -124,15 +127,27 @@ public class VoiceInterviewService {
      * @param sessionId Session ID (String format, will be converted to Long)
      */
     @Transactional
-    public void endSession(String sessionId) {
+    public void endSession(String sessionId, Long userId) {
         Long sessionIdLong = parseSessionId(sessionId);
-        VoiceInterviewSessionEntity session = getSession(sessionIdLong);
+        requireOwnedSession(sessionIdLong, userId);
+        endSessionById(sessionIdLong, sessionId);
+    }
 
+    /**
+     * 由 WebSocket 连接（end_interview 控制帧）触发的结束。
+     * 连接建立时已完成归属校验，这里不再重复校验（过渡期无 token 连接依赖此入口）。
+     */
+    @Transactional
+    public void endSessionByConnection(String sessionId) {
+        endSessionById(parseSessionId(sessionId), sessionId);
+    }
+
+    private void endSessionById(Long sessionIdLong, String sessionId) {
+        VoiceInterviewSessionEntity session = getSession(sessionIdLong);
         if (session == null) {
             log.warn("Session not found: {}", sessionId);
             return;
         }
-
         endSession(session);
         sendEvaluateTaskAfterCommit(sessionIdLong);
     }
@@ -186,6 +201,42 @@ public class VoiceInterviewService {
 
         // Fallback to database
         return sessionRepository.findById(sessionId).orElse(null);
+    }
+
+    /**
+     * 获取归属校验后的会话：非本人会话一律按不存在处理（404 语义）
+     */
+    public VoiceInterviewSessionEntity requireOwnedSession(Long sessionId, Long userId) {
+        VoiceInterviewSessionEntity session = getSession(sessionId);
+        if (session == null || session.getUserId() == null || !session.getUserId().equals(userId)) {
+            throw new BusinessException(ErrorCode.VOICE_SESSION_NOT_FOUND, "会话不存在: " + sessionId);
+        }
+        return session;
+    }
+
+    /**
+     * 会话是否归属指定用户（WebSocket 建连时的归属校验，越权返回 false）
+     */
+    public boolean isOwnedBy(Long sessionId, Long userId) {
+        if (sessionId == null || userId == null) {
+            return false;
+        }
+        VoiceInterviewSessionEntity session = getSession(sessionId);
+        return session != null && userId.equals(session.getUserId());
+    }
+
+    /**
+     * 简历归属校验：引用他人简历按不存在处理
+     */
+    private void ensureResumeOwned(Long resumeId, Long userId) {
+        if (resumeId == null) {
+            return;
+        }
+        resumeRepository.findById(resumeId).ifPresent(resume -> {
+            if (resume.getUserId() == null || !resume.getUserId().equals(userId)) {
+                throw new BusinessException(ErrorCode.RESUME_NOT_FOUND);
+            }
+        });
     }
 
     /**
@@ -336,7 +387,8 @@ public class VoiceInterviewService {
     /**
      * Get conversation history as DTOs (for frontend)
      */
-    public List<VoiceInterviewMessageDTO> getConversationHistoryDTO(String sessionId) {
+    public List<VoiceInterviewMessageDTO> getConversationHistoryDTO(String sessionId, Long userId) {
+        requireOwnedSession(parseSessionId(sessionId), userId);
         return getConversationHistory(sessionId).stream()
             .map(msg -> VoiceInterviewMessageDTO.builder()
                 .id(msg.getId())
@@ -359,7 +411,20 @@ public class VoiceInterviewService {
      * @param reason Pause reason (user_initiated or timeout)
      */
     @Transactional
-    public void pauseSession(String sessionId, String reason) {
+    public void pauseSession(String sessionId, Long userId, String reason) {
+        requireOwnedSession(parseSessionId(sessionId), userId);
+        doPauseSession(sessionId, reason);
+    }
+
+    /**
+     * 系统超时暂停（无用户上下文，由 WebSocket 活动的定时任务触发）
+     */
+    @Transactional
+    public void pauseSessionBySystem(String sessionId, String reason) {
+        doPauseSession(sessionId, reason);
+    }
+
+    private void doPauseSession(String sessionId, String reason) {
         Long sessionIdLong = parseSessionId(sessionId);
 
         VoiceInterviewSessionEntity session = sessionRepository.findById(sessionIdLong)
@@ -388,11 +453,10 @@ public class VoiceInterviewService {
      * @return SessionResponseDTO with WebSocket URL
      */
     @Transactional
-    public SessionResponseDTO resumeSession(String sessionId) {
+    public SessionResponseDTO resumeSession(String sessionId, Long userId) {
         Long sessionIdLong = parseSessionId(sessionId);
 
-        VoiceInterviewSessionEntity session = sessionRepository.findById(sessionIdLong)
-            .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "会话不存在: " + sessionId));
+        VoiceInterviewSessionEntity session = requireOwnedSession(sessionIdLong, userId);
 
         if (session.getStatus() != VoiceInterviewSessionStatus.PAUSED) {
             throw new BusinessException(ErrorCode.BAD_REQUEST,
@@ -414,15 +478,13 @@ public class VoiceInterviewService {
 
     /**
      * Get all sessions for a user
-     * 获取用户所有会话
+     * 获取当前用户所有会话
      *
-     * @param userId User ID (optional, defaults to DEFAULT_USER_ID)
+     * @param userId 归属用户（app_users.id）
      * @param status Filter by status (optional)
      * @return List of session metadata
      */
-    public List<SessionMetaDTO> getAllSessions(String userId, String status) {
-        userId = userId != null ? userId : DEFAULT_USER_ID;
-
+    public List<SessionMetaDTO> getAllSessions(Long userId, String status) {
         List<VoiceInterviewSessionEntity> sessions;
         if (status != null && !status.isEmpty()) {
             VoiceInterviewSessionStatus statusEnum =
@@ -455,13 +517,8 @@ public class VoiceInterviewService {
      * @param sessionId Session ID as Long
      * @return SessionResponseDTO with session details or null if not found
      */
-    public SessionResponseDTO getSessionDTO(Long sessionId) {
-        VoiceInterviewSessionEntity session = getSession(sessionId);
-
-        if (session == null) {
-            return null;
-        }
-
+    public SessionResponseDTO getSessionDTO(Long sessionId, Long userId) {
+        VoiceInterviewSessionEntity session = requireOwnedSession(sessionId, userId);
         return buildSessionResponse(session);
     }
 
@@ -571,7 +628,6 @@ public class VoiceInterviewService {
                 .status(session.getStatus().name())
                 .startTime(session.getStartTime())
                 .plannedDuration(session.getPlannedDuration())
-                .webSocketUrl(String.format("ws://localhost:8080/ws/voice-interview/%d", session.getId()))
                 .build();
     }
 
@@ -622,7 +678,8 @@ public class VoiceInterviewService {
      * Trigger async evaluation for a session (called by Controller)
      */
     @Transactional
-    public void triggerEvaluation(Long sessionId) {
+    public void triggerEvaluation(Long sessionId, Long userId) {
+        requireOwnedSession(sessionId, userId);
         updateEvaluateStatus(sessionId, AsyncTaskStatus.PENDING, null);
         sendEvaluateTaskAfterCommit(sessionId);
     }
@@ -646,13 +703,12 @@ public class VoiceInterviewService {
      * 删除语音面试会话及其关联的消息和评估记录
      */
     @Transactional
-    public void deleteSession(Long sessionId) {
-        if (!sessionRepository.existsById(sessionId)) {
-            throw new BusinessException(ErrorCode.VOICE_SESSION_NOT_FOUND, "会话不存在: " + sessionId);
-        }
+    public void deleteSession(Long sessionId, Long userId) {
+        requireOwnedSession(sessionId, userId);
         evaluationRepository.findBySessionId(sessionId).ifPresent(evaluationRepository::delete);
         messageRepository.deleteBySessionId(sessionId);
         sessionRepository.deleteById(sessionId);
+        invalidateSessionCache(sessionId);
         log.info("Deleted voice interview session: {}", sessionId);
     }
 

@@ -24,6 +24,15 @@ public class DashscopeLlmService {
 
     private static final String TERMINAL_PUNCTUATION = "。！？；!?;.";
 
+    /**
+     * 会话与简历归属一致性校验：双方都有归属时必须一致，历史数据缺归属时放行
+     */
+    private boolean isResumeOwnedBySession(ResumeEntity resume, VoiceInterviewSessionEntity session) {
+        Long resumeOwner = resume.getUserId();
+        Long sessionOwner = session.getUserId();
+        return resumeOwner == null || sessionOwner == null || resumeOwner.equals(sessionOwner);
+    }
+
     private final LlmProviderRegistry llmProviderRegistry;
     private final VoiceInterviewPromptService promptService;
     private final ResumeRepository resumeRepository;
@@ -158,8 +167,11 @@ public class DashscopeLlmService {
         String resumeText = null;
         if (session.getResumeId() != null) {
             ResumeEntity resume = resumeRepository.findById(session.getResumeId()).orElse(null);
-            if (resume != null) {
+            if (resume != null && isResumeOwnedBySession(resume, session)) {
                 resumeText = resume.getResumeText();
+            } else if (resume != null) {
+                log.warn("语音面试会话与简历归属不一致，已忽略简历上下文: sessionId={}, resumeId={}",
+                    session.getId(), session.getResumeId());
             }
         }
 

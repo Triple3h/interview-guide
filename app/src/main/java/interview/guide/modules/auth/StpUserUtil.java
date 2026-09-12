@@ -49,6 +49,24 @@ public final class StpUserUtil {
         return stpLogic.getTokenValue();
     }
 
+    /**
+     * 通过 token 值解析登录用户 ID（WebSocket 握手等非 MVC 场景使用）；无效/过期返回 null
+     */
+    public static Long getLoginIdByTokenOrNull(String token) {
+        if (token == null || token.isBlank()) {
+            return null;
+        }
+        try {
+            Object loginId = stpLogic.getLoginIdByToken(token);
+            if (loginId == null) {
+                return null;
+            }
+            return Long.parseLong(loginId.toString());
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     public static SaTokenInfo getTokenInfo() {
         return stpLogic.getTokenInfo();
     }

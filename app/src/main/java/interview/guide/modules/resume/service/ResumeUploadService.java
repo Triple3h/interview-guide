@@ -43,9 +43,10 @@ public class ResumeUploadService {
      * 上传并分析简历（异步）
      *
      * @param file 简历文件
+     * @param userId 归属用户
      * @return 上传结果（分析将异步进行）
      */
-    public Map<String, Object> uploadAndAnalyze(org.springframework.web.multipart.MultipartFile file) {
+    public Map<String, Object> uploadAndAnalyze(org.springframework.web.multipart.MultipartFile file, Long userId) {
         long startTime = System.currentTimeMillis();
 
         // 1. 验证文件
@@ -60,8 +61,8 @@ public class ResumeUploadService {
         String contentType = parseService.detectContentType(file);
         validateContentType(contentType);
 
-        // 3. 检查简历是否已存在（去重）
-        Optional<ResumeEntity> existingResume = persistenceService.findExistingResume(file);
+        // 3. 检查简历是否已存在（去重，同用户内）
+        Optional<ResumeEntity> existingResume = persistenceService.findExistingResume(file, userId);
         if (existingResume.isPresent()) {
             log.info("简历上传处理完成（重复）: {} - 耗时: {}ms",
                 fileName, System.currentTimeMillis() - startTime);
@@ -85,7 +86,7 @@ public class ResumeUploadService {
             fileKey, System.currentTimeMillis() - storageStart);
 
         // 6. 保存简历到数据库（状态为 PENDING）
-        ResumeEntity savedResume = persistenceService.saveResume(file, resumeText, fileKey, fileUrl);
+        ResumeEntity savedResume = persistenceService.saveResume(file, resumeText, fileKey, fileUrl, userId);
 
         // 7. 发送分析任务到 Redis Stream（异步处理）
         analyzeStreamProducer.sendAnalyzeTask(savedResume.getId(), resumeText);
@@ -169,8 +170,10 @@ public class ResumeUploadService {
      * 从数据库获取简历文本并发送分析任务
      *
      * @param resumeId 简历ID
+     * @param userId 归属用户（非本人简历按不存在处理）
      */
-    public void reanalyze(Long resumeId) {
+    public void reanalyze(Long resumeId, Long userId) {
+        persistenceService.requireOwnedResume(resumeId, userId);
         ResumeReanalyzeSource source = loadReanalyzeSource(resumeId);
 
         log.info("开始重新分析简历: resumeId={}, filename={}", resumeId, source.originalFilename());

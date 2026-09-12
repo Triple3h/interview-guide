@@ -4,6 +4,7 @@ import interview.guide.modules.resume.model.ResumeEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -11,14 +12,19 @@ import java.util.Optional;
  */
 @Repository
 public interface ResumeRepository extends JpaRepository<ResumeEntity, Long> {
-    
+
     /**
-     * 根据文件哈希查找简历（用于去重）
+     * 用户在指定哈希下是否已有简历（同一用户内去重）
      */
-    Optional<ResumeEntity> findByFileHash(String fileHash);
-    
+    Optional<ResumeEntity> findByFileHashAndUserId(String fileHash, Long userId);
+
     /**
-     * 检查文件哈希是否存在
+     * 用户的简历列表（按上传时间倒序）
      */
-    boolean existsByFileHash(String fileHash);
+    List<ResumeEntity> findAllByUserIdOrderByUploadedAtDesc(Long userId);
+
+    /**
+     * 按 ID + 归属查找（越权按不存在处理）
+     */
+    Optional<ResumeEntity> findByIdAndUserId(Long id, Long userId);
 }

@@ -69,7 +69,7 @@ class VoiceInterviewIntegrationTest {
                 .plannedDuration(30)
                 .build();
 
-            SessionResponseDTO sessionResponse = voiceInterviewService.createSession(createRequest);
+            SessionResponseDTO sessionResponse = voiceInterviewService.createSession(createRequest, 1L);
 
             assertNotNull(sessionResponse);
             assertNotNull(sessionResponse.getSessionId());
@@ -95,7 +95,7 @@ class VoiceInterviewIntegrationTest {
 
             // Step 3: End session
             String sessionIdStr = sessionId.toString();
-            voiceInterviewService.endSession(sessionIdStr);
+            voiceInterviewService.endSession(sessionIdStr, 1L);
 
             // Verify session status
             VoiceInterviewSessionEntity endedSession = sessionRepository.findById(sessionId).orElse(null);
@@ -116,7 +116,7 @@ class VoiceInterviewIntegrationTest {
                 .plannedDuration(20)
                 .build();
 
-            SessionResponseDTO sessionResponse = voiceInterviewService.createSession(request);
+            SessionResponseDTO sessionResponse = voiceInterviewService.createSession(request, 1L);
             Long sessionId = sessionResponse.getSessionId();
 
             // Initial phase should be INTRO
@@ -145,7 +145,7 @@ class VoiceInterviewIntegrationTest {
                 .plannedDuration(25)
                 .build();
 
-            SessionResponseDTO sessionResponse = voiceInterviewService.createSession(request);
+            SessionResponseDTO sessionResponse = voiceInterviewService.createSession(request, 1L);
             Long sessionId = sessionResponse.getSessionId();
 
             // Verify database persistence
@@ -172,7 +172,7 @@ class VoiceInterviewIntegrationTest {
                 .plannedDuration(45)
                 .build();
 
-            SessionResponseDTO sessionResponse = voiceInterviewService.createSession(request);
+            SessionResponseDTO sessionResponse = voiceInterviewService.createSession(request, 1L);
             Long sessionId = sessionResponse.getSessionId();
 
             VoiceInterviewSessionEntity session = sessionRepository.findById(sessionId).orElseThrow();
@@ -211,10 +211,8 @@ class VoiceInterviewIntegrationTest {
             // Try to end a non-existent session
             String invalidSessionId = "99999";
 
-            // Service should handle non-existent session gracefully (no exception)
-            assertDoesNotThrow(() -> {
-                voiceInterviewService.endSession(invalidSessionId);
-            });
+            // 归属校验后按不存在处理（404 语义）
+            assertThrows(RuntimeException.class, () -> voiceInterviewService.endSession(invalidSessionId, 1L));
         }
 
         @Test
@@ -225,7 +223,7 @@ class VoiceInterviewIntegrationTest {
                 .roleType("ali-p8")
                 .build();
 
-            SessionResponseDTO sessionResponse = voiceInterviewService.createSession(request);
+            SessionResponseDTO sessionResponse = voiceInterviewService.createSession(request, 1L);
 
             assertNotNull(sessionResponse);
             assertNotNull(sessionResponse.getSessionId());
@@ -242,7 +240,7 @@ class VoiceInterviewIntegrationTest {
                     .plannedDuration(30)
                     .build();
 
-                SessionResponseDTO sessionResponse = voiceInterviewService.createSession(request);
+                SessionResponseDTO sessionResponse = voiceInterviewService.createSession(request, 1L);
 
                 assertNotNull(sessionResponse, "Session should be created for role: " + roleType);
                 assertEquals(roleType, sessionResponse.getRoleType());

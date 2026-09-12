@@ -59,7 +59,7 @@ public class KnowledgeBaseInterviewService {
                                 List<KnowledgeBaseQuestionFollowUpDTO> followUps) {
   }
 
-  public InterviewSessionDTO createSession(CreateKnowledgeBaseInterviewRequest request) {
+  public InterviewSessionDTO createSession(CreateKnowledgeBaseInterviewRequest request, Long userId) {
     knowledgeBaseRepository.findById(request.knowledgeBaseId())
         .orElseThrow(() -> new BusinessException(ErrorCode.KNOWLEDGE_BASE_NOT_FOUND));
 
@@ -99,7 +99,8 @@ public class KnowledgeBaseInterviewService {
         KnowledgeBaseQuestionEntity.DEFAULT_SKILL_ID,
         difficulty,
         request.knowledgeBaseId(),
-        category
+        category,
+        userId
     );
   }
 
@@ -205,7 +206,7 @@ public class KnowledgeBaseInterviewService {
    * 跨知识库整体开始面试：把每个知识库当作一个分组，按知识库均衡抽题、同库题目连续作答。
    * 题目的 category 统一标记为来源知识库名，便于面试与报告中按库展示。
    */
-  public InterviewSessionDTO createBatchSession(CreateKnowledgeBaseBatchInterviewRequest request) {
+  public InterviewSessionDTO createBatchSession(CreateKnowledgeBaseBatchInterviewRequest request, Long userId) {
     List<Long> knowledgeBaseIds = request.knowledgeBaseIds().stream().distinct().toList();
     List<KnowledgeBaseEntity> knowledgeBases = knowledgeBaseRepository.findAllById(knowledgeBaseIds);
     if (knowledgeBases.size() < knowledgeBaseIds.size()) {
@@ -249,7 +250,8 @@ public class KnowledgeBaseInterviewService {
         KnowledgeBaseQuestionEntity.DEFAULT_SKILL_ID,
         difficulty,
         null,
-        null
+        null,
+        userId
     );
   }
 

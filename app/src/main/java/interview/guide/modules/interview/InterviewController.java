@@ -1,7 +1,10 @@
 package interview.guide.modules.interview;
 
 import interview.guide.common.annotation.RateLimit;
+import interview.guide.common.exception.BusinessException;
 import interview.guide.common.result.Result;
+import interview.guide.common.web.CurrentUser;
+import interview.guide.common.web.LoginUser;
 import interview.guide.modules.interview.model.CreateInterviewRequest;
 import interview.guide.modules.interview.model.InterviewDetailDTO;
 import interview.guide.modules.interview.model.InterviewReportDTO;
@@ -46,11 +49,11 @@ public class InterviewController {
     private final InterviewPersistenceService persistenceService;
     
     /**
-     * 列出所有面试会话（用于面试记录页）
+     * 列出当前用户的面试会话（用于面试记录页）
      */
     @GetMapping("/api/interview/sessions")
-    public Result<List<SessionListItemDTO>> listSessions() {
-        List<SessionListItemDTO> items = persistenceService.findAll().stream()
+    public Result<List<SessionListItemDTO>> listSessions(@LoginUser CurrentUser currentUser) {
+        List<SessionListItemDTO> items = persistenceService.findAll(currentUser.id()).stream()
             .map(SessionListItemDTO::from)
             .toList();
         return Result.success(items);
@@ -62,9 +65,10 @@ public class InterviewController {
     @PostMapping("/api/interview/sessions")
     @RateLimit(dimension = RateLimit.Dimension.GLOBAL, count = 5)
     @RateLimit(dimension = RateLimit.Dimension.IP, count = 5)
-    public Result<InterviewSessionDTO> createSession(@RequestBody CreateInterviewRequest request) {
+    public Result<InterviewSessionDTO> createSession(@RequestBody CreateInterviewRequest request,
+                                                     @LoginUser CurrentUser currentUser) {
         log.info("创建面试会话，题目数量: {}", request.questionCount());
-        InterviewSessionDTO session = sessionService.createSession(request);
+        InterviewSessionDTO session = sessionService.createSession(request, currentUser.id());
         return Result.success(session);
     }
     
@@ -72,8 +76,9 @@ public class InterviewController {
      * 获取会话信息
      */
     @GetMapping("/api/interview/sessions/{sessionId}")
-    public Result<InterviewSessionDTO> getSession(@PathVariable String sessionId) {
-        InterviewSessionDTO session = sessionService.getSession(sessionId);
+    public Result<InterviewSessionDTO> getSession(@PathVariable String sessionId,
+                                                  @LoginUser CurrentUser currentUser) {
+        InterviewSessionDTO session = sessionService.getSession(sessionId, currentUser.id());
         return Result.success(session);
     }
     
@@ -81,8 +86,9 @@ public class InterviewController {
      * 获取当前问题
      */
     @GetMapping("/api/interview/sessions/{sessionId}/question")
-    public Result<Map<String, Object>> getCurrentQuestion(@PathVariable String sessionId) {
-        return Result.success(sessionService.getCurrentQuestionResponse(sessionId));
+    public Result<Map<String, Object>> getCurrentQuestion(@PathVariable String sessionId,
+                                                          @LoginUser CurrentUser currentUser) {
+        return Result.success(sessionService.getCurrentQuestionResponse(sessionId, currentUser.id()));
     }
     
     /**
@@ -92,12 +98,13 @@ public class InterviewController {
     @RateLimit(dimension = RateLimit.Dimension.GLOBAL, count = 10)
     public Result<SubmitAnswerResponse> submitAnswer(
             @PathVariable String sessionId,
-            @RequestBody Map<String, Object> body) {
+            @RequestBody Map<String, Object> body,
+            @LoginUser CurrentUser currentUser) {
         Integer questionIndex = (Integer) body.get("questionIndex");
         String answer = (String) body.get("answer");
         log.info("提交答案: 会话{}, 问题{}", sessionId, questionIndex);
         SubmitAnswerRequest request = new SubmitAnswerRequest(sessionId, questionIndex, answer);
-        SubmitAnswerResponse response = sessionService.submitAnswer(request);
+        SubmitAnswerResponse response = sessionService.submitAnswer(request, currentUser.id());
         return Result.success(response);
     }
     
@@ -105,9 +112,10 @@ public class InterviewController {
      * 生成面试报告
      */
     @GetMapping("/api/interview/sessions/{sessionId}/report")
-    public Result<InterviewReportDTO> getReport(@PathVariable String sessionId) {
+    public Result<InterviewReportDTO> getReport(@PathVariable String sessionId,
+                                                @LoginUser CurrentUser currentUser) {
         log.info("生成面试报告: {}", sessionId);
-        InterviewReportDTO report = sessionService.generateReport(sessionId);
+        InterviewReportDTO report = sessionService.generateReport(sessionId, currentUser.id());
         return Result.success(report);
     }
     
@@ -116,8 +124,9 @@ public class InterviewController {
      * GET /api/interview/sessions/unfinished/{resumeId}
      */
     @GetMapping("/api/interview/sessions/unfinished/{resumeId}")
-    public Result<InterviewSessionDTO> findUnfinishedSession(@PathVariable Long resumeId) {
-        return Result.success(sessionService.findUnfinishedSessionOrThrow(resumeId));
+    public Result<InterviewSessionDTO> findUnfinishedSession(@PathVariable Long resumeId,
+                                                             @LoginUser CurrentUser currentUser) {
+        return Result.success(sessionService.findUnfinishedSessionOrThrow(resumeId, currentUser.id()));
     }
     
     /**
@@ -126,12 +135,13 @@ public class InterviewController {
     @PutMapping("/api/interview/sessions/{sessionId}/answers")
     public Result<Void> saveAnswer(
             @PathVariable String sessionId,
-            @RequestBody Map<String, Object> body) {
+            @RequestBody Map<String, Object> body,
+            @LoginUser CurrentUser currentUser) {
         Integer questionIndex = (Integer) body.get("questionIndex");
         String answer = (String) body.get("answer");
         log.info("暂存答案: 会话{}, 问题{}", sessionId, questionIndex);
         SubmitAnswerRequest request = new SubmitAnswerRequest(sessionId, questionIndex, answer);
-        sessionService.saveAnswer(request);
+        sessionService.saveAnswer(request, currentUser.id());
         return Result.success(null);
     }
     
@@ -139,9 +149,10 @@ public class InterviewController {
      * 提前交卷
      */
     @PostMapping("/api/interview/sessions/{sessionId}/complete")
-    public Result<Void> completeInterview(@PathVariable String sessionId) {
+    public Result<Void> completeInterview(@PathVariable String sessionId,
+                                          @LoginUser CurrentUser currentUser) {
         log.info("提前交卷: {}", sessionId);
-        sessionService.completeInterview(sessionId);
+        sessionService.completeInterview(sessionId, currentUser.id());
         return Result.success(null);
     }
     
@@ -150,8 +161,9 @@ public class InterviewController {
      * GET /api/interview/sessions/{sessionId}/details
      */
     @GetMapping("/api/interview/sessions/{sessionId}/details")
-    public Result<InterviewDetailDTO> getInterviewDetail(@PathVariable String sessionId) {
-        InterviewDetailDTO detail = historyService.getInterviewDetail(sessionId);
+    public Result<InterviewDetailDTO> getInterviewDetail(@PathVariable String sessionId,
+                                                         @LoginUser CurrentUser currentUser) {
+        InterviewDetailDTO detail = historyService.getInterviewDetail(sessionId, currentUser.id());
         return Result.success(detail);
     }
     
@@ -159,9 +171,10 @@ public class InterviewController {
      * 导出面试报告为PDF
      */
     @GetMapping("/api/interview/sessions/{sessionId}/export")
-    public ResponseEntity<byte[]> exportInterviewPdf(@PathVariable String sessionId) {
+    public ResponseEntity<byte[]> exportInterviewPdf(@PathVariable String sessionId,
+                                                     @LoginUser CurrentUser currentUser) {
         try {
-            byte[] pdfBytes = historyService.exportInterviewPdf(sessionId);
+            byte[] pdfBytes = historyService.exportInterviewPdf(sessionId, currentUser.id());
             String filename = URLEncoder.encode("模拟面试报告_" + sessionId + ".pdf", 
                 StandardCharsets.UTF_8);
             
@@ -169,6 +182,8 @@ public class InterviewController {
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + filename)
                 .contentType(MediaType.APPLICATION_PDF)
                 .body(pdfBytes);
+        } catch (BusinessException e) {
+            throw e;
         } catch (Exception e) {
             log.error("导出PDF失败", e);
             return ResponseEntity.internalServerError().build();
@@ -179,9 +194,10 @@ public class InterviewController {
      * 删除面试会话
      */
     @DeleteMapping("/api/interview/sessions/{sessionId}")
-    public Result<Void> deleteInterview(@PathVariable String sessionId) {
+    public Result<Void> deleteInterview(@PathVariable String sessionId,
+                                        @LoginUser CurrentUser currentUser) {
         log.info("删除面试会话: {}", sessionId);
-        persistenceService.deleteSessionBySessionId(sessionId);
+        persistenceService.deleteSessionBySessionId(sessionId, currentUser.id());
         return Result.success(null);
     }
 }

@@ -7,6 +7,7 @@ import interview.guide.modules.voiceinterview.dto.WebSocketControlMessage;
 import interview.guide.modules.voiceinterview.dto.WebSocketSubtitleMessage;
 import interview.guide.modules.voiceinterview.model.VoiceInterviewMessageEntity;
 import interview.guide.modules.voiceinterview.model.VoiceInterviewSessionEntity;
+import interview.guide.modules.voiceinterview.config.VoiceInterviewHandshakeInterceptor;
 import interview.guide.modules.voiceinterview.config.VoiceInterviewProperties;
 import interview.guide.modules.voiceinterview.context.VoiceContextCompressor;
 import interview.guide.modules.voiceinterview.service.QwenAsrService;
@@ -148,6 +149,15 @@ public class VoiceInterviewWebSocketHandler extends TextWebSocketHandler impleme
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
         String sessionId = extractSessionId(session);
+
+        // 握手携带 token 时校验会话归属：非本人会话直接拒绝连接（过渡期无 token 则跳过）
+        Long handshakeUserId = resolveHandshakeUserId(session);
+        if (handshakeUserId != null
+                && !interviewService.isOwnedBy(parseSessionIdOrNull(sessionId), handshakeUserId)) {
+            log.warn("WebSocket 连接被拒：会话 {} 不属于用户 {}", sessionId, handshakeUserId);
+            session.close(CloseStatus.POLICY_VIOLATION.withReason("会话不存在"));
+            return;
+        }
 
         // Increase message size limits for audio streaming
         // 1 second of PCM audio @ 16kHz, 16-bit = ~32KB raw, ~42KB base64
@@ -890,7 +900,7 @@ public class VoiceInterviewWebSocketHandler extends TextWebSocketHandler impleme
                 flushMergedUtteranceToLlm(sessionId);
                 break;
             case "end_interview":
-                interviewService.endSession(sessionId);
+                interviewService.endSessionByConnection(sessionId);
                 break;
             case "start_phase":
                 interviewService.startPhase(sessionId, control.getPhase());
@@ -1195,7 +1205,7 @@ public class VoiceInterviewWebSocketHandler extends TextWebSocketHandler impleme
             }
 
             // 2. Save session state to database
-            interviewService.pauseSession(sessionId, "timeout");
+            interviewService.pauseSessionBySystem(sessionId, "timeout");
 
             // 3. Close WebSocket connection
             if (session != null && session.isOpen()) {
@@ -1222,6 +1232,22 @@ public class VoiceInterviewWebSocketHandler extends TextWebSocketHandler impleme
     private String extractSessionId(WebSocketSession session) {
         String path = session.getUri().getPath();
         return path.substring(path.lastIndexOf('/') + 1);
+    }
+
+    /**
+     * 握手阶段写入的登录用户 ID（过渡期无 token 时为 null）
+     */
+    private Long resolveHandshakeUserId(WebSocketSession session) {
+        Object value = session.getAttributes().get(VoiceInterviewHandshakeInterceptor.USER_ID_ATTRIBUTE);
+        return value instanceof Long userId ? userId : null;
+    }
+
+    private Long parseSessionIdOrNull(String sessionId) {
+        try {
+            return Long.parseLong(sessionId);
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /**

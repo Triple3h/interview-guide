@@ -34,16 +34,11 @@ public class InterviewHistoryService {
     private final InterviewMapper interviewMapper;
 
     /**
-     * 获取面试会话详情
+     * 获取面试会话详情（仅本人会话）
      */
     @Transactional(readOnly = true)
-    public InterviewDetailDTO getInterviewDetail(String sessionId) {
-        Optional<InterviewSessionEntity> sessionOpt = interviewPersistenceService.findBySessionId(sessionId);
-        if (sessionOpt.isEmpty()) {
-            throw new BusinessException(ErrorCode.INTERVIEW_SESSION_NOT_FOUND);
-        }
-
-        InterviewSessionEntity session = sessionOpt.get();
+    public InterviewDetailDTO getInterviewDetail(String sessionId, Long userId) {
+        InterviewSessionEntity session = interviewPersistenceService.requireOwnedSession(sessionId, userId);
 
         // 解析JSON字段
         List<Object> questions = parseJson(session.getQuestionsJson(), new TypeReference<>() {});
@@ -144,15 +139,10 @@ public class InterviewHistoryService {
     }
 
     /**
-     * 导出面试报告为PDF
+     * 导出面试报告为PDF（仅本人会话）
      */
-    public byte[] exportInterviewPdf(String sessionId) {
-        Optional<InterviewSessionEntity> sessionOpt = interviewPersistenceService.findBySessionId(sessionId);
-        if (sessionOpt.isEmpty()) {
-            throw new BusinessException(ErrorCode.INTERVIEW_SESSION_NOT_FOUND);
-        }
-
-        InterviewSessionEntity session = sessionOpt.get();
+    public byte[] exportInterviewPdf(String sessionId, Long userId) {
+        InterviewSessionEntity session = interviewPersistenceService.requireOwnedSession(sessionId, userId);
         try {
             return pdfExportService.exportInterviewReport(session);
         } catch (Exception e) {
