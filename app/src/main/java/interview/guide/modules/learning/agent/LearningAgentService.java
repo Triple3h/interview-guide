@@ -44,6 +44,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -63,6 +64,11 @@ import java.util.stream.Collectors;
 public class LearningAgentService {
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy年M月d日");
+
+    /**
+     * 补充学员档案的工具名：调用成功后重建 system prompt，避免后续轮次仍按旧档案判断缺失
+     */
+    private static final String UPDATE_PROFILE_TOOL = "updateLearnerProfile";
 
     /**
      * 最终答案流式输出的分片大小与节奏（分片数过大时自动放大分片，控制总时长）
@@ -133,21 +139,24 @@ public class LearningAgentService {
         List<Long> preferredKbIds = sessionService.getOwnedSessionKbIds(sessionId, userId);
         List<Message> history = sessionService.getHistoryMessages(sessionId);
 
-        String systemPrompt = buildSystemPrompt(learner, userId);
         log.info("学习帮手开始回答: sessionId={}, userId={}, historySize={}, preferredKbIds={}",
             sessionId, userId, history.size(), preferredKbIds);
 
         // 实时事件通道：工具步骤与工具轮间的"思考"文本都从这里汇入主流
         List<AgentStep> steps = Collections.synchronizedList(new ArrayList<>());
         Sinks.Many<AgentEvent> liveSink = Sinks.many().unicast().onBackpressureBuffer();
+        // 档案在本轮被补充后置位，下一轮工具调用前重建 system prompt（learner 快照由工具同步刷新）
+        AtomicBoolean profileUpdated = new AtomicBoolean(false);
 
-        ToolCallback[] toolCallbacks = buildToolCallbacks(userId, sessionId, preferredKbIds, learner, steps, liveSink);
+        ToolCallback[] toolCallbacks = buildToolCallbacks(userId, sessionId, preferredKbIds, learner, steps,
+            liveSink, profileUpdated);
 
         StringBuilder content = new StringBuilder();
 
         // 工具轮是阻塞 HTTP 调用，放到 boundedElastic 执行；步骤/思考文本经 liveSink 汇入主流
         Flux<AgentEvent> agentWork = Flux.defer(() -> emitFinalAnswer(
-                runAgentLoop(systemPrompt, history, question, toolCallbacks, liveSink)))
+                runAgentLoop(() -> buildSystemPrompt(learner, userId), history, question, toolCallbacks,
+                    liveSink, profileUpdated)))
             .subscribeOn(Schedulers.boundedElastic())
             .doFinally(signal -> liveSink.tryEmitComplete());
 
@@ -169,8 +178,9 @@ public class LearningAgentService {
      * 手动 ReAct 循环：每轮非流式调用模型，模型请求工具则执行后带历史进下一轮，
      * 直到模型直接给出最终答案；工具轮耗尽或执行失败时降级为无工具收尾。
      */
-    private String runAgentLoop(String systemPrompt, List<Message> history, String question,
-                                ToolCallback[] toolCallbacks, Sinks.Many<AgentEvent> liveSink) {
+    private String runAgentLoop(Supplier<String> systemPromptSupplier, List<Message> history, String question,
+                                ToolCallback[] toolCallbacks, Sinks.Many<AgentEvent> liveSink,
+                                AtomicBoolean profileUpdated) {
         ChatClient loopClient = llmProviderRegistry.getAgentLoopChatClient(null);
         // 工具定义经由 runtime options 注入请求；镜像 Prompt 复用同一份 options 供 ToolCallingManager 解析回调
         ToolCallingChatOptions.Builder<?> toolOptionsBuilder = ToolCallingChatOptions.builder()
@@ -178,7 +188,7 @@ public class LearningAgentService {
         ToolCallingChatOptions toolOptions = toolOptionsBuilder.build();
 
         List<Message> conversation = new ArrayList<>();
-        conversation.add(new SystemMessage(systemPrompt));
+        conversation.add(new SystemMessage(systemPromptSupplier.get()));
         conversation.addAll(history);
         conversation.add(new UserMessage(question));
 
@@ -208,6 +218,10 @@ public class LearningAgentService {
             emitInterimText(output.getText(), liveSink);
             if (!executeToolRound(conversation, output, response, toolOptions)) {
                 break;
+            }
+            if (profileUpdated.getAndSet(false)) {
+                // 档案刚被补充：重建 system prompt，让后续轮次按最新档案回答
+                conversation.set(0, new SystemMessage(systemPromptSupplier.get()));
             }
         }
 
@@ -331,9 +345,9 @@ public class LearningAgentService {
 
     private ToolCallback[] buildToolCallbacks(Long userId, Long sessionId, List<Long> preferredKbIds,
                                               UserEntity learner, List<AgentStep> steps,
-                                              Sinks.Many<AgentEvent> liveSink) {
+                                              Sinks.Many<AgentEvent> liveSink, AtomicBoolean profileUpdated) {
         LearningAgentTools tools = new LearningAgentTools(
-            userId, sessionId, preferredKbIds, learner,
+            userId, sessionId, preferredKbIds, learner, userService,
             vectorService, knowledgeBaseRepository, recordService, properties, skillService,
             planService, askRegistry, liveSink::tryEmitNext);
 
@@ -346,6 +360,9 @@ public class LearningAgentService {
         for (ToolCallback callback : rawCallbacks) {
             decorated.add(new LearningAgentToolCallback(callback, step -> {
                 steps.add(step);
+                if (UPDATE_PROFILE_TOOL.equals(step.tool()) && "end".equals(step.phase())) {
+                    profileUpdated.set(true);
+                }
                 liveSink.tryEmitNext(AgentEvent.step(step.tool(), step.phase(), step.summary(), step.detail()));
             }));
         }
@@ -364,12 +381,41 @@ public class LearningAgentService {
         appendSkillCatalog(sb, learner.getLearningSkillId());
         sb.append("- 当前水平: ").append(orDefault(learner.getCurrentLevel())).append('\n');
         sb.append("- 学习目标: ").append(orDefault(learner.getLearningGoal())).append('\n');
+        sb.append(renderMissingProfileFields(learner));
         sb.append("- 今天日期: ").append(LocalDate.now().format(DATE_FORMATTER)).append('\n');
         sb.append("\n# 学习计划（当前）\n");
         sb.append(renderPlanItems(planItems));
         sb.append("\n\n# 学习台账（最近 ").append(topics.size()).append(" 条）\n");
         sb.append(renderTopics(topics));
         return sb.toString();
+    }
+
+    /**
+     * 档案缺失字段提示：缺失信息与当前话题相关时，Agent 可自然地向学员询问并用 updateLearnerProfile 记录
+     */
+    private String renderMissingProfileFields(UserEntity learner) {
+        List<String> missing = new ArrayList<>();
+        if (isBlank(learner.getOccupation())) {
+            missing.add("职业");
+        }
+        if (isBlank(learner.getLearningDirection())) {
+            missing.add("学习方向");
+        }
+        if (isBlank(learner.getCurrentLevel())) {
+            missing.add("当前水平");
+        }
+        if (isBlank(learner.getLearningGoal())) {
+            missing.add("学习目标");
+        }
+        if (missing.isEmpty()) {
+            return "- 待补全字段: 无（资料已完整）\n";
+        }
+        return "- 待补全字段: " + String.join("、", missing)
+            + "（与本次学习话题相关时才询问学员，学员告知后用 updateLearnerProfile 记录）\n";
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     /**

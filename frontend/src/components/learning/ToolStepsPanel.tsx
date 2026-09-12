@@ -10,6 +10,7 @@ import {
   ListTodo,
   Loader2,
   Search,
+  UserPen,
   UserRound,
   Wrench,
 } from 'lucide-react';
@@ -20,6 +21,7 @@ const TOOL_LABELS: Record<string, string> = {
   upsertLearningRecord: '记录知识点',
   listLearnedTopics: '查看学习台账',
   getLearnerProfile: '读取学员档案',
+  updateLearnerProfile: '更新学员档案',
   loadSkillBaseline: '加载知识基线',
   upsertLearningPlan: '固化学习计划',
   askLearner: '向学员提问',
@@ -30,6 +32,7 @@ const TOOL_ICONS: Record<string, React.ComponentType<{ className?: string }>> = 
   upsertLearningRecord: BookOpenCheck,
   listLearnedTopics: Library,
   getLearnerProfile: UserRound,
+  updateLearnerProfile: UserPen,
   loadSkillBaseline: BookOpenCheck,
   upsertLearningPlan: ListTodo,
   askLearner: CircleHelp,

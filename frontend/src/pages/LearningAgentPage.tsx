@@ -294,6 +294,8 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
 
     let fullContent = '';
     let fullReasoning = '';
+    // Agent 在本轮补充过学员档案时，流结束后刷新成员资料，让页头与资料弹窗显示最新值
+    let profileUpdated = false;
 
     try {
       await learningAgentApi.streamChat(sessionId, userQuestion, {
@@ -309,6 +311,9 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
           });
         },
         onStep: (step) => {
+          if (step.tool === 'updateLearnerProfile' && step.phase === 'end') {
+            profileUpdated = true;
+          }
           startTransition(() => {
             updateLastAssistant((msg) => ({
               ...msg,
@@ -349,6 +354,7 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
           setPendingAskId(null);
           setLoading(false);
           loadSessions();
+          if (profileUpdated) loadProfile();
         },
         onTitle: (title) => {
           // 首轮回答结束后后端自动生成的标题（仅占位标题会被替换）
@@ -365,6 +371,7 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
           });
           setPendingAskId(null);
           setLoading(false);
+          if (profileUpdated) loadProfile();
         },
       });
     } catch (err) {

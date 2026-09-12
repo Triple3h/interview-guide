@@ -179,4 +179,74 @@ class UserServiceTest {
             assertThat(captor.getValue().getLearningSkillId()).isNull();
         }
     }
+
+    @Nested
+    @DisplayName("Agent 补充资料")
+    class AgentUpdateProfile {
+
+        @Test
+        @DisplayName("只写入本次提供的字段，未提供的字段保持原值")
+        void shouldOnlyApplyProvidedFields() {
+            UserEntity self = new UserEntity();
+            self.setId(1L);
+            self.setNickname("Alice");
+            self.setOccupation("教师");
+            self.setLearningGoal("原目标");
+
+            when(userRepository.findById(1L)).thenReturn(Optional.of(self));
+            when(userRepository.save(any(UserEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+            UserService.ProfileUpdateResult result = userService.updateProfileFromAgent(
+                1L, null, "Java 后端开发", "java-backend", "能用但不系统", null);
+
+            assertThat(result.changedFields()).containsExactly("学习方向", "当前水平");
+            ArgumentCaptor<UserEntity> captor = ArgumentCaptor.forClass(UserEntity.class);
+            verify(userRepository).save(captor.capture());
+            assertThat(captor.getValue().getOccupation()).isEqualTo("教师");
+            assertThat(captor.getValue().getLearningGoal()).isEqualTo("原目标");
+            assertThat(captor.getValue().getLearningDirection()).isEqualTo("Java 后端开发");
+            assertThat(captor.getValue().getLearningSkillId()).isEqualTo("java-backend");
+            assertThat(captor.getValue().getCurrentLevel()).isEqualTo("能用但不系统");
+        }
+
+        @Test
+        @DisplayName("自定义方向随空串清除旧的预置方向标识")
+        void shouldClearSkillIdForCustomDirection() {
+            UserEntity self = new UserEntity();
+            self.setId(1L);
+            self.setNickname("Alice");
+            self.setLearningDirection("Java 后端开发");
+            self.setLearningSkillId("java-backend");
+
+            when(userRepository.findById(1L)).thenReturn(Optional.of(self));
+            when(userRepository.save(any(UserEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+            UserService.ProfileUpdateResult result = userService.updateProfileFromAgent(
+                1L, null, "英语口语", "", null, null);
+
+            assertThat(result.changedFields()).containsExactly("学习方向");
+            ArgumentCaptor<UserEntity> captor = ArgumentCaptor.forClass(UserEntity.class);
+            verify(userRepository).save(captor.capture());
+            assertThat(captor.getValue().getLearningDirection()).isEqualTo("英语口语");
+            assertThat(captor.getValue().getLearningSkillId()).isNull();
+        }
+
+        @Test
+        @DisplayName("全部未提供或为空白时不落库、不清空既有资料")
+        void shouldSkipWhenNothingProvided() {
+            UserEntity self = new UserEntity();
+            self.setId(1L);
+            self.setNickname("Alice");
+            self.setOccupation("教师");
+
+            when(userRepository.findById(1L)).thenReturn(Optional.of(self));
+
+            UserService.ProfileUpdateResult result = userService.updateProfileFromAgent(
+                1L, "  ", "", null, null, null);
+
+            assertThat(result.changedFields()).isEmpty();
+            assertThat(self.getOccupation()).isEqualTo("教师");
+            verify(userRepository, never()).save(any(UserEntity.class));
+        }
+    }
 }

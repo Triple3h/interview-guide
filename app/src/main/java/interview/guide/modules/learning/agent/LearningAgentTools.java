@@ -11,12 +11,15 @@ import interview.guide.modules.knowledgebase.service.chunking.ChunkMetadataKeys;
 import interview.guide.modules.learning.model.LearningRecordEntity;
 import interview.guide.modules.learning.service.LearningPlanService;
 import interview.guide.modules.learning.service.LearningRecordService;
+import interview.guide.modules.user.model.UserDTO.UserResponse;
 import interview.guide.modules.user.model.UserEntity;
+import interview.guide.modules.user.service.UserService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -39,6 +42,7 @@ public class LearningAgentTools {
     private final Long sourceSessionId;
     private final List<Long> preferredKbIds;
     private final UserEntity learner;
+    private final UserService userService;
     private final KnowledgeBaseVectorService vectorService;
     private final KnowledgeBaseRepository knowledgeBaseRepository;
     private final LearningRecordService recordService;
@@ -49,7 +53,8 @@ public class LearningAgentTools {
     private final Consumer<AgentEvent> askEmitter;
 
     public LearningAgentTools(Long userId, Long sourceSessionId, List<Long> preferredKbIds,
-                              UserEntity learner, KnowledgeBaseVectorService vectorService,
+                              UserEntity learner, UserService userService,
+                              KnowledgeBaseVectorService vectorService,
                               KnowledgeBaseRepository knowledgeBaseRepository,
                               LearningRecordService recordService, LearningAgentProperties properties,
                               InterviewSkillService skillService, LearningPlanService planService,
@@ -58,6 +63,7 @@ public class LearningAgentTools {
         this.sourceSessionId = sourceSessionId;
         this.preferredKbIds = preferredKbIds;
         this.learner = learner;
+        this.userService = userService;
         this.vectorService = vectorService;
         this.knowledgeBaseRepository = knowledgeBaseRepository;
         this.recordService = recordService;
@@ -110,6 +116,41 @@ public class LearningAgentTools {
             + "- 学习方向: " + orDefault(learner.getLearningDirection()) + "\n"
             + "- 当前水平: " + orDefault(learner.getCurrentLevel()) + "\n"
             + "- 学习目标: " + orDefault(learner.getLearningGoal());
+    }
+
+    @Tool(name = "updateLearnerProfile",
+        description = "把学员在对话中补充或更正的个人资料记入档案（职业、学习方向、当前水平、学习目标）。"
+            + "学员告知了这些信息后立即调用，一次只记学员明确说过的字段，其余留空；"
+            + "昵称、头像等身份信息不在此工具范围内")
+    public String updateLearnerProfile(
+        @ToolParam(description = "职业，如：后端工程师；本次未涉及传空字符串", required = false) String occupation,
+        @ToolParam(description = "学习方向，如：Java 后端开发；本次未涉及传空字符串", required = false) String learningDirection,
+        @ToolParam(description = "当前水平，如：会用 Redis 但没系统学过；本次未涉及传空字符串", required = false) String currentLevel,
+        @ToolParam(description = "学习目标，如：三个月内系统补齐分布式基础；本次未涉及传空字符串", required = false) String learningGoal) {
+        String newOccupation = textOrNull(occupation);
+        String newDirection = textOrNull(learningDirection);
+        String newLevel = textOrNull(currentLevel);
+        String newGoal = textOrNull(learningGoal);
+        if (newOccupation == null && newDirection == null && newLevel == null && newGoal == null) {
+            return "学员本次没有提供新的档案信息，未做更新。";
+        }
+
+        // 学习方向变更时同步维护预置方向标识：命中预置方向关联其知识基线，自定义方向清除旧关联
+        String matchedSkillId = newDirection == null ? null : matchPresetSkillId(newDirection);
+
+        try {
+            UserService.ProfileUpdateResult result = userService.updateProfileFromAgent(
+                userId, newOccupation, newDirection, matchedSkillId, newLevel, newGoal);
+            if (result.changedFields().isEmpty()) {
+                return "学员本次没有提供新的档案信息，未做更新。";
+            }
+            syncLearner(result.profile());
+            log.info("[LearningAgent] 更新学员档案: userId={}, changedFields={}", userId, result.changedFields());
+            return "已更新学员档案：" + String.join("、", result.changedFields())
+                + "。后续回答会据此调整举例与难度";
+        } catch (BusinessException e) {
+            return "档案未更新：" + e.getMessage() + "。请向学员说明并继续当前话题";
+        }
     }
 
     @Tool(name = "listLearnedTopics",
@@ -221,6 +262,36 @@ public class LearningAgentTools {
 
     // ========== 私有方法 ==========
 
+    /**
+     * 按预置学习方向名称匹配 skill id；未命中返回空串（视为自定义方向，清除旧的预置关联）
+     */
+    private String matchPresetSkillId(String learningDirection) {
+        String target = learningDirection.trim();
+        return skillService.getAllSkills().stream()
+            .filter(skill -> !skill.interviewOnly())
+            .filter(skill -> skill.name() != null && skill.name().trim().equalsIgnoreCase(target))
+            .map(InterviewSkillService.SkillDTO::id)
+            .findFirst()
+            .orElse("");
+    }
+
+    /**
+     * 工具更新成功后刷新内存快照，让同一轮对话里的 getLearnerProfile 拿到最新资料
+     */
+    private void syncLearner(UserResponse profile) {
+        learner.setNickname(profile.nickname());
+        learner.setAvatarEmoji(profile.avatarEmoji());
+        learner.setOccupation(profile.occupation());
+        learner.setLearningDirection(profile.learningDirection());
+        learner.setLearningSkillId(profile.learningSkillId());
+        learner.setCurrentLevel(profile.currentLevel());
+        learner.setLearningGoal(profile.learningGoal());
+    }
+
+    private static String textOrNull(String value) {
+        return value == null || value.isBlank() ? null : value;
+    }
+
     private Map<Long, String> loadKbNames(List<Document> docs) {
         List<Long> kbIds = docs.stream()
             .map(this::parseKbId)
@@ -271,11 +342,29 @@ public class LearningAgentTools {
             case "upsertLearningRecord" -> "记录知识点：" + extractField(toolInput, "topic");
             case "listLearnedTopics" -> "查看学习台账";
             case "getLearnerProfile" -> "读取学员档案";
+            case "updateLearnerProfile" -> "更新学员档案：" + describeProfileFields(toolInput);
             case "loadSkillBaseline" -> "加载知识基线：" + extractField(toolInput, "categoryKey");
             case "upsertLearningPlan" -> "固化学习计划";
             case "askLearner" -> "向学员提问：" + extractField(toolInput, "question");
             default -> "调用工具 " + toolName;
         };
+    }
+
+    /**
+     * 步骤摘要用：列出本次实际提交的档案字段
+     */
+    private static String describeProfileFields(String toolInput) {
+        String[][] fields = {
+            {"occupation", "职业"}, {"learningDirection", "方向"},
+            {"currentLevel", "水平"}, {"learningGoal", "目标"}};
+        List<String> parts = new ArrayList<>();
+        for (String[] field : fields) {
+            String value = extractField(toolInput, field[0]);
+            if (!value.isBlank()) {
+                parts.add(field[1] + "=" + value);
+            }
+        }
+        return parts.isEmpty() ? "无字段" : String.join("、", parts);
     }
 
     private static String extractField(String toolInput, String field) {

@@ -9,7 +9,9 @@ import interview.guide.modules.knowledgebase.service.KnowledgeBaseVectorService;
 import interview.guide.modules.learning.model.LearningRecordEntity;
 import interview.guide.modules.learning.service.LearningPlanService;
 import interview.guide.modules.learning.service.LearningRecordService;
+import interview.guide.modules.user.model.UserDTO.UserResponse;
 import interview.guide.modules.user.model.UserEntity;
+import interview.guide.modules.user.service.UserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -31,6 +33,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @DisplayName("学习帮手工具测试")
@@ -54,6 +57,9 @@ class LearningAgentToolsTest {
     @Mock
     private LearningAskRegistry askRegistry;
 
+    @Mock
+    private UserService userService;
+
     private LearningAgentProperties properties;
 
     private List<AgentEvent> askEvents;
@@ -66,12 +72,26 @@ class LearningAgentToolsTest {
     }
 
     private LearningAgentTools createTools(List<Long> preferredKbIds) {
+        return createTools(preferredKbIds, newLearner());
+    }
+
+    private LearningAgentTools createTools(List<Long> preferredKbIds, UserEntity learner) {
+        return new LearningAgentTools(1L, 100L, preferredKbIds, learner, userService,
+            vectorService, knowledgeBaseRepository, recordService, properties, skillService,
+            planService, askRegistry, askEvents::add);
+    }
+
+    private UserEntity newLearner() {
         UserEntity learner = new UserEntity();
         learner.setId(1L);
         learner.setNickname("Alice");
-        return new LearningAgentTools(1L, 100L, preferredKbIds, learner,
-            vectorService, knowledgeBaseRepository, recordService, properties, skillService,
-            planService, askRegistry, askEvents::add);
+        return learner;
+    }
+
+    private UserResponse profileResponse(String occupation, String learningDirection,
+                                         String learningSkillId, String currentLevel, String learningGoal) {
+        return new UserResponse(1L, "Alice", "🦊", occupation, learningDirection,
+            learningSkillId, currentLevel, learningGoal, null);
     }
 
     @Nested
@@ -165,6 +185,87 @@ class LearningAgentToolsTest {
                 "searchKnowledgeBase", "{\"query\":\"什么是 B+ 树\"}");
 
             assertThat(summary).contains("检索知识库").contains("什么是 B+ 树");
+        }
+    }
+
+    @Nested
+    @DisplayName("学员档案补全工具")
+    class UpdateLearnerProfile {
+
+        @Test
+        @DisplayName("命中预置学习方向时关联 skill id，并刷新内存快照")
+        void shouldUpdateProfileAndSyncSnapshot() {
+            UserEntity learner = newLearner();
+            when(skillService.getAllSkills()).thenReturn(List.of(
+                new InterviewSkillService.SkillDTO("java-backend", "Java 后端开发", "Java 方向",
+                    List.of(), true, null, null, null, false)));
+            when(userService.updateProfileFromAgent(1L, "后端工程师", "Java 后端开发", "java-backend", null, null))
+                .thenReturn(new UserService.ProfileUpdateResult(
+                    profileResponse("后端工程师", "Java 后端开发", "java-backend", null, null),
+                    List.of("职业", "学习方向")));
+
+            LearningAgentTools tools = createTools(List.of(), learner);
+            String result = tools.updateLearnerProfile("后端工程师", "Java 后端开发", "", "");
+
+            assertThat(result).contains("已更新学员档案").contains("职业").contains("学习方向");
+            assertThat(tools.getLearnerProfile()).contains("后端工程师").contains("Java 后端开发");
+        }
+
+        @Test
+        @DisplayName("自定义学习方向清除旧的预置方向关联")
+        void shouldClearSkillIdForCustomDirection() {
+            when(skillService.getAllSkills()).thenReturn(List.of());
+            when(userService.updateProfileFromAgent(1L, null, "英语口语", "", null, null))
+                .thenReturn(new UserService.ProfileUpdateResult(
+                    profileResponse(null, "英语口语", null, null, null), List.of("学习方向")));
+
+            String result = createTools(List.of()).updateLearnerProfile(" ", "英语口语", null, "");
+
+            assertThat(result).contains("已更新学员档案");
+            verify(userService).updateProfileFromAgent(1L, null, "英语口语", "", null, null);
+        }
+
+        @Test
+        @DisplayName("所有字段都为空时不调用服务")
+        void shouldSkipWhenNoFieldProvided() {
+            String result = createTools(List.of()).updateLearnerProfile("  ", null, "", null);
+
+            assertThat(result).contains("没有提供新的档案信息");
+            verifyNoInteractions(userService);
+        }
+
+        @Test
+        @DisplayName("服务拒绝时返回可修正提示而不是抛错")
+        void shouldReturnHintWhenServiceRejects() {
+            when(userService.updateProfileFromAgent(1L, "后端工程师", null, null, null, null))
+                .thenThrow(new BusinessException(ErrorCode.BAD_REQUEST, "职业最长 100 字"));
+
+            String result = createTools(List.of()).updateLearnerProfile("后端工程师", null, null, null);
+
+            assertThat(result).contains("档案未更新").contains("职业最长 100 字");
+        }
+
+        @Test
+        @DisplayName("无有效变更时提示未更新")
+        void shouldReturnHintWhenNothingChanged() {
+            when(userService.updateProfileFromAgent(1L, null, null, null, "会用但不系统", null))
+                .thenReturn(new UserService.ProfileUpdateResult(
+                    profileResponse(null, null, null, "会用但不系统", null), List.of()));
+
+            String result = createTools(List.of()).updateLearnerProfile(null, null, "会用但不系统", null);
+
+            assertThat(result).contains("没有提供新的档案信息");
+        }
+
+        @Test
+        @DisplayName("describeArgs 从入参 JSON 提取本次提交的字段")
+        void shouldDescribeArgsForProfileUpdate() {
+            String summary = LearningAgentTools.describeArgs("updateLearnerProfile",
+                "{\"occupation\":\"后端工程师\",\"learningGoal\":\"补齐分布式基础\"}");
+
+            assertThat(summary).contains("更新学员档案")
+                .contains("职业=后端工程师")
+                .contains("目标=补齐分布式基础");
         }
     }
 

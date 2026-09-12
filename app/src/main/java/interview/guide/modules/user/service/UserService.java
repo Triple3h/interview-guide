@@ -15,7 +15,9 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * 用户服务（极简选人模式）
@@ -100,6 +102,55 @@ public class UserService {
             .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
     }
 
+    /**
+     * Agent 学习帮手补充学员资料：只写入本次明确提供的字段，未提供或空白的字段保持原值（不会清空既有资料）。
+     * learningSkillId 由调用方随 learningDirection 一并给出：命中预置方向传 skill id，自定义方向传空串以清除旧关联。
+     *
+     * @return 更新后的资料，以及本次实际发生变化的字段中文名（用于向学员复述）
+     */
+    @Transactional
+    public ProfileUpdateResult updateProfileFromAgent(Long id, String occupation, String learningDirection,
+                                                      String learningSkillId, String currentLevel, String learningGoal) {
+        UserEntity entity = getEntity(id);
+
+        String oldOccupation = entity.getOccupation();
+        String oldDirection = entity.getLearningDirection();
+        String oldSkillId = entity.getLearningSkillId();
+        String oldLevel = entity.getCurrentLevel();
+        String oldGoal = entity.getLearningGoal();
+
+        applyProfile(entity, null, textOrNull(occupation), textOrNull(learningDirection),
+            learningSkillId, textOrNull(currentLevel), textOrNull(learningGoal));
+
+        List<String> changedFields = new ArrayList<>();
+        if (!Objects.equals(oldOccupation, entity.getOccupation())) {
+            changedFields.add("职业");
+        }
+        if (!Objects.equals(oldDirection, entity.getLearningDirection())
+            || !Objects.equals(oldSkillId, entity.getLearningSkillId())) {
+            changedFields.add("学习方向");
+        }
+        if (!Objects.equals(oldLevel, entity.getCurrentLevel())) {
+            changedFields.add("当前水平");
+        }
+        if (!Objects.equals(oldGoal, entity.getLearningGoal())) {
+            changedFields.add("学习目标");
+        }
+
+        if (changedFields.isEmpty()) {
+            log.info("Agent 提交学员资料补充但无有效变更: id={}", id);
+            return new ProfileUpdateResult(userMapper.toResponse(entity), List.of());
+        }
+
+        UserResponse response = userMapper.toResponse(userRepository.save(entity));
+        log.info("Agent 更新学习成员资料: id={}, changedFields={}", id, changedFields);
+        return new ProfileUpdateResult(response, List.copyOf(changedFields));
+    }
+
+    private String textOrNull(String value) {
+        return value == null || value.isBlank() ? null : value;
+    }
+
     private void applyProfile(UserEntity entity, String avatarEmoji, String occupation,
                               String learningDirection, String learningSkillId,
                               String currentLevel, String learningGoal) {
@@ -128,4 +179,9 @@ public class UserService {
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : (trimmed.length() > maxLength ? trimmed.substring(0, maxLength) : trimmed);
     }
+
+    /**
+     * Agent 更新资料结果：更新后的资料 + 本次实际变更的字段中文名
+     */
+    public record ProfileUpdateResult(UserResponse profile, List<String> changedFields) {}
 }
