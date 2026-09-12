@@ -1,0 +1,303 @@
+---
+description: 本项目前端规范（React 18 + TailwindCSS 4）。定义色板槽位、圆角/阴影/动效、页面骨架、必须复用的组件（Select / ConfirmDialog / DeleteConfirmDialog）、加载-空-错-成功四态写法、图标与中文文案习惯、反模式黑名单，以及目录 / API / 验证等工程约定。编写或修改 frontend/ 下任何 .tsx / .ts / 样式前必须遵循，是前端规则的唯一真源。
+alwaysApply: true
+enabled: true
+updatedAt: 2026-09-12T00:00:00.000Z
+provider:
+---
+
+# 前端规范（工程约定 + UI / UX）
+
+> **适用范围**：仅 `frontend/`。后端任务忽略本规则。
+> **目标**：新代码与现有界面**视觉零差异**。不要按 Tailwind 通用审美自由发挥——颜色、圆角、间距、动效、文案一律照抄既有习惯。
+> **动手前**：读 `frontend/src/index.css`（唯一全局样式入口），再找一个同类页面照抄骨架。
+> **关系**：`AGENTS.md` 的 Frontend Rules 是总纲，本文件是前端细则唯一真源（§1–§10 UI/UX，§11 工程约定）。
+
+## 0. 设计语言一句话
+
+「纸感终端」：暖米纸底 + 44px 细网格纹理 + 墨色正文 + 青碧（teal）强调色；标题走 Space Grotesk，标签/代码/时间戳走 JetBrains Mono。深色为深蓝灰底 + 暖白文字 + 亮青强调。这套底子由 `index.css` 的 `body` 与 `@theme` 提供，**页面不要自己再画底色和网格**。
+
+## 1. 颜色：只有一套体系，且必须浅深成对写
+
+`index.css` 用 `@theme` **按「使用槽位」重定义了 `slate` / `primary` 两套色阶**，并在 `.dark` 下整体替换：`.dark` 里 `slate-50/100/200/300` 是**文字色**，`slate-600/700` 是**边框与浅底**，`slate-800/900/950` 是**面板与页面底色**。
+
+**所以不要凭 Tailwind 直觉推色号**，照下表与相邻代码写：
+
+| 用途 | 浅色 | 深色 |
+| --- | --- | --- |
+| 卡片 / 弹窗底 | `bg-white` | `dark:bg-slate-800` |
+| 卡片边框 | `border-slate-100` | `dark:border-slate-700` |
+| 输入框 / Select 底 | `bg-white` | `dark:bg-slate-700` |
+| 输入框 / 控件边框 | `border-slate-200` | `dark:border-slate-600` |
+| 主文字 | `text-slate-900` | `dark:text-white` |
+| 次要文字、副标题 | `text-slate-500` | `dark:text-slate-400` |
+| 弱化文字、占位符 | `text-slate-400` | `dark:text-slate-500` |
+| 强调（链接、激活图标） | `text-primary-600` | `dark:text-primary-400` |
+| 主操作底色 | `bg-primary-500 hover:bg-primary-600` | 同左 |
+| hover 底 | `hover:bg-slate-50` | `dark:hover:bg-slate-700` |
+| 分区底、表头 | `bg-slate-50` | `dark:bg-slate-700` |
+| 聚焦 | `focus:ring-2 focus:ring-primary-500` | 同左 |
+| 激活态淡底 | `bg-[var(--ov-accent-soft-bg)]`（仅侧栏） | 自动 |
+
+硬规则：
+
+- **禁止 hex / rgb 字面颜色**。唯一历史例外是 recharts 图表（见 §7 第 12 条）。
+- **禁止在新代码里用 `var(--ov-*)`**。`--ov-*` 是旧皮肤层，只在 `components/Layout.tsx` 侧栏和 `index.css` 的 `.rbc-*` 日历样式里保留；新页面一律用 `slate-*` + `primary-*`。
+- **状态色**只从 `{blue | emerald | green | amber | red}` 里挑：浅色 `bg-xxx-50 text-xxx-600`，深色 `dark:bg-xxx-900/30 dark:text-xxx-400`；徽章追加 `border border-xxx-300/30 dark:border-xxx-400/30`。**状态色不要用 `primary`**——`primary` 专供「可操作 / 强调」语义。
+- `primary` 的用法固定：主按钮底、聚焦环、激活态文字/描边、选中项。不要用它当状态色或装饰色。
+
+## 2. 圆角 / 阴影 / 间距
+
+| 元素 | 圆角 | 阴影 |
+| --- | --- | --- |
+| 页面级卡片、弹窗、抽屉、消息气泡、头像方框 | `rounded-2xl` | 卡片 `shadow-sm`，弹窗 `shadow-2xl` |
+| 内嵌卡片、输入框、返回图标按钮、次按钮、下拉面板、Toast、底部浮条 | `rounded-xl` | 下拉 / 浮条 `shadow-lg` |
+| 主按钮、小按钮、tab、进度条 | `rounded-lg` | hover 提升用 `hover:shadow-md` |
+| 徽章、计数 pill、筛选 chip、spinner | `rounded-full` | — |
+| `Select` 的 `compact` / `mini` | `rounded-md` | — |
+
+间距习惯：`Layout` 主区已给 `p-10`；内容页容器自带 `pt-8 pb-10 px-4`；标题区 `mb-6`；列表用 `space-y-3`，网格用 `gap-3 ~ gap-6`；卡内边距 `p-4`（紧凑）/ `p-6`（常规）。
+
+## 3. 动效（framer-motion）
+
+- 引入写法统一带空格：`import { motion } from 'framer-motion'`。
+- **按钮标准微交互**：`whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}`。
+- 时长五档，不要自创：下拉 `0.12` / 弹出菜单 `0.15` / 卡片与列表项 `0.2` / 抽屉 `0.25`（`type: 'tween'`）/ 页面与区块进场 `0.3`。
+- spinner：`animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}`。
+- 列表项进场：`initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}`。
+- 弹窗：遮罩 `opacity 0→1→0`，面板 `{ opacity: 0, scale: 0.95, y: 20 }`。
+- **页面切换动画已由 `Layout.tsx` 的 `<motion.div key={currentPath}>` 统一处理**，页面内不要再包一层全页动画。
+
+## 4. 页面骨架（新建页面照抄）
+
+三种容器，按页面性质选一种：
+
+- 内容页（列表 / 记录 / 计划）：`max-w-5xl mx-auto pt-8 pb-10 px-4`
+- 工具页（题库管理、多列筛选）：`max-w-[1400px] mx-auto`
+- 居中状态页（结果 / 引导）：`max-w-xl mx-auto min-h-[55vh] flex items-center justify-center`
+
+标题区固定写法：
+
+```tsx
+<div className="flex items-center justify-between mb-6">
+  <div className="flex items-center gap-3">
+    {/* 可选返回键 */}
+    <button
+      onClick={() => navigate(-1)}
+      className="p-2 rounded-xl border border-slate-200 dark:border-slate-600 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+      title="返回X"
+    >
+      <ChevronLeft className="w-5 h-5" />
+    </button>
+    <div>
+      <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-1">页面标题</h1>
+      <p className="text-slate-500 dark:text-slate-400 text-sm">一句话副标题</p>
+    </div>
+  </div>
+  <motion.button
+    whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary-500 text-white text-sm font-medium hover:bg-primary-600 transition-all"
+  >
+    <Plus className="w-4 h-4" />主操作
+  </motion.button>
+</div>
+```
+
+工具页用 `flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between mb-6`，返回键改成顶部面包屑：`inline-flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400 hover:text-primary-500 mb-2`。
+
+## 5. 必须复用的现成件
+
+### 5.1 按钮
+
+```tsx
+// 主按钮（表单 / 内联）
+"inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-primary-500 text-white text-sm font-medium hover:bg-primary-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+
+// 次按钮
+"inline-flex items-center gap-1.5 px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+
+// 强调次按钮（描边 primary）
+"inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-primary-200 dark:border-primary-800 text-primary-600 dark:text-primary-400 font-medium hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
+
+// 危险描边按钮（批量删除等）
+"inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 text-xs font-medium hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50 whitespace-nowrap"
+
+// 删除图标按钮
+"p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors disabled:opacity-50"
+```
+
+**不要用 `index.css` 里的 `.btn-primary` / `.btn-secondary`**：`.btn-primary` 零引用属死代码，`.btn-secondary` 只在 `Layout.tsx` 主题切换按钮上有 1 处历史用法。**也不要用渐变色主按钮**（存量仅 `ConfirmDialog` 内部保留）。
+
+### 5.2 下拉框
+
+**禁止原生 `<select>` 与手写下拉**，统一用 `frontend/src/components/ui/Select.tsx`：
+
+| 变体 | 场景 |
+| --- | --- |
+| `form`（默认） | 表单字段，占满整行 |
+| `filter` | 工具栏筛选项，宽度自适应（可加 `className="sm:w-40"`） |
+| `compact` | 卡片 / 表格行内紧凑控件（配 `title="调整状态"`） |
+| `mini` | 分页每页条数 |
+
+展开面板的样式**必须**复用 `components/ui/dropdownStyles.ts` 的 `DROPDOWN_PANEL_CLASS` / `DROPDOWN_LIST_CLASS` / `dropdownOptionClass`。
+
+唯一例外：知识库级联分类下拉 `components/knowledgebase/CategoryFilterSelect.tsx`（带层级，自绘），它同样复用上面的面板常量。
+
+### 5.3 确认与危险操作
+
+- 删除：一律用 `components/DeleteConfirmDialog.tsx`，传 `open / item / itemType / loading + onConfirm / onCancel`。`itemType` 用中文名词：`面试记录`、`知识库`、`题目`、`对话`、`计划条目`、`知识点`。**不要自己拼接删除文案**。
+- 其它不可逆 / 高风险动作（提前交卷、切换默认服务）：用 `components/ConfirmDialog.tsx`，按语义选 `confirmVariant`：`danger`（破坏性）/ `warning`（有副作用的业务动作）/ `primary`（普通确认）。
+- **禁止 `window.confirm` / `alert`**（存量仅 `VoiceInterviewPage.tsx` 有 1 处历史例外，新代码不要跟）。
+
+### 5.4 表单输入
+
+```tsx
+// 通用输入框（与现有页面一致）
+"w-full px-4 py-2.5 text-sm border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
+```
+
+知识库相关页面直接复用常量 `constants/knowledgebaseInterview.ts` 的 `INPUT_CLASS`（`rounded-lg` + `ring-primary-500/20`，加 `pl-9` 可配左侧搜索图标）。**同一页面内不要混用两套输入框样式。**
+
+搜索框（带图标）：
+
+```tsx
+<div className="relative">
+  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+  <input className={`${INPUT_CLASS} pl-9`} placeholder="按名称搜索" />
+</div>
+```
+
+### 5.5 图标
+
+只用 `lucide-react`（**不要 emoji 当图标**），`w-`/`h-` 成对写，不要用 `<Icon size={16} />`：
+
+| 尺寸 | 场景 |
+| --- | --- |
+| `w-4 h-4` | 按钮内、行内操作（绝对主流） |
+| `w-3.5 h-3.5` | Select 内、紧凑卡片按钮 |
+| `w-5 h-5` | 返回键、区块标题 |
+| `w-7 h-7` | 页面标题主图标 |
+| `w-8 h-8` | 区块 loading、弹窗图标 |
+| `w-12 h-12` / `w-16 h-16` | 空态图标 |
+
+图标 + 文字用 `flex items-center gap-1.5`（紧凑）/ `gap-2`（常规）/ `gap-3`（标题）。
+
+## 6. 状态四件套
+
+### 6.1 加载中
+
+```tsx
+// 区块级（推荐）
+<div className="flex justify-center py-24">
+  <Loader2 className="w-8 h-8 animate-spin text-primary-500" />
+</div>
+
+// 按钮内：图标降为 w-4 h-4，文案切「保存中…」「生成中」「上传中…」
+<Loader2 className="w-4 h-4 animate-spin" />生成中
+
+// 内联文字：<Loader2 className="w-4 h-4 animate-spin" /><span className="text-sm">加载中...</span>
+```
+
+**不要新增第 6 份 CSS 圆环 spinner**（`w-10 h-10 border-3 border-slate-200 border-t-primary-500 rounded-full animate-spin` 已被抄 5 次）。区块级一律 `Loader2`。
+
+### 6.2 空态
+
+图标 + 标题 + **下一步引导**，三段式：
+
+```tsx
+<div className="text-center py-16 text-slate-400 dark:text-slate-500">
+  <ListTodo className="w-12 h-12 mx-auto mb-3 opacity-50" />
+  <p className="text-sm mb-2">还没有学习计划</p>
+  <p className="text-xs">在学习帮手里说「帮我制定一个学习计划」…</p>
+</div>
+```
+
+面板 / 列表区可用虚线框变体：`flex flex-col items-center justify-center min-h-[320px] rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 text-slate-400 gap-3`。
+
+文案用 `暂无X` / `还没有X` / `没有匹配的X`，**必须告诉用户下一步做什么**（能放按钮就放按钮）。
+
+### 6.3 错误
+
+```tsx
+// 错误条（最常用）
+<div className="flex items-center gap-2 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 rounded-xl px-4 py-3 text-sm">
+  <AlertCircle className="w-4 h-4 shrink-0" />{message}
+</div>
+
+// 表单内联错误：<p className="mt-3 text-sm text-red-500">{formError}</p>
+// 整页失败：text-center py-20 + 红色文案 + 「返回X」主按钮
+```
+
+错误文案必须**具名并给出下一步**（如「加载失败，请返回重试」），不要只写「出错了」。后端返回的异常信息直接展示即可。
+
+### 6.4 成功反馈
+
+**默认静默**：成功后重新拉列表 / 关闭弹窗即可，不要弹提示。
+
+需要显式反馈时（仅设置类页面），toast 基准实现是 `pages/SettingsPage.tsx` 的 `showToast`（`fixed bottom-6 left-1/2 -translate-x-1/2 z-[60]`，绿 `bg-emerald-600` / 红 `bg-red-600`，3 秒自动消失，文案用「X 已 Y」句式）。**新增 toast 请先抽成 `components/ui/Toast.tsx`，不要再复制一份。**
+
+批量操作的底部浮条：`fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-800 dark:bg-slate-700 text-white rounded-xl shadow-2xl px-5 py-3`。
+
+## 7. 反模式黑名单
+
+| # | 不要做 | 现状 / 替代 |
+| --- | --- | --- |
+| 1 | 引用 `index.css` 的 `.dark-card` / `.dark-input` / `.dark-text` / `.dark-text-muted` / `.btn-primary` / `.bg-grid` | 零引用的死代码，会用出两套并行体系。照抄 §1 的 utility 组合 |
+| 2 | 新建 `Button` / `Card` / `Modal` / `Input` 之类的通用 UI 组件 | `components/ui/` 只有 `Select` + `dropdownStyles`，全站靠 utility 组合。只允许**抽取**（如 Toast）不允许**新增体系** |
+| 3 | 写 hex / rgb 字面色 | 图表色也一样，参考 recharts 用法；不要在组件里再抄一份 `#286a70` |
+| 4 | 在 JS 里判断 `document.documentElement.classList.contains('dark')` | 主题切换后不会重算。只写 `dark:` 变体，或用 `hooks/useTheme.ts` |
+| 5 | 渐变主按钮 | 统一 `bg-primary-500 hover:bg-primary-600` |
+| 6 | 硬编码 `window.confirm` / `alert` | 用 `ConfirmDialog` / `DeleteConfirmDialog` |
+| 7 | 新增 `.css` 文件 | 样式只进 `index.css`（`components/interviewschedule/ScheduleCalendar.css` 与 `index.css` 的 `.rbc-*` 是历史包袱，不要扩散） |
+| 8 | `!important` 覆盖 utility | 直接改用 utility 组合 |
+| 9 | emoji 当图标 | 用 `lucide-react` |
+| 10 | 自带 z-index 数字 | 固定梯度：`z-10` 内嵌 sticky / `z-40` 浮层条 / `z-50` 弹窗遮罩 / `z-[60]` 下拉面板与 toast |
+| 11 | 表格列数 >4 且不加横向滚动 | 新列表页优先卡片列表（`space-y-3` + `rounded-2xl` 卡片），而非裸 `<table>` |
+| 12 | 深色图表色用 JS 判断 | 新图表读 CSS 变量或抽共享常量，**不要在每个组件里重复 hex 三元表达式** |
+| 13 | `import {motion}` 无空格 | 统一 `import { motion } from 'framer-motion'` |
+
+## 8. 文案与响应式
+
+- **界面文案全中文**。技术专有名词保留英文（`Provider`、`Turn Detection`）。
+- 按钮文案动词/动宾开头，2–6 字：`开始面试`、`生成题目`、`添加条目`、`确定删除`。loading 态后缀 `中…`。
+- 破坏性按钮文案写清后果，由 `DeleteConfirmDialog` 统一生成「确定要删除X“Y”吗？删除后无法恢复。」
+- **桌面优先**。断点只用这几种意图：网格降列 `grid grid-cols-1 md:grid-cols-2/3 gap-4`、标题区堆叠 `flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between`、控件固定宽 `className="sm:w-40"`。核心页面已支持手机（见 §9）；**新写页面如涉及宽表格 / 多列 / 并排侧栏，必须同时给出手机形态**。
+
+## 9. 移动端形态（2026-09 起支持）
+
+断点固定用 `md`（768px）：`md` 以下 = 手机，`md` 及以上 = 桌面。**一套路由靠断点切换骨架**，不做 `/m` 分流。
+
+- **骨架**在 `components/Layout.tsx`：手机端 = 极简顶栏（`h-12`，无标题、无边框、`bg-[var(--ov-bg)]`）+ 汉堡抽屉（主题切换收在抽屉底部）；桌面端 = 原侧栏。**手机端主区 padding 由 Layout 统一给**（`px-4 pt-3 pb-6`，桌面 `md:p-10`），页面容器不要再叠加移动端 padding——写 `md:p-6` 这种只在桌面生效的写法。**没有底部 TabBar**（2026-09-12 改版：4 个核心 tab 移到顶栏左侧）。
+- **顶栏结构**（左→右）：汉堡（打开全部导航抽屉）+ 4 个核心 tab 纯图标（面试 `/interview-hub`、记录 `/interviews`、学习帮手 `/knowledgebase/chat`、日程 `/interview-schedule`；选中主色 `text-primary-600 dark:text-primary-400` + `strokeWidth 2.4`，未选中 `slate-400/500`，点击区 `p-3`），右侧圆形「+」（`w-8 h-8 rounded-full border border-[var(--ov-border-strong)]`）。顶栏**不显示页面标题**，所以页面自己的 `h1` 必须恢复手机端显示（`text-xl md:text-2xl`，副标题可 `hidden md:block`）。
+- **顶栏「+」是页面动作，不是全局按钮**：页面挂载时用 `hooks/useMobileTopBarAction.ts` 的 `useMobileTopBarAction(title, onClick)` 注册「新建」动作（卸载自动注销；未注册则不渲染）。已接：面试中心 → 开始新面试（复用 Layout 的 `UnifiedInterviewModal`，经 Outlet context 暴露 `openInterviewModal`）、学习帮手 → 新会话、日程 → 添加面试；记录页无。**页面内与「+」重复的入口要在手机端隐藏**（如日程页的「添加面试」按钮改 `hidden md:flex`）。
+- **沉浸式聊天页**（学习帮手）用 flex 撑满而非手算常量：根容器 `flex flex-col h-[calc(100dvh-3.75rem)] -mb-6`（3.75rem = 顶栏 48px + 主区 `pt-3`，`-mb-6` 抵消主区 `pb-6`）+ 头部 `shrink-0` + 聊天区 `flex-1 min-h-0`；桌面沿用 `md:h-[calc(100vh-10rem)]`。**不要再写 `100dvh-11rem` 这类跟随 padding 变化即失效的常量**。滚动只发生在消息列表内部：页面容器与卡片加 `overscroll-y-contain`，避免滚到底后继续拖拽把整页带走。
+- **手机端禁用 `100vh` / `min-h-screen`**：移动浏览器按「工具栏收起」的大视口算 `vh`，会比可见区域高 60–100px → 整页出现多余滚动条（聊天页尤其明显）。整屏容器用 `min-h-dvh`（`#root` 与 Layout 外层已改）或 `calc(100dvh - …)`；桌面断点下 `dvh == vh`，可保留 `md:min-h-screen`。
+- **顶栏 / TabBar / 抽屉与桌面侧栏是同一套导航皮肤**，因此 `Layout.tsx` 骨架整体（含这三个移动端新件）**例外允许** `var(--ov-*)`，否则会与侧栏出现明显色差（尤其深色：`slate-800` #1c2026 ≠ `--ov-bg-soft` #14171c）。页面内容区仍一律用 `slate-*` / `primary-*`。
+- **页面骨架转换**：`max-w-5xl mx-auto pt-8 pb-10 px-4` → 手机端 `max-w-5xl mx-auto`（去掉内边距即可）；标题区 `flex flex-col gap-3 md:flex-row md:items-center md:justify-between`；并排按钮组必须 `flex-wrap`。
+- **宽表格**：≥5 列的表格手机端**必须**换卡片列表——`hidden md:block` 表格 + `md:hidden` 卡片，同一份数据、同一组操作（操作按钮抽成组件内函数两处共用，如 `InterviewHistoryPage.renderRowActions`）。
+- **弹窗**：遮罩加 `p-4`，面板 `max-h-[85vh] md:max-h-[90vh]`，内边距 `p-4 md:p-6`，标题 `text-xl md:text-2xl`，双列表单 `grid-cols-1 sm:grid-cols-2`。
+- **多列与侧栏**：手机端一律单列（`grid-cols-1 xl:grid-cols-3`）；并排的侧栏（会话历史等）在手机端变**底部抽屉**或顶部入口，不能直接隐藏掉功能。
+- **尺寸档位**：卡片 `p-4 md:p-6`；标题 `text-xl md:text-2xl`；互动圆环/大头像 `w-24 h-24 md:w-32 md:h-32`；底部/顶部固定条用 `fixed` + `md:hidden`。
+- **手机端首屏优先（2026-09-12 三个 tab 二次压缩后固化）**：核心配置项与主操作按钮要尽量落在首屏内。做法：卡片 `p-2.5~p-3 md:p-4~p-6`、区块间距 `space-y-3 md:space-y-6`、页标题 `text-lg md:text-2xl`、选项卡片用**横排紧凑**（图标 `w-5/w-6`、文字 `text-xs`、`gap-2`）；**解释性副文案（`desc`）手机端一律 `hidden sm:block`**，只留图标 + 标题 + 徽标；两列网格在手机端保持 `grid-cols-2`（不要退化成一列）；空状态 `py-12 md:py-20` + 图标 `w-12 md:w-16`；页面容器不要再给手机端加 `pb-*`（主区已有 `pb-6`）。
+- **手机端不做「页级标题 + 工具按钮」两行**：学习帮手是范式——`h1` 整块 `hidden md:flex`（只在桌面显示），页面操作入口（学习计划 / 台账 / 上传 / 返回）抽成组件内 `headerActions` 数组，桌面端带文字渲染在页头、手机端以**纯图标**并入内容卡片头部那一行（`flex md:hidden`，`p-1.5` + 边框圆角）。省下的竖向空间自动给内容区（flex 布局下无需改高度常量）。附属信息（如当前会话标题）在手机端另起一行、**半透明浅色**：`mt-1.5 text-xs text-slate-400/80 dark:text-slate-500/80` + `min-w-0 truncate`（桌面端仍在同一行，`hidden md:flex`）。
+- **手机上不存在 hover**：凡靠 `opacity-0 group-hover:opacity-100` 显形的操作（列表项按钮、编辑入口）在手机上永远点不到，必须写 `opacity-100 md:opacity-0 md:group-hover:opacity-100`。
+- **JS 判断只用于逻辑分支**（`hooks/useIsMobile.ts`，与 `md` 同步，首帧即可用）：目前仅两处——根路径落地分流（手机进 `/interview-hub`）与日程默认视图（手机进 `list`）；页面向顶栏注册「+」动作走 `hooks/useMobileTopBarAction.ts`（React context，不要用全局事件 / 路由参数 hack）。**纯样式差异一律用 CSS 断点类，不要用 hook**。
+- **明确不适配的页面**（知识库管理、题库维护、知识库上传、设置、简历管理）：保持桌面形态，不保证手机可用；不要为它们补移动端样式。
+
+## 10. 交付前自检
+
+- [ ] 每个需要换色的 class 都写了 `dark:` 变体（弹窗、portal 内容也不例外）
+- [ ] 下拉用的是 `Select`，删除走的是 `DeleteConfirmDialog`
+- [ ] 有 loading / 空 / 错误三态，且空态与错误态给出了下一步
+- [ ] 图标来自 `lucide-react` 且 `w-`/`h-` 成对
+- [ ] 没有 hex、没有 `var(--ov-*)`、没有 `!important`、没有 emoji
+- [ ] 运行 `cd frontend && pnpm run build` 通过
+
+## 11. 工程约定（目录 / API / 验证）
+
+- **目录归属**：页面进 `src/pages/`，可复用组件进 `src/components/`，共享类型进 `src/types/`，路由路径进 `src/constants/routes.ts`。
+- **API 调用只在 `src/api/`**：统一复用 `src/api/request.ts` 的 Axios 实例；由 API 层解包后端 `Result<T>` 并做错误处理，页面组件里不要重复拼 Axios 配置。
+- **不引入新的 UI 框架 / 组件库**，延续 React + TailwindCSS 4 + `lucide-react`（同 §7 第 2 条：只允许抽取，不允许新增体系）。
+- **表单状态必须显式覆盖 loading / success / error / disabled**（写法见 §6）。
+- **不要把业务说明性长文塞进页面**，优先让界面直接可操作（同 §8）。
+- **验证**：改完跑 `cd frontend && pnpm run build`；涉及浏览器交互的改动要实际打开页面验证，不要只看编译结果。

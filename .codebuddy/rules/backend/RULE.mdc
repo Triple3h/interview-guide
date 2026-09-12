@@ -1,0 +1,67 @@
+---
+description: 本项目后端规范（Java / Spring Boot 4.1 + Spring AI 2.0）。涵盖分层职责、命名后缀、异常与事务边界、MapStruct 映射、代码风格，以及 AI 调用（LlmProviderRegistry / StructuredOutputInvoker / Prompt 模板）、@RateLimit 限流、Redis Stream 异步消费。编写或修改 app/src/main/java、app/src/test/java、app/src/main/resources 下文件前必须遵循。
+globs: app/src/main/java/**/*.java, app/src/test/java/**/*.java, app/src/main/resources/**/*.yml, app/src/main/resources/prompts/**/*.st, app/src/main/resources/scripts/**/*.lua
+alwaysApply: false
+enabled: true
+updatedAt: 2026-09-12T00:00:00.000Z
+provider:
+---
+
+# 后端规范（Java / Spring Boot）
+
+> **适用范围**：`app/src/main/java/`、`app/src/test/java/`、`app/src/main/resources/`。
+> 技术栈、命令、`Result<T>`、Never Do 等总纲见根 `AGENTS.md`（每次会话全文加载）；本文件只补充 AGENTS.md 没写到的细则，不重复。
+
+## 1. 分层
+
+- Controller 只做路由、参数校验、限流注解和 Service 委托。
+- Service 负责编排业务流程，事务注解只放 Service 层。
+- Repository 只做数据访问，继承 `JpaRepository`；自定义查询优先方法名，其次 `@Query`。
+- 基础设施能力放 `common/` 或 `infrastructure/`，不要塞进业务模块。
+
+## 2. 命名与数据传递
+
+- JPA 持久化对象 `XxxEntity`；跨层数据传输 `XxxDTO`；前端请求体 `XxxRequest`；前端响应体 `XxxResponse`。
+- 不可变请求/响应优先用 `record`。
+- Entity 不直接返回前端；Entity → DTO/Response 的重复转换优先 MapStruct，简单一次性字段复制可用 `BeanUtils.copyProperties`。
+
+## 3. 异常
+
+- 业务失败使用 `BusinessException(ErrorCode.XXX, "描述信息")`。
+- 业务异常原样上抛：`catch (BusinessException e) { throw e; }`，不要包装成别的类型。
+- 禁止用 `RuntimeException` 表达业务错误，禁止吞异常；记录日志时异常对象作为最后一个参数。
+
+## 4. 事务
+
+- `@Transactional` 只放 Service 层公开方法；读多写少的查询用 `@Transactional(readOnly = true)`。
+- 事务内不得调用 LLM、S3、外部 HTTP 或耗时文件解析。
+- 避免同类内部调用 `@Transactional` 方法，必要时拆到独立 Service。
+
+## 5. AI 调用
+
+- Provider 配置来自 `app.ai.providers.{providerId}` 与默认 `app.ai.default-provider`。
+- ChatClient 统一走 `LlmProviderRegistry.getChatClientOrDefault(provider)`。
+- 结构化输出统一走 `StructuredOutputInvoker` 做重试；不要在业务 Service 里复制 JSON 修复、重试和解析逻辑。
+- Prompt 模板放 `resources/prompts/`，使用 StringTemplate `.st`。
+- Provider 连通性测试要限制超时，并防止访问内网或特殊地址。
+- Spring AI 2.0.0 代码优先使用非 deprecated API。
+
+## 6. 限流
+
+- 接口限流用可重复 `@RateLimit` 注解；每个注解是独立维度，分别执行 Redis Lua 滑动窗口。
+- Redis Key 结构：`ratelimit:{ClassName:MethodName}:dimension`。
+- 不要在 Controller 或 Service 里手写散落的限流逻辑。
+
+## 7. Redis Stream 异步
+
+- 生产者继承 `AbstractStreamProducer<T>`；消费者继承 `AbstractStreamConsumer<T>` 并实现 `processMessage()`。
+- Stream 名称、消费者组、任务常量放 `AsyncTaskStreamConstants`。
+- 消费失败最多重试 3 次，超过后标记 FAILED。
+- 异步处理前先校验实体是否存在；已删除实体直接 ACK 丢弃。
+
+## 8. 代码风格
+
+- 2 空格缩进，列宽尽量控制在 100 字符。
+- 禁止通配符导入，避免内联全限定类名。
+- 优先构造器注入 + `@RequiredArgsConstructor`。
+- 现代 Java 特性可放心用：switch 表达式、pattern matching、text blocks。

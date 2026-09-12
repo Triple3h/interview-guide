@@ -3,9 +3,6 @@
 
 # Ignore Gradle build output directory
 build
-/.claude/*
-!/.claude/rules/
-!/.claude/rules/**
 /.idea
 /app/bin
 # Environment variables
@@ -17,6 +14,8 @@ qodana.yaml
 app/src/main/resources/application-dev.yml
 /docs/*
 !/docs/deploy-tc-cloud.md
+!/docs/testing/
+!/docs/testing/**
 SETUP_API_KEYS.md
 
 # AI Assistant documentation
@@ -26,8 +25,10 @@ GEMINI.md
 # Codegraph index
 /.codegraph/
 
-# CodeBuddy AI 记忆与项目规则（本地保留，不提交）
-/.codebuddy/
+# CodeBuddy：项目规则随仓库提交（团队共享），记忆库保持本地
+/.codebuddy/*
+!/.codebuddy/rules/
+!/.codebuddy/rules/**
 
 # Playwright MCP
 .playwright-mcp/

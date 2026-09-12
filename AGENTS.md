@@ -2,7 +2,7 @@
 
 Spring Boot 4.1.0 + Java 25 + Spring AI 2.0.0 + React 面试平台。
 
-本文件是跨工具 Agent 入口，只放长期有效、代码里不容易直接推断、猜错会影响结果的规则。更细的目录规则放在 `.claude/rules/`，需要时再读取。
+本文件是跨工具 Agent 入口，只放长期有效、代码里不容易直接推断、猜错会影响结果的规则。更细的目录规则放在 `.codebuddy/rules/`，需要时再读取。
 
 ## Tech Stack
 
@@ -107,8 +107,11 @@ docker compose -f docker-compose.dev.yml up -d
 
 ## More Rules
 
-- 后端 Java 细则：`.claude/rules/backend.md`
-- AI、限流、异步细则：`.claude/rules/ai-and-async.md`
-- 前端细则：`.claude/rules/frontend.md`
-- 前端 UI/UX 规则（CodeBuddy 项目规则）：`.codebuddy/rules/frontend-ui/RULE.mdc`
+CodeBuddy 项目规则放在 `.codebuddy/rules/<name>/RULE.mdc`，随仓库提交；`frontend-ui` 常驻注入，`backend` 按 glob 自动附加（匹配文件进入上下文时才加载，动对应目录前先读原文）。
+
+- 后端细则（Java / Spring AI / 限流 / 异步，合并原 backend + ai-and-async）：`.codebuddy/rules/backend/RULE.mdc`
+- 前端细则（工程约定 + UI/UX，前端唯一真源）：`.codebuddy/rules/frontend-ui/RULE.mdc`
 - 云服务器部署手册（rsync 同步 + Compose 构建，含已知坑）：`docs/deploy-tc-cloud.md`
+- 历史 TDD 证据与端到端用例记录：`docs/testing/*.tdd.md`
+
+规则维护：新增前先判断「删掉这条后 AI 是否更容易犯同类错误」；能被测试、格式化或 CI 强制的，不要只写成自然语言；同一条规则反复被忽略时优先精简规则文件，而不是继续加粗或加感叹号。
