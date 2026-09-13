@@ -1,17 +1,24 @@
 ---
-description: 本项目前端规范（React 18 + TailwindCSS 4）。定义色板槽位、圆角/阴影/动效、页面骨架、必须复用的组件（Select / ConfirmDialog / DeleteConfirmDialog）、加载-空-错-成功四态写法、图标与中文文案习惯、反模式黑名单，以及目录 / API / 验证等工程约定。编写或修改 frontend/ 下任何 .tsx / .ts / 样式前必须遵循，是前端规则的唯一真源。
-alwaysApply: true
+description: 本项目前端规范（React 18 + TailwindCSS 4）。按三块组织：A 通用基线（色板槽位、圆角/阴影/动效、页面骨架、必须复用的组件 Select/ConfirmDialog/DeleteConfirmDialog、加载-空-错-成功四态、反模式黑名单、文案）· B 移动端形态（DeepSeek 皮肤层、断点骨架、顶栏注册、按钮四级层级、max-md 写法）· C 桌面与管理端（PC 专属页、工具页容器、宽表格、仅桌面使用的组件与常量）。编写或修改 frontend/ 下任何 .tsx / .ts / 样式前必须遵循，是前端规则的唯一真源。
+globs: frontend/src/**/*.tsx, frontend/src/**/*.ts, frontend/src/**/*.css, frontend/index.html, frontend/nginx.conf
+alwaysApply: false
 enabled: true
-updatedAt: 2026-09-12T00:00:00.000Z
+updatedAt: 2026-09-13T00:00:00.000Z
 provider:
 ---
 
-# 前端规范（工程约定 + UI / UX）
+# 前端规范（通用基线 · 移动端形态 · 桌面与管理端）
 
 > **适用范围**：仅 `frontend/`。后端任务忽略本规则。
+> **组织方式**：**A 块 = 通用基线**（§0–§8，PC 与手机共享，**默认照这块写**）· **B 块 = 移动端形态**（§9）· **C 块 = 桌面与管理端**（§12，PC 专属）· §10 自检 / §11 工程约定 是收尾节。
+> **编号约定**：§0–§11 是历史编号（memory 与历史记录里有引用），**不要重排**；**新增规则一律进 C 块（§12）的子节**，与移动端无关的 PC 专属细则也往 §12 归。
 > **目标**：新代码与现有界面**视觉零差异**。不要按 Tailwind 通用审美自由发挥——颜色、圆角、间距、动效、文案一律照抄既有习惯。
 > **动手前**：读 `frontend/src/index.css`（唯一全局样式入口），再找一个同类页面照抄骨架。
-> **关系**：`AGENTS.md` 的 Frontend Rules 是总纲，本文件是前端细则唯一真源（§1–§10 UI/UX，§11 工程约定）。
+> **关系**：`AGENTS.md` 的 Frontend Rules 是总纲，本文件是前端细则唯一真源。
+
+---
+
+## ▍A 块 · 通用基线（PC 与手机共享）
 
 ## 0. 设计语言一句话
 
@@ -42,7 +49,7 @@ provider:
 硬规则：
 
 - **禁止 hex / rgb 字面颜色**。唯一历史例外是 recharts 图表（见 §7 第 12 条）。
-- **禁止在新代码里用 `var(--ov-*)`**。`--ov-*` 是旧皮肤层，只在 `components/Layout.tsx` 侧栏和 `index.css` 的 `.rbc-*` 日历样式里保留；新页面一律用 `slate-*` + `primary-*`。
+- **禁止在新代码里用 `var(--ov-*)`**。`--ov-*` 是旧皮肤层，只在 `layouts/StudentLayout.tsx`（侧栏 / 顶栏 / 抽屉 / 账户菜单）和 `index.css` 的 `.rbc-*` 日历样式里保留；新页面一律用 `slate-*` + `primary-*`。
 - **状态色**只从 `{blue | emerald | green | amber | red}` 里挑：浅色 `bg-xxx-50 text-xxx-600`，深色 `dark:bg-xxx-900/30 dark:text-xxx-400`；徽章追加 `border border-xxx-300/30 dark:border-xxx-400/30`。**状态色不要用 `primary`**——`primary` 专供「可操作 / 强调」语义。
 - `primary` 的用法固定：主按钮底、聚焦环、激活态文字/描边、选中项。不要用它当状态色或装饰色。
 
@@ -66,7 +73,7 @@ provider:
 - spinner：`animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}`。
 - 列表项进场：`initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}`。
 - 弹窗：遮罩 `opacity 0→1→0`，面板 `{ opacity: 0, scale: 0.95, y: 20 }`。
-- **页面切换动画已由 `Layout.tsx` 的 `<motion.div key={currentPath}>` 统一处理**，页面内不要再包一层全页动画。
+- **页面切换动画已由 `StudentLayout.tsx` 的 `<motion.div key={currentPath}>` 统一处理**，页面内不要再包一层全页动画。
 
 ## 4. 页面骨架（新建页面照抄）
 
@@ -126,7 +133,7 @@ provider:
 "p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors disabled:opacity-50"
 ```
 
-**不要用 `index.css` 里的 `.btn-primary` / `.btn-secondary`**：`.btn-primary` 零引用属死代码，`.btn-secondary` 只在 `Layout.tsx` 主题切换按钮上有 1 处历史用法。**也不要用渐变色主按钮**（存量仅 `ConfirmDialog` 内部保留）。
+**不要用 `index.css` 里的 `.btn-primary` / `.btn-secondary`**：`.btn-primary` 零引用属死代码，`.btn-secondary` 只在 `StudentLayout.tsx` 侧栏主题切换按钮上有 1 处历史用法。**也不要用渐变色主按钮**（存量仅 `ConfirmDialog` 内部保留）。
 
 ### 5.2 下拉框
 
@@ -141,7 +148,7 @@ provider:
 
 展开面板的样式**必须**复用 `components/ui/dropdownStyles.ts` 的 `DROPDOWN_PANEL_CLASS` / `DROPDOWN_LIST_CLASS` / `dropdownOptionClass`。
 
-唯一例外：知识库级联分类下拉 `components/knowledgebase/CategoryFilterSelect.tsx`（带层级，自绘），它同样复用上面的面板常量。
+唯一例外是知识库级联分类下拉 `components/knowledgebase/CategoryFilterSelect.tsx`（带层级、自绘，同样复用上面的面板常量）——**它是 PC 专属页的控件，见 §12.3**。
 
 ### 5.3 确认与危险操作
 
@@ -156,7 +163,7 @@ provider:
 "w-full px-4 py-2.5 text-sm border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
 ```
 
-知识库相关页面直接复用常量 `constants/knowledgebaseInterview.ts` 的 `INPUT_CLASS`（`rounded-lg` + `ring-primary-500/20`，加 `pl-9` 可配左侧搜索图标）。**同一页面内不要混用两套输入框样式。**
+知识库相关页面（PC 专属页，见 §12）直接复用常量 `constants/knowledgebaseInterview.ts` 的 `INPUT_CLASS`（`rounded-lg` + `ring-primary-500/20`，加 `pl-9` 可配左侧搜索图标）。**同一页面内不要混用两套输入框样式。**
 
 搜索框（带图标）：
 
@@ -236,7 +243,7 @@ provider:
 
 需要显式反馈时（仅设置类页面），toast 基准实现是 `pages/SettingsPage.tsx` 的 `showToast`（`fixed bottom-6 left-1/2 -translate-x-1/2 z-[60]`，绿 `bg-emerald-600` / 红 `bg-red-600`，3 秒自动消失，文案用「X 已 Y」句式）。**新增 toast 请先抽成 `components/ui/Toast.tsx`，不要再复制一份。**
 
-批量操作的底部浮条：`fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-800 dark:bg-slate-700 text-white rounded-xl shadow-2xl px-5 py-3`。
+批量操作的底部浮条（只出现在 PC 专属页，见 §12.3）：`fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-800 dark:bg-slate-700 text-white rounded-xl shadow-2xl px-5 py-3`。
 
 ## 7. 反模式黑名单
 
@@ -261,28 +268,54 @@ provider:
 - **界面文案全中文**。技术专有名词保留英文（`Provider`、`Turn Detection`）。
 - 按钮文案动词/动宾开头，2–6 字：`开始面试`、`生成题目`、`添加条目`、`确定删除`。loading 态后缀 `中…`。
 - 破坏性按钮文案写清后果，由 `DeleteConfirmDialog` 统一生成「确定要删除X“Y”吗？删除后无法恢复。」
-- **桌面优先**。断点只用这几种意图：网格降列 `grid grid-cols-1 md:grid-cols-2/3 gap-4`、标题区堆叠 `flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between`、控件固定宽 `className="sm:w-40"`。核心页面已支持手机（见 §9）；**新写页面如涉及宽表格 / 多列 / 并排侧栏，必须同时给出手机形态**。
+- **两端都要能用，形式不同**：桌面是主形态（纸感皮肤 + 侧栏），手机是独立形态（DeepSeek 皮肤 + 抽屉骨架，见 §9）；**新写页面必须同时给出手机形态**（宽表格 / 多列 / 并排侧栏尤其），只有 §12.4 列出的 PC 专属页例外。
+- 桌面端的响应式意图只用这几种：网格降列 `grid grid-cols-1 md:grid-cols-2/3 gap-4`、标题区堆叠 `flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between`、控件固定宽 `className="sm:w-40"`。
+
+---
+
+## ▍B 块 · 移动端形态（手机，`md` 以下）
 
 ## 9. 移动端形态（2026-09 起支持）
 
 断点固定用 `md`（768px）：`md` 以下 = 手机，`md` 及以上 = 桌面。**一套路由靠断点切换骨架**，不做 `/m` 分流。
 
-- **骨架**在 `components/Layout.tsx`：手机端 = 极简顶栏（`h-12`，无标题、无边框、`bg-[var(--ov-bg)]`）+ 汉堡抽屉（主题切换收在抽屉底部）；桌面端 = 原侧栏。**手机端主区 padding 由 Layout 统一给**（`px-4 pt-3 pb-6`，桌面 `md:p-10`），页面容器不要再叠加移动端 padding——写 `md:p-6` 这种只在桌面生效的写法。**没有底部 TabBar**（2026-09-12 改版：4 个核心 tab 移到顶栏左侧）。
-- **顶栏结构**（左→右）：汉堡（打开全部导航抽屉）+ 4 个核心 tab 纯图标（面试 `/interview-hub`、记录 `/interviews`、学习帮手 `/knowledgebase/chat`、日程 `/interview-schedule`；选中主色 `text-primary-600 dark:text-primary-400` + `strokeWidth 2.4`，未选中 `slate-400/500`，点击区 `p-3`），右侧圆形「+」（`w-8 h-8 rounded-full border border-[var(--ov-border-strong)]`）。顶栏**不显示页面标题**，所以页面自己的 `h1` 必须恢复手机端显示（`text-xl md:text-2xl`，副标题可 `hidden md:block`）。
-- **顶栏「+」是页面动作，不是全局按钮**：页面挂载时用 `hooks/useMobileTopBarAction.ts` 的 `useMobileTopBarAction(title, onClick)` 注册「新建」动作（卸载自动注销；未注册则不渲染）。已接：面试中心 → 开始新面试（复用 Layout 的 `UnifiedInterviewModal`，经 Outlet context 暴露 `openInterviewModal`）、学习帮手 → 新会话、日程 → 添加面试；记录页无。**页面内与「+」重复的入口要在手机端隐藏**（如日程页的「添加面试」按钮改 `hidden md:flex`）。
+**9.1 皮肤层与断点**
+
+- **移动端皮肤层（DeepSeek 风格）**：手机端整体换 DeepSeek 皮肤、桌面保持纸感，靠 **`index.css` 末尾手写的 `@media (max-width: 767px)` 块**实现——在媒体查询里覆盖 `@theme` 的 `--color-primary-*`（品牌蓝 `#4d6bfe`）、`--color-slate-*`（中性灰）、`--color-white`（纯白）、`--font-sans` / `--font-display`（系统字体栈）与 `--ov-*`，并去掉 body 网格纹理、改选区色。∴ 页面照常写 `slate-*` / `primary-*` 就自动解析成 DeepSeek 值，两端零耦合。**这个块是手机端配色的唯一来源，禁止删改**；`:root` 覆盖必须写在 `.dark` 之前（同 specificity 时后写者胜）。
+- **形态改动用 `max-md:` 追加覆盖**（桌面类一字不动）：去边框/换底色/去阴影/换圆角统一 `max-md:border-0 max-md:bg-slate-50 max-md:shadow-none max-md:dark:bg-slate-800`；面试官与助手消息去气泡（`max-md:bg-transparent max-md:p-0 max-md:dark:bg-transparent`）、用户气泡改浅灰底深字（`max-md:bg-slate-100 max-md:text-slate-900 max-md:dark:bg-slate-700 max-md:dark:text-slate-50`）；聊天输入区包成大圆角卡（`max-md:rounded-[24px] max-md:border max-md:border-slate-200 max-md:dark:border-slate-600 max-md:bg-white max-md:dark:bg-slate-800 max-md:py-1 max-md:pl-4 max-md:pr-1.5`）+ 圆形发送键（`max-md:h-9 max-md:w-9 max-md:flex-shrink-0 max-md:rounded-full max-md:p-0`，按钮文字包 `<span className="max-md:hidden">`、图标写 `hidden w-4 h-4 max-md:block`）。其余页面照 `InterviewHubPage` / `InterviewHistoryPage` / `InterviewDetailPanel` / `ScheduleHeader` / `LearningAgentPage` 的现有 `max-md:` 写法抄。
+- **Tailwind 变体顺序坑**：产物里 `dark:` 排在 `max-md:` **之后** → 目标属性带 `dark:*` 时必须同时写 `max-md:dark:*`（变体链更长、排最后）。踩过：空态图标 `max-md:text-primary-500` 被 `dark:text-slate-500` 盖掉，须补 `max-md:dark:text-primary-500`。
+
+**9.2 骨架 · 顶栏 · 抽屉（`layouts/StudentLayout.tsx`）**
+
+- **骨架**在 `layouts/StudentLayout.tsx`：手机端 = 极简顶栏（`h-12`，无边框、`bg-[var(--ov-bg)]`）+ 汉堡抽屉（导航项 + 主题切换 + 账户菜单都在抽屉里）；桌面端 = 原侧栏。**手机端主区 padding 由 Layout 统一给**（`px-4 pt-3 pb-6`，桌面 `md:p-10`），页面容器不要再叠加移动端 padding——写 `md:p-6` 这种只在桌面生效的写法。**没有底部 TabBar**（2026-09-12 改版），**顶栏也不再放核心 tab**（2026-09-13 二次改版：4 个 tab 并入汉堡抽屉，抽屉成为唯一导航入口）。
+- **顶栏结构**（左→右）：汉堡（打开抽屉）+ 左侧动作 + 中间标题 + 右侧次操作 + 圆形主操作（`w-8 h-8 rounded-full border border-[var(--ov-border-strong)]`）。除圆形主操作外每个按钮点击区 ≥40px（`p-2.5 rounded-xl`，汉堡 `p-3`），触屏反馈用 `active:bg-[var(--ov-muted)]`。**顶栏默认不显示页面标题**，所以页面自己的 `h1` 必须保留手机端显示（`text-xl md:text-2xl`）；只有页面注册了标题（如学习帮手的会话名）才在中间显示 `text-xs text-slate-400` 的截断灰字。
+- **顶栏内容全部由页面注册**（`hooks/useMobileTopBarAction.ts`）：`useMobileTopBar({primary, actions, leading, title, onTitleClick})` 声明本页要往顶栏放什么，卸载自动注销；只用圆形主操作时用简写 `useMobileTopBarAction(title, onClick)`。已接：面试中心「开始新面试」（复用 Layout 的 `UnifiedInterviewModal`，经 Outlet context 暴露 `openInterviewModal`）、日程「添加面试」、学习帮手（`leading` 对话历史 + `title` 会话名可点重命名 + `actions` 学习计划/学习台账 + `primary` 新建对话）；记录页不注册 → 顶栏只有汉堡。**页面内与顶栏重复的入口要在手机端隐藏**（日程页「添加面试」改 `hidden md:flex`）。
+- **抽屉只放移动端可用页**：面试（模拟面试 / 面试记录 / 面试日程）+ 学习（学习帮手 / 学习台账 / 学习计划）；**PC 专属页（简历管理 / 知识库管理 / 知识库面试 / 设置）不进抽屉**——`StudentLayout.tsx` 里用 `MOBILE_NAV_HIDDEN` 过滤 + `MOBILE_GROUP_TITLES` 改分组名（面试 / 学习）。抽屉底部是账户区（复用 `AccountMenu` 的 `variant="drawer"`；它手机端是底部弹出面板，**z-index 必须高于抽屉的 z-60**，用 `z-[70]`）+ 主题切换。
 - **沉浸式聊天页**（学习帮手）用 flex 撑满而非手算常量：根容器 `flex flex-col h-[calc(100dvh-3.75rem)] -mb-6`（3.75rem = 顶栏 48px + 主区 `pt-3`，`-mb-6` 抵消主区 `pb-6`）+ 头部 `shrink-0` + 聊天区 `flex-1 min-h-0`；桌面沿用 `md:h-[calc(100vh-10rem)]`。**不要再写 `100dvh-11rem` 这类跟随 padding 变化即失效的常量**。滚动只发生在消息列表内部：页面容器与卡片加 `overscroll-y-contain`，避免滚到底后继续拖拽把整页带走。
 - **手机端禁用 `100vh` / `min-h-screen`**：移动浏览器按「工具栏收起」的大视口算 `vh`，会比可见区域高 60–100px → 整页出现多余滚动条（聊天页尤其明显）。整屏容器用 `min-h-dvh`（`#root` 与 Layout 外层已改）或 `calc(100dvh - …)`；桌面断点下 `dvh == vh`，可保留 `md:min-h-screen`。
-- **顶栏 / TabBar / 抽屉与桌面侧栏是同一套导航皮肤**，因此 `Layout.tsx` 骨架整体（含这三个移动端新件）**例外允许** `var(--ov-*)`，否则会与侧栏出现明显色差（尤其深色：`slate-800` #1c2026 ≠ `--ov-bg-soft` #14171c）。页面内容区仍一律用 `slate-*` / `primary-*`。
+- **顶栏 / 抽屉 / 账户菜单与桌面侧栏是同一套导航皮肤**，因此 `StudentLayout.tsx` 骨架整体**例外允许** `var(--ov-*)`，否则会与侧栏出现明显色差（尤其深色：`slate-800` #1c2026 ≠ `--ov-bg-soft` #14171c）。页面内容区仍一律用 `slate-*` / `primary-*`。
+
+**9.3 页面形态 · 按钮层级 · 触控**
+
 - **页面骨架转换**：`max-w-5xl mx-auto pt-8 pb-10 px-4` → 手机端 `max-w-5xl mx-auto`（去掉内边距即可）；标题区 `flex flex-col gap-3 md:flex-row md:items-center md:justify-between`；并排按钮组必须 `flex-wrap`。
 - **宽表格**：≥5 列的表格手机端**必须**换卡片列表——`hidden md:block` 表格 + `md:hidden` 卡片，同一份数据、同一组操作（操作按钮抽成组件内函数两处共用，如 `InterviewHistoryPage.renderRowActions`）。
 - **弹窗**：遮罩加 `p-4`，面板 `max-h-[85vh] md:max-h-[90vh]`，内边距 `p-4 md:p-6`，标题 `text-xl md:text-2xl`，双列表单 `grid-cols-1 sm:grid-cols-2`。
 - **多列与侧栏**：手机端一律单列（`grid-cols-1 xl:grid-cols-3`）；并排的侧栏（会话历史等）在手机端变**底部抽屉**或顶部入口，不能直接隐藏掉功能。
 - **尺寸档位**：卡片 `p-4 md:p-6`；标题 `text-xl md:text-2xl`；互动圆环/大头像 `w-24 h-24 md:w-32 md:h-32`；底部/顶部固定条用 `fixed` + `md:hidden`。
 - **手机端首屏优先（2026-09-12 三个 tab 二次压缩后固化）**：核心配置项与主操作按钮要尽量落在首屏内。做法：卡片 `p-2.5~p-3 md:p-4~p-6`、区块间距 `space-y-3 md:space-y-6`、页标题 `text-lg md:text-2xl`、选项卡片用**横排紧凑**（图标 `w-5/w-6`、文字 `text-xs`、`gap-2`）；**解释性副文案（`desc`）手机端一律 `hidden sm:block`**，只留图标 + 标题 + 徽标；两列网格在手机端保持 `grid-cols-2`（不要退化成一列）；空状态 `py-12 md:py-20` + 图标 `w-12 md:w-16`；页面容器不要再给手机端加 `pb-*`（主区已有 `pb-6`）。
-- **手机端不做「页级标题 + 工具按钮」两行**：学习帮手是范式——`h1` 整块 `hidden md:flex`（只在桌面显示），页面操作入口（学习计划 / 台账 / 上传 / 返回）抽成组件内 `headerActions` 数组，桌面端带文字渲染在页头、手机端以**纯图标**并入内容卡片头部那一行（`flex md:hidden`，`p-1.5` + 边框圆角）。省下的竖向空间自动给内容区（flex 布局下无需改高度常量）。附属信息（如当前会话标题）在手机端另起一行、**半透明浅色**：`mt-1.5 text-xs text-slate-400/80 dark:text-slate-500/80` + `min-w-0 truncate`（桌面端仍在同一行，`hidden md:flex`）。
+- **手机端不做「页级标题 + 工具按钮」两行**：学习帮手是范式——`h1` 与页头工具条整块 `hidden md:block`（只在桌面显示），页面的动作入口与附属信息（会话历史 / 会话标题 / 学习计划 · 学习台账）**全部注册到顶栏**，聊天区直接从顶栏下方开始；指向 PC 专属页的入口（上传 / 返回）手机端不展示。省下的竖向空间自动给内容区（flex 布局下无需改高度常量）。
 - **手机上不存在 hover**：凡靠 `opacity-0 group-hover:opacity-100` 显形的操作（列表项按钮、编辑入口）在手机上永远点不到，必须写 `opacity-100 md:opacity-0 md:group-hover:opacity-100`。
 - **JS 判断只用于逻辑分支**（`hooks/useIsMobile.ts`，与 `md` 同步，首帧即可用）：目前仅两处——根路径落地分流（手机进 `/interview-hub`）与日程默认视图（手机进 `list`）；页面向顶栏注册「+」动作走 `hooks/useMobileTopBarAction.ts`（React context，不要用全局事件 / 路由参数 hack）。**纯样式差异一律用 CSS 断点类，不要用 hook**。
-- **明确不适配的页面**（知识库管理、题库维护、知识库上传、设置、简历管理）：保持桌面形态，不保证手机可用；不要为它们补移动端样式。
+- **按钮层级与摆放（2026-09-13 定稿，四级）**：同一屏内不得出现两个同级主操作；层级靠「形态」区分而不是靠颜色深浅。
+  - **L1 主操作**：实底 `bg-primary-500 hover:bg-primary-600`、全宽、高 ≥44px（`py-3`）。每屏最多 1 个，且必须落在拇指区——长配置卡/长表单里的 L1 要**吸底常驻**：`sticky bottom-0 z-10` + 卡片底色 + `border-t`，横向 `-mx-3 px-3` 出血到卡边，桌面端 `md:static md:z-auto md:mx-0` 还原（例：`InterviewHubPage` 的开始面试）。
+  - **L2 次操作**：描边或浅灰底（`border-slate-200 dark:border-slate-600` / `bg-slate-100 dark:bg-slate-700`），高 ≥40px。与 L1 同区时放左侧或下方，**不得用实底 primary** 与 L1 抢权重。
+  - **L3 行内操作**：卡片/列表项内，图标或「图标 + 文字」；触控区 ≥40px（`p-2.5` + `w-4`，抽屉等紧凑行可 `p-2`）；同一组 ≤3 个；**破坏性操作单独分组**——靠右、前面加 `w-px h-4 bg-slate-200 dark:bg-slate-600` 分隔线或 `ml-auto` 拉开，并走 `DeleteConfirmDialog`。
+  - **L4 选择态**：选项卡片/选项按钮的选中态用「淡底 + 主色」（`border-primary-500 bg-primary-50/80` 或 `ring-1 ring-primary-500 bg-primary-50`），**禁止实底 primary-500**——实底只留给 L1 和分段导航 tab（记录页筛选、日程视图切换）。
+  - **卡片操作条排列范式**：最左放「最能推进流程」的动作并用图标 + 文字（继续面试 / 查看报告 / 进入会议 / 标记为已完成），低频操作（导出 / 重新面试 / 重新生成评估）图标化靠右，删除再向后隔一道分隔线。整卡可点的列表里，操作条用 `pt-2.5 + border-t` 与内容分区，避免「想点继续却进了详情」。
+  - **弹窗底部**：固定「取消（左，次）→ 确认（右，主）」；手机端两键 `flex-1` 等宽并排、桌面 `md:flex-none` 恢复右下角，footer 加 `sticky bottom-0` + 不透明底色，长内容滚动时主操作不被推出视口。
+  - **hover 显形等于手机不可见**：`opacity-0 group-hover:opacity-100` 一律改写成 `opacity-100 md:opacity-0 md:group-hover:opacity-100`（`InterviewPanel` 的导出/删除曾是硬伤）。
+  - **行为反馈**：触屏没有 hover，行内按钮补 `active:bg-*`（与 hover 同色系），破坏性按钮用 `active:bg-red-50 dark:active:bg-red-900/30`。
+- **PC 专属页**（简历管理 / 知识库管理 / 题库维护 / 知识库上传 / 设置 / 语音面试）不在这套形态范围内——它们保持桌面形态、也不进手机导航，清单与原因见 **§12.4**。
 
 ## 10. 交付前自检
 
@@ -293,6 +326,15 @@ provider:
 - [ ] 没有 hex、没有 `var(--ov-*)`、没有 `!important`、没有 emoji
 - [ ] 运行 `cd frontend && pnpm run build` 通过
 
+手机端专项（§9；改动了 `md` 以下任何形态都要过一遍）：
+
+- [ ] 形态差异一律用 `max-md:` 追加覆盖，**没有改桌面类**；目标属性带 `dark:*` 时同时写了 `max-md:dark:*`
+- [ ] 颜色仍然只写 `slate-*` / `primary-*`（皮肤层自动换肤），没有为手机单独写色值、也没有新增 `@media` 块
+- [ ] 靠 hover 显形的操作已改 `opacity-100 md:opacity-0 md:group-hover:opacity-100`；可点元素触控区 ≥40px；破坏性操作走 `DeleteConfirmDialog`
+- [ ] 页面要么保留自己的 `h1`（`text-xl md:text-2xl`），要么把动作/标题注册到顶栏（`useMobileTopBar`）；页面内与顶栏重复的入口已隐藏
+- [ ] 列表卡片没有用「左内容 + 右操作」两列（用 §9.3 的三行范式），长正文拿到整行宽度
+- [ ] 实际打开 390×844 手机视图核对（浅色 + 深色各一遍），并确认 1440 桌面无回归
+
 ## 11. 工程约定（目录 / API / 验证）
 
 - **目录归属**：页面进 `src/pages/`，可复用组件进 `src/components/`，共享类型进 `src/types/`，路由路径进 `src/constants/routes.ts`。
@@ -301,3 +343,40 @@ provider:
 - **表单状态必须显式覆盖 loading / success / error / disabled**（写法见 §6）。
 - **不要把业务说明性长文塞进页面**，优先让界面直接可操作（同 §8）。
 - **验证**：改完跑 `cd frontend && pnpm run build`；涉及浏览器交互的改动要实际打开页面验证，不要只看编译结果。
+
+---
+
+## ▍C 块 · 桌面与管理端（PC 专属）
+
+> 适用：只在桌面端（`md` 及以上）打开的页面，以及管理端 `/admin/*`。这些页面**不保证手机可用**，也**不要**为它们补移动端形态；A 块（§1–§8）对它们同样有效。
+
+### 12.1 桌面容器与页面骨架
+
+- 内容页沿用 §4 的 `max-w-5xl mx-auto pt-8 pb-10 px-4`；**工具页**（题库管理、知识库管理、知识库面试落地页）用 `max-w-[1400px] mx-auto`。
+- 手机端的骨架转换规则（去掉页面容器内边距等）只对 §9 范围内的页面生效，PC 专属页不做转换。
+
+### 12.2 宽表格
+
+- PC 允许裸 `<table>`，但 >4 列必须配 `overflow-x-auto`（§7 第 11 条）；列宽用 `table-fixed` + `<colgroup>` 固定，否则长内容会把右侧列挤出容器（`KnowledgeBaseManagePage` 的列宽配比是既有答案，改列宽先看它）。
+- 单元格内非主内容一律包 `truncate`，完整值放 `title`；分类这类多徽章内容不要 `flex-wrap`（折行会把行高撑到 100px+）。
+- 手机端不适用：≥5 列的表格手机端必须换卡片列表（§9.3），PC 专属页不进手机导航所以不需要。
+
+### 12.3 只有桌面用的组件与常量
+
+- 知识库级联分类下拉 `components/knowledgebase/CategoryFilterSelect.tsx`（自绘、复用 §5.2 的面板常量）——这是 §5.2「禁止手写下拉」的唯一例外。
+- 知识库输入框常量 `constants/knowledgebaseInterview.ts` 的 `INPUT_CLASS`（见 §5.4）。
+- 批量操作底部浮条（见 §6.4），目前只有知识库管理页在用。
+- 设置类页面的 toast 基准实现 `pages/SettingsPage.tsx` 的 `showToast`（见 §6.4）。
+
+### 12.4 明确不适配手机的页面
+
+简历管理（`/history`、`/upload`、`/history/:id`）、知识库管理（`/knowledgebase`）、知识库面试 / 题库维护（`/knowledgebase-interview`）、知识库上传（`/knowledgebase/upload`）、设置（`/settings`）、语音面试（`/voice-interview*`——手机端还受 `getUserMedia` 必须 HTTPS 的硬限制，属于 UI 解决不了的门槛）。
+
+- 这些页面**保持桌面形态**，不要为它们补移动端样式；它们也不进手机抽屉（`StudentLayout.tsx` 的 `MOBILE_NAV_HIDDEN` 过滤），PC 专属页上的入口（如学习帮手的「上传」「返回」）在手机端同样不展示。
+- **新写页面默认不属于这一条**：除上面列出的以外，任何新页面都要按 §9 给出手机形态。
+
+### 12.5 管理端（`/admin/*`）
+
+- 入口与登录态独立：`layouts/AdminLayout.tsx` + `pages/admin/` + 管理端登录页；接口走 `/api/admin/**` 并带管理端 token，其余 `/api/**` 带学员 token（401 → 清对应 token + 跳对应登录页）。
+- **沿用同一套设计语言**（`slate-*` / `primary-*`、A 块 §1–§7 全部适用），**不引入 Ant Design 等组件库**（同 §7 第 2 条）。
+- 后台是桌面形态：`AdminLayout` 在窄屏只提示「请用电脑打开」，不做移动端适配。

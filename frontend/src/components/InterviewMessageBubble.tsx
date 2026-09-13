@@ -41,10 +41,10 @@ export default function InterviewMessageBubble({
             )}
           </div>
           <div
-            className={`rounded-2xl rounded-tl-none p-4 leading-relaxed ${
+            className={`rounded-2xl rounded-tl-none p-4 leading-relaxed max-md:p-3 ${
               highlight
-                ? 'bg-slate-100 dark:bg-slate-700 border border-primary-300/60 dark:border-primary-700/40 text-slate-700 dark:text-slate-200'
-                : 'bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200'
+                ? 'bg-slate-100 dark:bg-slate-700 border border-primary-300/60 dark:border-primary-700/40 text-slate-700 dark:text-slate-200 max-md:border-0 max-md:bg-primary-50 max-md:p-3 max-md:dark:bg-primary-900/20'
+                : 'bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 max-md:bg-transparent max-md:p-0 max-md:dark:bg-transparent'
             } ${italic ? 'italic' : ''}`}
           >
             {text}
@@ -63,8 +63,8 @@ export default function InterviewMessageBubble({
     >
       <div className="flex-1 max-w-[80%]">
         <div
-          className={`rounded-2xl rounded-tr-none p-4 leading-relaxed bg-primary-500 text-white ${
-            highlight ? 'border border-primary-400/70 bg-primary-500/90' : ''
+          className={`rounded-2xl rounded-tr-none p-4 leading-relaxed bg-primary-500 text-white max-md:rounded-2xl max-md:bg-slate-100 max-md:px-4 max-md:py-3 max-md:text-slate-900 max-md:dark:bg-slate-700 max-md:dark:text-slate-50 ${
+            highlight ? 'border border-primary-400/70 bg-primary-500/90 max-md:border-0 max-md:bg-slate-100 max-md:dark:bg-slate-700' : ''
           } ${italic ? 'italic' : ''}`}
         >
           {text}

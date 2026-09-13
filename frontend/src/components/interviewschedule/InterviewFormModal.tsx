@@ -212,13 +212,13 @@ export const InterviewFormModal: React.FC<InterviewFormModalProps> = ({
         />
       </div>
 
-      <div className="flex justify-end gap-3">
+      <div className="flex justify-end gap-2 md:gap-3">
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           type="button"
           onClick={onClose}
-          className="px-5 py-2.5 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl font-medium transition-all"
+          className="flex-1 md:flex-none px-5 py-2.5 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl font-medium transition-colors"
         >
           取消
         </motion.button>
@@ -228,7 +228,7 @@ export const InterviewFormModal: React.FC<InterviewFormModalProps> = ({
           type="button"
           onClick={handleParse}
           disabled={!rawText.trim() || parsing}
-          className="px-5 py-2.5 bg-gradient-to-r from-primary-600 to-primary-500 dark:from-primary-500 dark:to-primary-400 text-white rounded-xl font-medium shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+          className="flex-1 md:flex-none px-5 py-2.5 bg-primary-500 hover:bg-primary-600 text-white rounded-xl font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {parsing ? '解析中...' : '解析文本'}
         </motion.button>
@@ -296,13 +296,13 @@ export const InterviewFormModal: React.FC<InterviewFormModalProps> = ({
         </>
       )}
 
-      <div className="flex justify-between gap-3">
+      <div className="flex justify-between gap-2 md:gap-3">
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           type="button"
           onClick={() => setStep('text')}
-          className="px-5 py-2.5 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl font-medium flex items-center gap-2 transition-all"
+          className="flex-1 md:flex-none px-5 py-2.5 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl font-medium flex items-center justify-center gap-2 transition-colors"
         >
           <ChevronLeft className="w-4 h-4" />
           重新输入
@@ -312,7 +312,7 @@ export const InterviewFormModal: React.FC<InterviewFormModalProps> = ({
           whileTap={{ scale: 0.98 }}
           type="button"
           onClick={() => setStep('form')}
-          className="px-5 py-2.5 bg-gradient-to-r from-primary-600 to-primary-500 dark:from-primary-500 dark:to-primary-400 text-white rounded-xl font-medium shadow-lg hover:shadow-xl flex items-center gap-2 transition-all"
+          className="flex-1 md:flex-none px-5 py-2.5 bg-primary-500 hover:bg-primary-600 text-white rounded-xl font-medium flex items-center justify-center gap-2 transition-colors"
         >
           {parseResult?.success ? '确认并编辑' : '手动输入'}
           <ChevronRight className="w-4 h-4" />
@@ -425,14 +425,15 @@ export const InterviewFormModal: React.FC<InterviewFormModalProps> = ({
         </div>
       )}
 
-      <div className="flex justify-between pt-5 gap-3">
+      {/* 操作条：吸底常驻，长表单滚动时「保存」始终可见；手机端取消/保存等宽并排 */}
+      <div className="sticky bottom-0 z-10 flex items-center gap-2 md:gap-3 -mx-4 -mb-4 px-4 pt-3 pb-4 md:-mx-6 md:-mb-6 md:px-6 md:pb-6 border-t border-slate-200 dark:border-slate-700 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl">
         {mode === 'create' && step !== 'text' ? (
           <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             type="button"
             onClick={handleReset}
-            className="px-5 py-2.5 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl font-medium transition-all"
+            className="shrink-0 px-3 md:px-5 py-2.5 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl font-medium transition-colors"
           >
             重置
           </motion.button>
@@ -442,19 +443,19 @@ export const InterviewFormModal: React.FC<InterviewFormModalProps> = ({
             whileTap={{ scale: 0.98 }}
             type="button"
             onClick={() => onDelete(initialData.id!)}
-            className="px-5 py-2.5 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl font-medium flex items-center gap-2 transition-all"
+            className="shrink-0 px-3 md:px-5 py-2.5 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl font-medium flex items-center gap-1.5 md:gap-2 transition-colors"
           >
             <Trash2 className="w-4 h-4" />
             删除
           </motion.button>
         ) : null}
-        <div className="flex gap-3 ml-auto">
+        <div className="flex gap-2 md:gap-3 ml-auto flex-1 md:flex-none">
           <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             type="button"
             onClick={onClose}
-            className="px-5 py-2.5 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl font-medium transition-all"
+            className="flex-1 md:flex-none px-5 py-2.5 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl font-medium transition-colors"
           >
             取消
           </motion.button>
@@ -463,7 +464,7 @@ export const InterviewFormModal: React.FC<InterviewFormModalProps> = ({
             whileTap={{ scale: 0.98 }}
             type="submit"
             disabled={submitting}
-            className="px-6 py-2.5 bg-gradient-to-r from-primary-600 to-primary-500 dark:from-primary-500 dark:to-primary-400 text-white rounded-xl font-medium shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            className="flex-1 md:flex-none px-6 py-2.5 bg-primary-500 hover:bg-primary-600 text-white rounded-xl font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {submitting ? '保存中...' : '保存'}
           </motion.button>

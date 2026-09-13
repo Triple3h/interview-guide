@@ -77,7 +77,7 @@ export default function InterviewPanel({
           <p className="text-slate-500 dark:text-slate-400 mb-6">开始模拟面试，获取专业评估</p>
         <motion.button
           onClick={onStartInterview}
-          className="px-6 py-3 bg-gradient-to-r from-primary-500 to-primary-600 text-white rounded-xl font-medium shadow-lg shadow-primary-500/30"
+          className="px-6 py-3 bg-primary-500 hover:bg-primary-600 text-white rounded-xl font-medium transition-colors"
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
         >
@@ -254,8 +254,8 @@ function InterviewItemCard({
         </div>
       </div>
 
-      {/* 操作按钮 */}
-      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100">
+      {/* 操作按钮：手机上不存在 hover，必须常显（桌面端保持 hover 显形） */}
+      <div className="flex items-center gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100">
       {/* 导出按钮 */}
       <motion.button
         onClick={(e) => { e.stopPropagation(); onExport(); }}

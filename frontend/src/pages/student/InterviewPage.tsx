@@ -265,7 +265,7 @@ export default function Interview({
   if (!session || !currentQuestion) return null;
 
   return (
-    <div className="pb-10">
+    <div className="pb-10 max-md:pb-0">
       <InterviewPageHeader
         title={title}
         subtitle={subtitle}

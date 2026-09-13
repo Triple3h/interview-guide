@@ -150,7 +150,7 @@ export default function InterviewHubPage() {
       </div>
 
       {/* 配置区域 */}
-      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 p-3 md:p-6 mb-4 md:mb-8">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 p-3 md:p-6 mb-4 md:mb-8 max-md:border-0 max-md:bg-slate-50 max-md:shadow-none max-md:dark:bg-slate-800">
         <div className="space-y-3 md:space-y-6">
           {/* 面试模式 */}
           <div>
@@ -403,10 +403,10 @@ export default function InterviewHubPage() {
                         <button
                           key={n}
                           onClick={() => config.setQuestionCount(n)}
-                          className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all
+                          className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ring-1
                             ${config.questionCount === n
-                              ? 'bg-primary-500 text-white shadow-sm'
-                              : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
+                              ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 ring-primary-500'
+                              : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 ring-transparent hover:bg-slate-200 dark:hover:bg-slate-600'
                             }`}
                         >
                           {n} 题
@@ -446,16 +446,20 @@ export default function InterviewHubPage() {
           </AnimatePresence>
         </div>
 
-        {/* 开始面试按钮 */}
-        <div className="mt-3 pt-3 md:mt-6 md:pt-6 border-t border-slate-100 dark:border-slate-700">
+        {/* 开始面试：主操作。手机端吸底常驻，配置过程中始终在拇指区，不必滚到卡片末尾 */}
+        <div className="sticky bottom-0 z-10 -mx-3 mt-3 pt-3 px-3 pb-3
+          bg-white dark:bg-slate-800 border-t border-slate-100 dark:border-slate-700
+          md:static md:z-auto md:mx-0 md:mt-6 md:pt-6 md:px-0 md:pb-0
+          max-md:mt-2 max-md:border-t-0 max-md:pt-0 max-md:bg-slate-50 max-md:dark:bg-slate-800">
           <motion.button
             onClick={handleStart}
             whileHover={{ scale: 1.01 }}
             whileTap={{ scale: 0.99 }}
             disabled={config.isCustomStartDisabled}
-            className="w-full px-6 py-3 rounded-xl font-semibold text-sm transition-all
-              bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700
-              text-white shadow-lg shadow-primary-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full px-6 py-3 rounded-xl font-semibold text-sm transition-colors
+              bg-primary-500 hover:bg-primary-600
+              text-white disabled:opacity-50 disabled:cursor-not-allowed
+              max-md:rounded-full"
           >
             开始{config.mode === 'text' ? '文字' : '语音'}面试
           </motion.button>
@@ -463,8 +467,8 @@ export default function InterviewHubPage() {
       </div>
 
       {/* 最近面试记录 */}
-      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 p-3 md:p-6">
-        <div className="flex items-center justify-between mb-3 md:mb-4">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 p-3 md:p-6 max-md:border-0 max-md:bg-transparent max-md:p-0 max-md:shadow-none max-md:dark:bg-transparent">
+        <div className="flex items-center justify-between mb-3 md:mb-4 max-md:px-1">
           <h2 className="text-base md:text-lg font-bold text-slate-800 dark:text-white">最近面试记录</h2>
           <Link
             to="/interviews"

@@ -126,28 +126,60 @@ export default function LearningPlanPage() {
     }
   };
 
+  // 状态选择 + 编辑 / 删除：手机端在卡片底部一行、桌面端在右侧一列，两处共用
+  const renderActions = (item: LearningPlanItem) => (
+    <>
+      <Select
+        variant="compact"
+        value={item.status}
+        onChange={(e) => handleStatusChange(item, e.target.value as LearningPlanStatus)}
+        title="调整状态"
+      >
+        <option value="PENDING">待开始</option>
+        <option value="IN_PROGRESS">进行中</option>
+        <option value="DONE">已完成</option>
+      </Select>
+      <button
+        onClick={() => openEditModal(item)}
+        className="p-2.5 md:p-2 text-slate-400 hover:text-primary-500 active:bg-slate-100 dark:active:bg-slate-700 rounded-lg transition-colors"
+        title="编辑"
+        aria-label="编辑计划条目"
+      >
+        <Pencil className="w-4 h-4" />
+      </button>
+      <button
+        onClick={() => setDeleteConfirm(item)}
+        className="p-2.5 md:p-2 text-slate-400 hover:text-red-500 active:bg-red-50 dark:active:bg-red-900/30 rounded-lg transition-colors"
+        title="删除"
+        aria-label="删除计划条目"
+      >
+        <Trash2 className="w-4 h-4" />
+      </button>
+    </>
+  );
+
   return (
-    <div className="max-w-5xl mx-auto pt-8 pb-10 px-4">
-      {/* 头部 */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
+    <div className="max-w-5xl mx-auto md:pt-8 md:pb-10 md:px-4">
+      {/* 头部：手机端标题降档、副标题隐藏，主操作 shrink-0 不被挤压 */}
+      <div className="flex items-center justify-between gap-2 md:gap-3 mb-3 md:mb-6">
+        <div className="flex items-center gap-2 md:gap-3 min-w-0">
           <button
             onClick={() => navigate('/knowledgebase/chat')}
-            className="p-2 rounded-xl border border-slate-200 dark:border-slate-600 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+            className="p-2 shrink-0 rounded-xl border border-slate-200 dark:border-slate-600 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
             title="返回学习帮手"
           >
             <ChevronLeft className="w-5 h-5" />
           </button>
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-1">学习计划</h1>
-            <p className="text-slate-500 dark:text-slate-400 text-sm">
+          <div className="min-w-0">
+            <h1 className="text-lg md:text-2xl font-bold text-slate-900 dark:text-white md:mb-1">学习计划</h1>
+            <p className="hidden md:block text-slate-500 dark:text-slate-400 text-sm">
               和 AI 商定后固化的学习路径，AI 会在对话中自动跟进进度
             </p>
           </div>
         </div>
         <motion.button
           onClick={openCreateModal}
-          className="flex items-center gap-1.5 px-4 py-2 bg-primary-500 text-white rounded-xl text-sm font-medium hover:bg-primary-600 transition-all"
+          className="shrink-0 flex items-center gap-1.5 px-3 md:px-4 py-2 bg-primary-500 text-white rounded-xl text-sm font-medium hover:bg-primary-600 transition-colors"
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
         >
@@ -156,9 +188,9 @@ export default function LearningPlanPage() {
         </motion.button>
       </div>
 
-      {/* 统计 + 筛选 */}
-      <div className="flex flex-wrap items-center gap-3 mb-5">
-        <div className="flex gap-2 text-xs">
+      {/* 统计 + 筛选：手机端把计数并进筛选胶囊，省掉一整行统计 */}
+      <div className="flex flex-wrap items-center gap-1.5 md:gap-3 mb-3 md:mb-5">
+        <div className="hidden md:flex gap-2 text-xs">
           <span className="px-2.5 py-1 rounded-full bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
             共 {stats.total} 条
           </span>
@@ -173,22 +205,34 @@ export default function LearningPlanPage() {
           </span>
         </div>
 
-        <div className="flex-1" />
+        <div className="hidden md:block flex-1" />
 
-        <div className="flex gap-2">
-          {STATUS_FILTERS.map((filter) => (
-            <button
-              key={filter.value}
-              onClick={() => setStatusFilter(filter.value)}
-              className={`px-3 py-1.5 text-xs rounded-full transition-colors ${
-                statusFilter === filter.value
-                  ? 'bg-primary-500 text-white'
-                  : 'bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600'
-              }`}
-            >
-              {filter.label}
-            </button>
-          ))}
+        <div className="flex gap-1.5 md:gap-2">
+          {STATUS_FILTERS.map((filter) => {
+            const count = filter.value === 'ALL'
+              ? stats.total
+              : filter.value === 'PENDING'
+                ? stats.pending
+                : filter.value === 'IN_PROGRESS'
+                  ? stats.inProgress
+                  : stats.done;
+            const active = statusFilter === filter.value;
+
+            return (
+              <button
+                key={filter.value}
+                onClick={() => setStatusFilter(filter.value)}
+                className={`px-2.5 md:px-3 py-1.5 text-xs rounded-full transition-colors ${
+                  active
+                    ? 'bg-primary-500 text-white'
+                    : 'bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600'
+                }`}
+              >
+                {filter.label}
+                <span className={`md:hidden ml-1 ${active ? 'text-white/70' : 'text-slate-400'}`}>{count}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -202,8 +246,8 @@ export default function LearningPlanPage() {
           />
         </div>
       ) : filteredItems.length === 0 ? (
-        <div className="text-center py-16 text-slate-400 dark:text-slate-500">
-          <ListTodo className="w-12 h-12 mx-auto mb-3 opacity-50" />
+        <div className="text-center py-12 md:py-16 text-slate-400 dark:text-slate-500">
+          <ListTodo className="w-10 h-10 md:w-12 md:h-12 mx-auto mb-3 opacity-50" />
           <p className="text-sm mb-2">
             {statusFilter !== 'ALL' ? '该状态下暂无条目' : '还没有学习计划'}
           </p>
@@ -214,20 +258,21 @@ export default function LearningPlanPage() {
           ) : null}
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-2 md:space-y-3">
           {filteredItems.map((item) => (
             <motion.div
               key={item.id}
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-sm border border-slate-100 dark:border-slate-700 group"
+              className="bg-white dark:bg-slate-800 rounded-2xl p-3 md:p-4 shadow-sm border border-slate-100 dark:border-slate-700 group"
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1 flex items-start gap-3">
-                  <span className="mt-0.5 w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 text-xs flex items-center justify-center flex-shrink-0 font-medium">
+              {/* 手机端：标题与目标各占整行，状态 + 日期 + 操作压到底部一行；桌面端保持「左内容 + 右操作」两列 */}
+              <div className="flex flex-col md:flex-row md:items-start md:justify-between md:gap-3">
+                <div className="min-w-0 flex-1 flex items-start gap-2 md:gap-3">
+                  <span className="mt-0.5 w-5 h-5 md:w-6 md:h-6 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 text-[11px] md:text-xs flex items-center justify-center flex-shrink-0 font-medium">
                     {item.sortOrder + 1}
                   </span>
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3
                         className={`font-semibold text-sm ${
@@ -238,45 +283,31 @@ export default function LearningPlanPage() {
                       >
                         {item.topic}
                       </h3>
-                      <span className={`px-2 py-0.5 rounded-full text-xs ${STATUS_BADGE[item.status]}`}>
+                      <span className={`hidden md:inline-block px-2 py-0.5 rounded-full text-xs ${STATUS_BADGE[item.status]}`}>
                         {item.statusLabel}
                       </span>
                     </div>
                     {item.goal && (
-                      <p className="text-sm text-slate-600 dark:text-slate-300 mt-1.5 leading-relaxed">{item.goal}</p>
+                      <p className="text-sm text-slate-600 dark:text-slate-300 mt-1 md:mt-1.5 leading-relaxed">{item.goal}</p>
                     )}
-                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">
+                    <p className="hidden md:block text-xs text-slate-400 dark:text-slate-500 mt-2">
                       更新于 {formatDateOnly(item.updatedAt)}
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  <Select
-                    variant="compact"
-                    value={item.status}
-                    onChange={(e) => handleStatusChange(item, e.target.value as LearningPlanStatus)}
-                    title="调整状态"
-                  >
-                    <option value="PENDING">待开始</option>
-                    <option value="IN_PROGRESS">进行中</option>
-                    <option value="DONE">已完成</option>
-                  </Select>
-                  <button
-                    onClick={() => openEditModal(item)}
-                    className="p-1.5 text-slate-400 hover:text-primary-500 rounded transition-colors"
-                    title="编辑"
-                  >
-                    <Pencil className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setDeleteConfirm(item)}
-                    className="p-1.5 text-slate-400 hover:text-red-500 rounded transition-colors"
-                    title="删除"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                {/* 手机端底部一行：徽标 + 更新时间靠左，状态选择与操作靠右 */}
+                <div className="md:hidden mt-2 flex items-center gap-2 min-w-0">
+                  <span className={`px-2 py-0.5 rounded-full text-xs flex-shrink-0 ${STATUS_BADGE[item.status]}`}>
+                    {item.statusLabel}
+                  </span>
+                  <span className="min-w-0 truncate text-[11px] text-slate-400 dark:text-slate-500">
+                    更新于 {formatDateOnly(item.updatedAt)}
+                  </span>
+                  <div className="ml-auto flex items-center gap-0.5 flex-shrink-0">{renderActions(item)}</div>
                 </div>
+
+                <div className="hidden md:flex items-center gap-1 flex-shrink-0">{renderActions(item)}</div>
               </div>
             </motion.div>
           ))}
@@ -336,17 +367,17 @@ export default function LearningPlanPage() {
 
                 {formError && <p className="mt-3 text-sm text-red-500">{formError}</p>}
 
-                <div className="flex justify-end gap-3 mt-6">
+                <div className="flex gap-2 md:gap-3 md:justify-end mt-6">
                   <button
                     onClick={() => setEditingItem(null)}
-                    className="px-4 py-2 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white"
+                    className="flex-1 md:flex-none px-4 py-2.5 md:py-2 text-sm text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
                   >
                     取消
                   </button>
                   <button
                     onClick={handleSave}
                     disabled={!formTopic.trim() || saving}
-                    className="px-4 py-2 text-sm bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50"
+                    className="flex-1 md:flex-none px-4 py-2.5 md:py-2 text-sm bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50 transition-colors"
                   >
                     {saving ? '保存中…' : '保存'}
                   </button>

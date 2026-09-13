@@ -238,17 +238,17 @@ export default function UserProfileModal({ open, mode, initial, onClose, onSaved
                 <p className="mt-4 text-sm text-red-500">{error}</p>
               )}
 
-              <div className="flex justify-end gap-3 mt-6">
+              <div className="flex gap-2 md:gap-3 md:justify-end mt-6">
                 <button
                   onClick={onClose}
-                  className="px-4 py-2 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white"
+                  className="flex-1 md:flex-none px-4 py-2.5 md:py-2 text-sm text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
                 >
                   取消
                 </button>
                 <button
                   onClick={handleSubmit}
                   disabled={!nickname.trim() || saving}
-                  className="px-5 py-2 text-sm bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 md:flex-none px-5 py-2.5 md:py-2 text-sm bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   {saving ? '保存中…' : '保存'}
                 </button>

@@ -60,7 +60,7 @@ export const ScheduleHeader: React.FC<ScheduleHeaderProps> = ({
       initial={{ opacity: 0, y: -20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-2xl border border-slate-200/50 dark:border-slate-700/50 p-2.5 md:p-6 mb-2.5 md:mb-6 shadow-xl shadow-slate-200/50 dark:shadow-slate-900/50"
+      className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-2xl border border-slate-200/50 dark:border-slate-700/50 p-2.5 md:p-6 mb-2.5 md:mb-6 shadow-xl shadow-slate-200/50 dark:shadow-slate-900/50 max-md:border-0 max-md:bg-slate-50 max-md:shadow-none max-md:backdrop-blur-none max-md:dark:bg-slate-800"
     >
       <div className="flex flex-col gap-1.5 md:gap-2 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 md:gap-x-6">
@@ -106,7 +106,7 @@ export const ScheduleHeader: React.FC<ScheduleHeaderProps> = ({
         </div>
 
         <div className="flex items-center gap-2 md:gap-3">
-          <div className="flex flex-1 md:flex-none justify-center bg-slate-100/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-xl p-1 md:p-1.5 gap-1">
+          <div className="flex flex-1 md:flex-none justify-center bg-slate-100/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-xl p-1 md:p-1.5 gap-1 max-md:bg-slate-100 max-md:dark:bg-slate-700">
             {[
               { key: 'day', icon: Calendar, label: '日视图' },
               { key: 'week', icon: Calendar, label: '周视图' },
@@ -121,7 +121,7 @@ export const ScheduleHeader: React.FC<ScheduleHeaderProps> = ({
                 title={label}
                 className={`flex-1 md:flex-none px-2.5 py-1.5 md:px-4 md:py-2 rounded-lg flex items-center justify-center gap-2 font-medium text-xs md:text-sm transition-all ${
                   view === key
-                    ? 'bg-white/95 dark:bg-slate-700/80 backdrop-blur-sm shadow-md text-primary-700 dark:text-primary-200 border border-slate-200/50 dark:border-slate-600/50'
+                    ? 'bg-white/95 dark:bg-slate-700/80 backdrop-blur-sm shadow-md text-primary-700 dark:text-primary-200 border border-slate-200/50 dark:border-slate-600/50 max-md:border-0 max-md:bg-white max-md:shadow-sm max-md:dark:bg-slate-800'
                     : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/50 dark:hover:bg-slate-700/50'
                 }`}
               >

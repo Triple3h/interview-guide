@@ -385,3 +385,131 @@
     color: var(--ov-accent-strong);
   }
 }
+
+/*
+ * ============================================================================
+ * 移动端皮肤层：DeepSeek 风格（仅 <md 生效，桌面纸感完全不受影响）
+ * ----------------------------------------------------------------------------
+ * 机制：在媒体查询里覆盖 @theme 的色阶槽位与 --ov-* 语义变量。
+ * 因此页面照常写 slate-* / primary-*，手机端自动解析为 DeepSeek 值。
+ * 注意：:root 覆盖必须写在 .dark 之前（同 specificity 时后写者胜）。
+ * ============================================================================
+ */
+@media (max-width: 767px) {
+  :root {
+    --color-white: #ffffff;
+
+    /* DeepSeek 品牌蓝 */
+    --color-primary-50: #eef1ff;
+    --color-primary-100: #e0e7ff;
+    --color-primary-200: #c7d2ff;
+    --color-primary-300: #a5b4ff;
+    --color-primary-400: #7c93ff;
+    --color-primary-500: #4d6bfe;
+    --color-primary-600: #3b5bf0;
+    --color-primary-700: #2f4ad6;
+    --color-primary-800: #2a3fb0;
+    --color-primary-900: #27398c;
+    --color-primary-950: #172252;
+
+    /* 中性灰阶 */
+    --color-slate-50: #f5f6f7;
+    --color-slate-100: #eef0f2;
+    --color-slate-200: #e3e5e8;
+    --color-slate-300: #d4d7db;
+    --color-slate-400: #a8adb5;
+    --color-slate-500: #8c9199;
+    --color-slate-600: #62666d;
+    --color-slate-700: #46494f;
+    --color-slate-800: #26282c;
+    --color-slate-900: #1a1c1f;
+    --color-slate-950: #0d0e10;
+
+    /* 骨架语义变量 */
+    --ov-bg: #ffffff;
+    --ov-bg-soft: #ffffff;
+    --ov-panel: #f5f6f7;
+    --ov-panel-strong: #f5f6f7;
+    --ov-muted: #f3f4f5;
+    --ov-muted-2: #ebedef;
+    --ov-border: #e3e5e8;
+    --ov-border-soft: #eef0f2;
+    --ov-border-strong: #d4d7db;
+    --ov-ink: #1a1c1f;
+    --ov-text: #1a1c1f;
+    --ov-text-soft: #46494f;
+    --ov-muted-fg: #8c9199;
+    --ov-accent: #4d6bfe;
+    --ov-accent-strong: #3b5bf0;
+    --ov-accent-soft-bg: rgba(77, 107, 254, 0.1);
+    --ov-accent-border: rgba(77, 107, 254, 0.3);
+    --ov-grid: transparent;
+    --ov-grid-soft: transparent;
+    --ov-shadow: rgba(0, 0, 0, 0.06);
+    --ov-shadow-lift: rgba(0, 0, 0, 0.1);
+
+    /* DeepSeek 用系统字体栈，不带品牌字体 */
+    --font-sans: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'HarmonyOS Sans SC', 'Source Han Sans SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;
+    --font-display: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'HarmonyOS Sans SC', 'Source Han Sans SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;
+  }
+
+  .dark {
+    --color-primary-50: #1b2140;
+    --color-primary-100: #202a55;
+    --color-primary-200: #2a376f;
+    --color-primary-300: #3a4a94;
+    --color-primary-400: #7c93ff;
+    --color-primary-500: #4d6bfe;
+    --color-primary-600: #4a67f5;
+    --color-primary-700: #4560e0;
+    --color-primary-800: #3d54c4;
+    --color-primary-900: #33439c;
+    --color-primary-950: #1f2a63;
+
+    --color-slate-50: #ececec;
+    --color-slate-100: #e0e0e0;
+    --color-slate-200: #c9c9c9;
+    --color-slate-300: #a8a8a8;
+    --color-slate-400: #9b9b9b;
+    --color-slate-500: #7d7d7d;
+    --color-slate-600: #3a3a3a;
+    --color-slate-700: #2f2f2f;
+    --color-slate-800: #262626;
+    --color-slate-900: #1f1f1f;
+    --color-slate-950: #1a1a1a;
+
+    --ov-bg: #1a1a1a;
+    --ov-bg-soft: #1a1a1a;
+    --ov-panel: #2a2a2a;
+    --ov-panel-strong: #2f2f2f;
+    --ov-muted: #2a2a2a;
+    --ov-muted-2: #333333;
+    --ov-border: #3a3a3a;
+    --ov-border-soft: #333333;
+    --ov-border-strong: #4a4a4a;
+    --ov-ink: #ececec;
+    --ov-text: #ececec;
+    --ov-text-soft: #d0d0d0;
+    --ov-muted-fg: #9b9b9b;
+    --ov-accent: #4d6bfe;
+    --ov-accent-strong: #5e7bff;
+    --ov-accent-soft-bg: rgba(77, 107, 254, 0.16);
+    --ov-accent-border: rgba(77, 107, 254, 0.4);
+    --ov-grid: transparent;
+    --ov-grid-soft: transparent;
+    --ov-shadow: rgba(0, 0, 0, 0.3);
+    --ov-shadow-lift: rgba(0, 0, 0, 0.45);
+  }
+
+  /* 手机端不要纸面网格纹理 */
+  body {
+    background-image: none;
+  }
+
+  ::selection {
+    background: rgba(77, 107, 254, 0.22);
+  }
+  .dark ::selection {
+    background: rgba(77, 107, 254, 0.35);
+  }
+}

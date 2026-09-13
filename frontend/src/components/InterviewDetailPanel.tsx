@@ -143,7 +143,7 @@ function ScoreCard({
 function StrengthsSection({ strengths }: { strengths: string[] }) {
   return (
       <motion.div
-          className="bg-white dark:bg-slate-800 rounded-2xl p-4 md:p-6 shadow-sm"
+          className="bg-white dark:bg-slate-800 rounded-2xl p-4 md:p-6 shadow-sm max-md:bg-slate-50 max-md:shadow-none max-md:dark:bg-slate-800"
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.1 }}
@@ -171,7 +171,7 @@ function StrengthsSection({ strengths }: { strengths: string[] }) {
 function ImprovementsSection({ improvements }: { improvements: string[] }) {
   return (
       <motion.div
-          className="bg-white dark:bg-slate-800 rounded-2xl p-4 md:p-6 shadow-sm"
+          className="bg-white dark:bg-slate-800 rounded-2xl p-4 md:p-6 shadow-sm max-md:bg-slate-50 max-md:shadow-none max-md:dark:bg-slate-800"
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.2 }}
@@ -244,7 +244,7 @@ function QuestionCard({
 }) {
   return (
       <motion.div
-          className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm overflow-hidden"
+          className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm overflow-hidden max-md:bg-slate-50 max-md:shadow-none max-md:dark:bg-slate-800"
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.1 + index * 0.05 }}
@@ -295,7 +295,7 @@ function QuestionCard({
           >
             <div className="px-4 md:px-5 pb-4 md:pb-5 space-y-4">
               {/* 你的回答 */}
-              <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4">
+              <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4 max-md:bg-white max-md:dark:bg-slate-800">
                 <p className="text-sm text-slate-500 dark:text-slate-400 mb-2 flex items-center gap-1">
                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none">
                     <path d="M21 15C21 15.5304 20.7893 16.0391 20.4142 16.4142C20.0391 16.7893 19.5304 17 19 17H7L3 21V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H19C19.5304 3 20.0391 3.21071 20.4142 3.58579C20.7893 3.96086 21 4.46957 21 5V15Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -328,7 +328,7 @@ function QuestionCard({
               {/* 参考答案 */}
               {answer.referenceAnswer && (
                   <div
-                      className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4 border border-slate-100 dark:border-slate-600">
+                      className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4 border border-slate-100 dark:border-slate-600 max-md:bg-white max-md:border-slate-200/70 max-md:dark:bg-slate-800 max-md:dark:border-slate-700">
                     <p className="text-sm text-slate-600 dark:text-slate-400 mb-3 flex items-center gap-2 font-medium">
                     <svg className="w-4 h-4 text-primary-500" viewBox="0 0 24 24" fill="none">
                       <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2"/>

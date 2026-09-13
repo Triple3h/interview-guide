@@ -152,7 +152,7 @@ function StatCard({
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-white dark:bg-slate-800 rounded-xl p-2.5 md:p-6 shadow-sm border border-slate-100 dark:border-slate-700"
+      className="bg-white dark:bg-slate-800 rounded-xl p-2.5 md:p-6 shadow-sm border border-slate-100 dark:border-slate-700 max-md:border-0 max-md:bg-slate-50 max-md:shadow-none max-md:dark:bg-slate-800"
     >
       <div className="flex flex-col items-center gap-1 md:flex-row md:items-center md:gap-4">
         <div className={`p-1.5 md:p-3 rounded-lg ${color}`}>
@@ -491,83 +491,134 @@ export default function InterviewHistoryPage({
   const showFilterEmpty = isKnowledgeBaseView && hasActiveKbFilters && items.length > 0 && filtered.length === 0;
   const showOriginalEmpty = filtered.length === 0 && !showFilterEmpty;
 
-  // 行操作按钮：桌面表格与移动端卡片共用（闭包捕获本组件的 state 与回调）
-  const renderRowActions = (item: UnifiedInterviewItem) => (
-    <>
-      {item.type === 'text' && !isCompletedStatus(item.status) && !isEvaluateCompleted(item) && onContinueInterview && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            if (item.sourceType === 'KNOWLEDGE_BASE') {
-              navigate(`/knowledgebase-interview/${item.sessionId}`, {
-                state: { knowledgeBaseId: item.knowledgeBaseId },
-              });
-            } else {
-              onContinueInterview(item.sessionId);
-            }
-          }}
-          className="p-2 text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors"
-          title="继续面试"
-        >
-          <PlayCircle className="w-4 h-4" />
-        </button>
-      )}
-      {item.type === 'voice' && isLiveStatus(item.status) && item.voiceSessionId && (
-        <button
-          onClick={(e) => { e.stopPropagation(); navigate('/voice-interview', { state: { voiceSessionId: item.voiceSessionId } }); }}
-          className="p-2 text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors"
-          title="继续面试"
-        >
-          <PlayCircle className="w-4 h-4" />
-        </button>
-      )}
-      {isEvaluateCompleted(item) && item.type === 'text' && (
-        <button
-          onClick={(e) => handleExport(item.sessionId, e)}
-          disabled={exporting === item.sessionId}
-          className="p-2 text-slate-400 hover:text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/30 rounded-lg transition-colors disabled:opacity-50"
-          title="导出PDF"
-        >
-          {exporting === item.sessionId ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <Download className="w-4 h-4" />
+  // 移动端卡片操作条（闭包捕获本组件的 state 与回调）：
+  // 左 = 主操作（文字 + 图标，主色），右 = 次要操作图标组 + 分隔线 + 删除。
+  // 分组依据：进入/继续是高频路径，导出/重面/重试是内容操作，删除是破坏性操作——三者视觉权重递减且相互隔离。
+  const renderRowActions = (item: UnifiedInterviewItem) => {
+    const iconBtnClass = 'p-2.5 text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors disabled:opacity-50';
+
+    // 主操作：进行中 → 继续面试；其余 → 查看报告/详情
+    let primary: { label: string; icon: typeof PlayCircle; run: (e: React.MouseEvent) => void } | null = null;
+    if (item.type === 'text' && !isCompletedStatus(item.status) && !isEvaluateCompleted(item) && onContinueInterview) {
+      primary = {
+        label: '继续面试',
+        icon: PlayCircle,
+        run: (e) => {
+          e.stopPropagation();
+          if (item.sourceType === 'KNOWLEDGE_BASE') {
+            navigate(`/knowledgebase-interview/${item.sessionId}`, {
+              state: { knowledgeBaseId: item.knowledgeBaseId },
+            });
+          } else {
+            onContinueInterview(item.sessionId);
+          }
+        },
+      };
+    } else if (item.type === 'voice' && isLiveStatus(item.status) && item.voiceSessionId) {
+      primary = {
+        label: '继续面试',
+        icon: PlayCircle,
+        run: (e) => {
+          e.stopPropagation();
+          navigate('/voice-interview', { state: { voiceSessionId: item.voiceSessionId } });
+        },
+      };
+    } else if (item.type === 'voice' && item.voiceSessionId) {
+      primary = {
+        label: '查看报告',
+        icon: FileText,
+        run: (e) => {
+          e.stopPropagation();
+          navigate(`/voice-interview/${item.voiceSessionId}/evaluation`);
+        },
+      };
+    } else if (item.type === 'text') {
+      primary = {
+        label: '查看详情',
+        icon: FileText,
+        run: (e) => {
+          e.stopPropagation();
+          handleRowClick(item);
+        },
+      };
+    }
+
+    const hasSecondaryActions =
+      (isEvaluateCompleted(item) && item.type === 'text')
+      || (isEvaluateCompleted(item) && item.type === 'text' && !!item.resumeId && !!onRestartInterview)
+      || (isVoiceEvaluationRetryable(item) && !!item.voiceSessionId);
+
+    return (
+      <>
+        {primary && (
+          <button
+            onClick={primary.run}
+            className="inline-flex items-center gap-1.5 -ml-2 px-2 py-2 rounded-lg text-sm font-medium text-primary-600 dark:text-primary-400
+              hover:bg-primary-50 dark:hover:bg-primary-900/30 active:bg-primary-50 dark:active:bg-primary-900/30 transition-colors"
+          >
+            <primary.icon className="w-4 h-4" />
+            {primary.label}
+          </button>
+        )}
+
+        {/* 次要操作与删除：靠右成组，删除前加分隔线隔离误触 */}
+        <div className="ml-auto flex items-center gap-0.5">
+          {isEvaluateCompleted(item) && item.type === 'text' && (
+            <button
+              onClick={(e) => handleExport(item.sessionId, e)}
+              disabled={exporting === item.sessionId}
+              className={iconBtnClass}
+              title="导出PDF"
+              aria-label="导出 PDF"
+            >
+              {exporting === item.sessionId ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+            </button>
           )}
-        </button>
-      )}
-      {isEvaluateCompleted(item) && item.type === 'text' && item.resumeId && onRestartInterview && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onRestartInterview(item.resumeId!); }}
-          className="p-2 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-lg transition-colors"
-          title="重新面试"
-        >
-          <RotateCcw className="w-4 h-4" />
-        </button>
-      )}
-      {isVoiceEvaluationRetryable(item) && item.voiceSessionId && (
-        <button
-          onClick={(e) => handleRetryVoiceEvaluation(item, e)}
-          disabled={retryingVoiceSessionId === item.voiceSessionId}
-          className="p-2 text-amber-500 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/30 rounded-lg transition-colors disabled:opacity-50"
-          title="重新生成评估"
-        >
-          {retryingVoiceSessionId === item.voiceSessionId ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <RefreshCw className="w-4 h-4" />
+          {isEvaluateCompleted(item) && item.type === 'text' && item.resumeId && onRestartInterview && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onRestartInterview(item.resumeId!); }}
+              className={iconBtnClass}
+              title="重新面试"
+              aria-label="重新面试"
+            >
+              <RotateCcw className="w-4 h-4" />
+            </button>
           )}
-        </button>
-      )}
-      <button
-        onClick={(e) => handleDeleteClick(item, e)}
-        disabled={deletingSessionId === item.sessionId}
-        className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors disabled:opacity-50"
-        title="删除"
-      >
-        <Trash2 className="w-4 h-4" />
-      </button>
-    </>
-  );
+          {isVoiceEvaluationRetryable(item) && item.voiceSessionId && (
+            <button
+              onClick={(e) => handleRetryVoiceEvaluation(item, e)}
+              disabled={retryingVoiceSessionId === item.voiceSessionId}
+              className={`${iconBtnClass} text-amber-500 dark:text-amber-400`}
+              title="重新生成评估"
+              aria-label="重新生成评估"
+            >
+              {retryingVoiceSessionId === item.voiceSessionId ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )}
+            </button>
+          )}
+          {hasSecondaryActions && (
+            <span className="mx-1 h-4 w-px bg-slate-200 dark:bg-slate-600" aria-hidden="true" />
+          )}
+          <button
+            onClick={(e) => handleDeleteClick(item, e)}
+            disabled={deletingSessionId === item.sessionId}
+            className={`${iconBtnClass} hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30`}
+            title="删除"
+            aria-label="删除面试记录"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      </>
+    );
+  };
 
   return (
     <motion.div className="w-full" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
@@ -593,7 +644,7 @@ export default function InterviewHistoryPage({
         </div>
 
         <motion.div
-          className="flex items-center gap-2 md:gap-3 w-full sm:w-auto bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 md:px-4 md:py-2.5 sm:min-w-[280px] focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-primary-100 dark:focus-within:ring-primary-900/30 transition-all"
+          className="flex items-center gap-2 md:gap-3 w-full sm:w-auto bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 md:px-4 md:py-2.5 sm:min-w-[280px] focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-primary-100 dark:focus-within:ring-primary-900/30 transition-all max-md:rounded-full max-md:border-0 max-md:bg-slate-50 max-md:py-2.5 max-md:focus-within:ring-0 max-md:dark:bg-slate-700"
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
         >
@@ -654,7 +705,7 @@ export default function InterviewHistoryPage({
       {/* 知识库面试记录筛选（仅知识库视图显示） */}
       {isKnowledgeBaseView && (
         <motion.div
-          className="flex items-center gap-3 flex-wrap bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl px-4 py-3 mb-6 shadow-sm"
+          className="flex items-center gap-3 flex-wrap bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl px-4 py-3 mb-6 shadow-sm max-md:border-0 max-md:bg-slate-50 max-md:px-3 max-md:py-2.5 max-md:shadow-none max-md:dark:bg-slate-800"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
         >
@@ -715,10 +766,10 @@ export default function InterviewHistoryPage({
           <button
             key={tab.key}
             onClick={() => setTypeFilter(tab.key)}
-            className={`px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors ${
+            className={`px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors max-md:rounded-full max-md:px-4 max-md:py-2 ${
               typeFilter === tab.key
                 ? 'bg-primary-500 text-white'
-                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-600'
+                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-600 max-md:border-0 max-md:bg-slate-50 max-md:text-slate-500 max-md:dark:bg-slate-700 max-md:dark:text-slate-300'
             }`}
           >
             {tab.label}
@@ -736,7 +787,7 @@ export default function InterviewHistoryPage({
       {/* 筛选无结果（知识库视图且筛选条件生效） */}
       {!loading && showFilterEmpty && (
         <motion.div
-          className="text-center py-12 md:py-20 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700"
+          className="text-center py-12 md:py-20 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 max-md:border-0 max-md:bg-transparent max-md:py-16 max-md:shadow-none max-md:dark:bg-transparent"
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
         >
@@ -756,7 +807,7 @@ export default function InterviewHistoryPage({
       {/* Empty */}
       {!loading && showOriginalEmpty && (
         <motion.div
-          className="text-center py-12 md:py-20 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700"
+          className="text-center py-12 md:py-20 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 max-md:border-0 max-md:bg-transparent max-md:py-16 max-md:shadow-none max-md:dark:bg-transparent"
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
         >
@@ -966,7 +1017,7 @@ export default function InterviewHistoryPage({
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: Math.min(index, 10) * 0.05 }}
               onClick={() => handleRowClick(item)}
-              className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 p-3 md:p-4 cursor-pointer"
+              className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 p-3 md:p-4 cursor-pointer max-md:rounded-2xl max-md:border-0 max-md:bg-slate-50 max-md:p-3.5 max-md:shadow-none max-md:dark:bg-slate-800"
             >
               {/* 类型 + 标题 + 得分 */}
               <div className="flex items-start justify-between gap-3 mb-2">
@@ -1000,10 +1051,9 @@ export default function InterviewHistoryPage({
                 {item.type === 'voice' && <span>{formatDuration(item.actualDuration)}</span>}
               </div>
 
-              {/* 操作 */}
-              <div className="flex items-center flex-wrap gap-1 pt-2.5 border-t border-slate-100 dark:border-slate-700">
+              {/* 操作条：左主操作 / 右次要操作与删除（分组 + 分隔线隔离误触） */}
+              <div className="flex items-center gap-1 pt-2.5 border-t border-slate-100 dark:border-slate-700">
                 {renderRowActions(item)}
-                <ChevronRight className="w-4 h-4 md:w-5 md:h-5 text-slate-300 dark:text-slate-600 ml-auto" />
               </div>
             </motion.div>
           ))}

@@ -1,10 +1,11 @@
 import {Link, Outlet, useLocation, useNavigate} from 'react-router-dom';
 import {AnimatePresence, motion} from 'framer-motion';
-import {BookOpen, Calendar, Database, FileStack, LogOut, Menu, MessageSquare, Moon, NotebookPen, Plus, Settings, Sparkles, Sun, Users, X,} from 'lucide-react';
+import {BookOpen, Calendar, CalendarCheck, Database, FileStack, LogOut, Menu, MessageSquare, Moon, NotebookPen, Plus, Settings, Sparkles, Sun, Users, X,} from 'lucide-react';
 import {useTheme} from '../hooks/useTheme';
 import {useCallback, useEffect, useState} from 'react';
-import {MobileTopBarActionContext, type MobileTopBarAction} from '../hooks/useMobileTopBarAction';
+import {MobileTopBarActionContext, type MobileTopBarConfig} from '../hooks/useMobileTopBarAction';
 import UnifiedInterviewModal, {UnifiedInterviewConfig} from '../components/UnifiedInterviewModal';
+import AccountMenu from '../components/AccountMenu';
 import {ROUTES} from '../constants/routes';
 import {uuid} from '../utils/uuid';
 import {useAuth} from '../auth/AuthContext';
@@ -42,10 +43,10 @@ export default function StudentLayout() {
     hideModeSwitch?: boolean;
   } | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  /** 当前页面注册到移动端顶栏「+」的动作，为空时不渲染按钮 */
-  const [mobileTopBarAction, setMobileTopBarAction] = useState<MobileTopBarAction | null>(null);
-  const registerMobileTopBarAction = useCallback((action: MobileTopBarAction | null) => {
-    setMobileTopBarAction(action);
+  /** 当前页面注册到移动端顶栏的内容（左侧动作 / 标题 / 右侧次操作 + 圆形主操作），未注册时顶栏只有汉堡 */
+  const [mobileTopBar, setMobileTopBar] = useState<MobileTopBarConfig | null>(null);
+  const registerMobileTopBarAction = useCallback((config: MobileTopBarConfig | null) => {
+    setMobileTopBar(config);
   }, []);
 
   // 路由变化时自动收起移动端导航抽屉
@@ -176,55 +177,83 @@ export default function StudentLayout() {
     return currentPath.startsWith(path);
   };
 
-  // 移动端顶栏核心 tab（原底部标签栏，现移到左上角汉堡右侧）：其余导航走汉堡抽屉
-  const mobileTabs: NavItem[] = [
-    { id: 'mobile-hub', path: '/interview-hub', label: '面试', icon: Sparkles },
-    { id: 'mobile-interviews', path: '/interviews', label: '记录', icon: Users },
-    { id: 'mobile-chat', path: '/knowledgebase/chat', label: '学习帮手', icon: MessageSquare },
-    { id: 'mobile-schedule', path: '/interview-schedule', label: '日程', icon: Calendar },
-  ];
+  /**
+   * 移动端导航：抽屉是唯一导航入口（原顶栏 4 个 tab 已并入）。
+   * PC 专属页（简历管理 / 知识库管理 / 知识库面试 / 设置）不上手机，直接过滤掉。
+   */
+  const MOBILE_NAV_HIDDEN = new Set(['/history', '/knowledgebase', '/knowledgebase-interview', '/settings']);
+  const MOBILE_GROUP_TITLES: Record<string, string> = { interview: '面试', knowledge: '学习' };
+  const mobileNavGroups: NavGroup[] = navGroups
+    .map((group) => ({
+      ...group,
+      title: MOBILE_GROUP_TITLES[group.id] ?? group.title,
+      items: group.items.filter((item) => !MOBILE_NAV_HIDDEN.has(item.path)),
+    }))
+    .filter((group) => group.items.length > 0)
+    .map((group) => (group.id === 'knowledge'
+      ? {
+          ...group,
+          items: [...group.items, { id: 'learning-plan', path: '/learning/plan', label: '学习计划', icon: CalendarCheck, description: '制定学习计划' }],
+        }
+      : group));
 
   return (
     <div className="flex flex-col md:flex-row min-h-dvh md:min-h-screen">
-      {/* 移动端顶栏：汉堡 + 核心 tab 图标 + 当前页面的「新建」动作（桌面端隐藏） */}
+      {/* 移动端顶栏：☰ 抽屉 + 页面注册的动作（左：图标 / 中：标题 / 右：次操作 + 圆形主操作），桌面端隐藏 */}
       <header className="md:hidden sticky top-0 z-40 bg-[var(--ov-bg)]">
-        <div className="flex items-center justify-between h-12 pr-3">
-          <div className="flex items-center">
-            <button
-              onClick={() => setMobileNavOpen(true)}
-              className="p-3 rounded-xl text-slate-700 dark:text-slate-200 active:bg-[var(--ov-muted)] transition-colors"
-              title="全部导航"
-              aria-label="全部导航"
-            >
-              <Menu className="w-5 h-5" />
-            </button>
-            {mobileTabs.map((tab) => {
-              const active = isActive(tab.path);
+        <div className="flex items-center h-12 gap-0.5 pr-3">
+          <button
+            onClick={() => setMobileNavOpen(true)}
+            className="p-3 rounded-xl text-slate-700 dark:text-slate-200 active:bg-[var(--ov-muted)] transition-colors flex-shrink-0"
+            title="全部导航"
+            aria-label="全部导航"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
 
-              return (
-                <Link
-                  key={tab.id}
-                  to={tab.path}
-                  title={tab.label}
-                  aria-label={tab.label}
-                  className={`p-3 rounded-xl transition-colors
-                    ${active
-                      ? 'text-primary-600 dark:text-primary-400'
-                      : 'text-slate-400 dark:text-slate-500'
-                    }`}
-                >
-                  <tab.icon className="w-5 h-5" strokeWidth={active ? 2.4 : 2} />
-                </Link>
-              );
-            })}
+          {mobileTopBar?.leading?.map(({key, title, icon: Icon, onClick}) => (
+            <button
+              key={key}
+              onClick={onClick}
+              title={title}
+              aria-label={title}
+              className="p-2.5 rounded-xl text-slate-500 dark:text-slate-400 active:bg-[var(--ov-muted)] transition-colors flex-shrink-0"
+            >
+              <Icon className="w-5 h-5"/>
+            </button>
+          ))}
+
+          <div className="flex-1 min-w-0 flex justify-center px-1">
+            {mobileTopBar?.title && (
+              <button
+                onClick={mobileTopBar.onTitleClick}
+                disabled={!mobileTopBar.onTitleClick}
+                className="max-w-full truncate text-xs text-slate-400 dark:text-slate-500 active:text-primary-600 dark:active:text-primary-400 disabled:cursor-default"
+                title={mobileTopBar.title}
+              >
+                {mobileTopBar.title}
+              </button>
+            )}
           </div>
 
-          {mobileTopBarAction && (
+          {mobileTopBar?.actions?.map(({key, title, icon: Icon, onClick}) => (
             <button
-              onClick={mobileTopBarAction.onClick}
-              className="w-8 h-8 rounded-full border border-[var(--ov-border-strong)] text-slate-700 dark:text-slate-200 flex items-center justify-center active:bg-[var(--ov-muted)] transition-colors"
-              title={mobileTopBarAction.title}
-              aria-label={mobileTopBarAction.title}
+              key={key}
+              onClick={onClick}
+              title={title}
+              aria-label={title}
+              className="p-2.5 rounded-xl text-slate-500 dark:text-slate-400 active:bg-[var(--ov-muted)] transition-colors flex-shrink-0"
+            >
+              <Icon className="w-5 h-5"/>
+            </button>
+          ))}
+
+          {mobileTopBar?.primary && (
+            <button
+              onClick={mobileTopBar.primary.onClick}
+              className="ml-1 w-8 h-8 rounded-full border border-[var(--ov-border-strong)] text-slate-700 dark:text-slate-200 flex items-center justify-center active:bg-[var(--ov-muted)] transition-colors flex-shrink-0"
+              title={mobileTopBar.primary.title}
+              aria-label={mobileTopBar.primary.title}
             >
               <Plus className="w-4 h-4" />
             </button>
@@ -375,7 +404,7 @@ export default function StudentLayout() {
 
               <nav className="flex-1 p-4 overflow-y-auto scrollbar-thin">
                 <div className="space-y-6">
-                  {navGroups.map((group) => (
+                  {mobileNavGroups.map((group) => (
                     <div key={group.id}>
                       <div className="px-3 mb-2">
                         <span className="ov-label block">{group.title}</span>
@@ -417,27 +446,8 @@ export default function StudentLayout() {
               </nav>
 
               <div className="p-4 border-t border-[var(--ov-border-soft)] shrink-0 space-y-2">
-                <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-[var(--ov-panel)] border border-[var(--ov-border-soft)]">
-                  <span className="w-8 h-8 rounded-lg bg-primary-600/10 dark:bg-primary-400/15 flex items-center justify-center text-base leading-none flex-shrink-0">
-                    {profile?.avatarEmoji || '🙂'}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
-                      {profile?.nickname || '学员'}
-                    </span>
-                    <span className="block text-xs text-slate-500 dark:text-slate-500 truncate">
-                      {profile?.username ? `@${profile.username}` : '学员账号'}
-                    </span>
-                  </span>
-                  <button
-                    onClick={handleLogout}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 transition-colors flex-shrink-0"
-                    title="退出登录"
-                    aria-label="退出登录"
-                  >
-                    <LogOut className="w-4 h-4" />
-                  </button>
-                </div>
+                {/* 账户入口：编辑资料 / 修改密码 / 退出登录（手机端页头已不再放它） */}
+                <AccountMenu variant="drawer" />
                 <button
                   onClick={toggleTheme}
                   className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-[var(--ov-muted)] transition-colors"

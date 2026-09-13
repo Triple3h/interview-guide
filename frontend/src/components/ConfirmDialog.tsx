@@ -72,13 +72,13 @@ export default function ConfirmDialog({
                 {customContent}
               </div>
 
-              {/* 按钮 */}
+              {/* 按钮：手机端两键等宽并排（拇指区，文案完整可读），桌面端右下角常规按钮 */}
               {!hideButtons && (
-                <div className="flex gap-3 justify-end">
+                <div className="flex gap-2 md:gap-3 md:justify-end">
                   <motion.button
                     onClick={onCancel}
                     disabled={loading}
-                    className="px-5 py-2.5 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex-1 md:flex-none px-5 py-2.5 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                   >
@@ -87,7 +87,7 @@ export default function ConfirmDialog({
                   <motion.button
                     onClick={onConfirm}
                     disabled={loading}
-                    className={`px-5 py-2.5 text-white rounded-xl font-semibold shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed ${variantStyles[confirmVariant]}`}
+                    className={`flex-1 md:flex-none px-5 py-2.5 text-white rounded-xl font-semibold shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed ${variantStyles[confirmVariant]}`}
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                   >

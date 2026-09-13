@@ -110,10 +110,10 @@ export default function UnifiedInterviewModal({
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               onClick={e => e.stopPropagation()}
-              className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+              className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[85vh] md:max-h-[90vh] overflow-y-auto"
             >
               {/* Header */}
-              <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-700/50">
+              <div className="px-4 py-4 md:px-6 md:py-5 border-b border-slate-100 dark:border-slate-700/50">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center shadow-lg shadow-primary-500/25">
@@ -439,16 +439,16 @@ export default function UnifiedInterviewModal({
                 </AnimatePresence>
               </div>
 
-              {/* Footer */}
-              <div className="px-6 py-4 bg-slate-50/80 dark:bg-slate-900/50 border-t border-slate-100 dark:border-slate-700/50 rounded-b-2xl">
-                <div className="flex gap-3">
+              {/* Footer：吸底常驻，展开「更多选项」时主操作也不会被推出视口；手机端两键等宽并排 */}
+              <div className="sticky bottom-0 px-4 py-4 md:px-6 md:py-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-100 dark:border-slate-700/50 rounded-b-2xl">
+                <div className="flex gap-2 md:gap-3">
                   <motion.button
                     onClick={onClose}
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     className="flex-1 px-5 py-3 border border-slate-200 dark:border-slate-700
                       text-slate-700 dark:text-slate-300 rounded-xl font-medium text-sm
-                      hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
+                      hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                   >
                     取消
                   </motion.button>
@@ -457,9 +457,9 @@ export default function UnifiedInterviewModal({
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     disabled={config.isCustomStartDisabled}
-                    className="flex-1 px-5 py-3 rounded-xl font-semibold text-sm transition-all
-                      bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700
-                      text-white shadow-lg shadow-primary-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex-1 px-5 py-3 rounded-xl font-semibold text-sm transition-colors
+                      bg-primary-500 hover:bg-primary-600
+                      text-white disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {startButtonText}
                   </motion.button>

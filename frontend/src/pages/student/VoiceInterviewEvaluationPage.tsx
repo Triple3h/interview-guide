@@ -230,7 +230,7 @@ export default function VoiceInterviewEvaluationPage() {
         <div className="flex items-center gap-3 mb-6">
           <button
             onClick={() => navigate('/interviews')}
-            className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+            className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors max-md:rounded-full max-md:active:bg-[var(--ov-muted)]"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
