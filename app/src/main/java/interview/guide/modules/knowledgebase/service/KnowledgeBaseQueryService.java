@@ -630,7 +630,8 @@ public class KnowledgeBaseQueryService {
             return normalized;
         } catch (Exception e) {
             ragMetrics.recordRewriteFallback("error");
-            log.warn("Query rewrite 失败，使用原问题继续检索: {}", e.getMessage(), e);
+            log.warn("Query rewrite 失败，使用原问题继续检索: {}", ErrorLogSanitizer.summarize(e),
+                ErrorLogSanitizer.forLogging(e));
             return question;
         }
     }

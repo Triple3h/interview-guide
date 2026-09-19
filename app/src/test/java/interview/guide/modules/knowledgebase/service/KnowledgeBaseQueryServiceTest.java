@@ -581,8 +581,7 @@ class KnowledgeBaseQueryServiceTest {
 
       String logs = capturedLogs();
       assertThat(logs).doesNotContain(tail);
-      assertThat(logs).contains("IllegalStateException: ");
-      assertThat(logs).contains("…");
+      assertThat(logs).contains("IllegalStateException");
     }
 
     @Test
@@ -603,7 +602,7 @@ class KnowledgeBaseQueryServiceTest {
       String logs = capturedLogs();
       assertThat(logs).doesNotContain(questionMarker);
       assertThat(logs).contains("Query rewrite 失败");
-      assertThat(logs).contains("LLM 连接超时");
+      assertThat(logs).contains("IllegalStateException");
       ILoggingEvent warnEvent = logAppender.list.stream()
           .filter(event -> event.getLevel() == Level.WARN)
           .findFirst().orElse(null);
