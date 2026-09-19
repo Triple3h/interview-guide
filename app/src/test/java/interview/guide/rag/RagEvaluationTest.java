@@ -503,7 +503,9 @@ class RagEvaluationTest {
       kb.setFileSize((long) content.length());
       kb.setVectorStatus(VectorStatus.PENDING);
       KnowledgeBaseEntity saved = knowledgeBaseRepository.save(kb);
-      vectorService.vectorizeAndStore(saved.getId(), content);
+      vectorService.vectorizeAndStore(saved.getId(),
+          new interview.guide.infrastructure.file.ParsedDocument(
+              content, interview.guide.infrastructure.file.ParsedDocument.DocumentFormat.MARKDOWN));
       fixtureKbIds.put(fixture, saved.getId());
       int chunks = org.springframework.ai.transformer.splitter.TokenTextSplitter.builder().build()
           .apply(List.of(new org.springframework.ai.document.Document(content))).size();
