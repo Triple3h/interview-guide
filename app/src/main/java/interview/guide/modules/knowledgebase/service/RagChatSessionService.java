@@ -11,6 +11,7 @@ import interview.guide.modules.knowledgebase.model.RagChatDTO.SessionDTO;
 import interview.guide.modules.knowledgebase.model.RagChatDTO.SessionDetailDTO;
 import interview.guide.modules.knowledgebase.model.RagChatDTO.SessionListItemDTO;
 import interview.guide.modules.knowledgebase.model.RagChatMessageEntity;
+import interview.guide.modules.knowledgebase.model.RagChatMessageEntity.MessageType;
 import interview.guide.modules.knowledgebase.model.RagChatSessionEntity;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
 import interview.guide.modules.knowledgebase.repository.RagChatMessageRepository;
@@ -154,6 +155,53 @@ public class RagChatSessionService {
         log.info("准备流式消息: sessionId={}, messageId={}", sessionId, assistantMessage.getId());
 
         return assistantMessage.getId();
+    }
+
+    /**
+     * 重试准备结果：messageId = 被重置为生成中的回答占位，question = 对应的学员提问
+     */
+    public record RetryPreparation(Long messageId, String question) {}
+
+    /**
+     * 重试上一轮回答：把最后一条 AI 回复原位重置为「生成中」占位（顺序不变、内容清空），
+     * 返回它对应的学员提问。未完成的回答不进多轮上下文，因此重试时模型看不到失败的那一轮。
+     */
+    @Transactional
+    public RetryPreparation prepareRetryMessage(Long sessionId, Long userId) {
+        getOwnedSession(sessionId, userId);
+
+        List<RagChatMessageEntity> recent = messageRepository.findRecentBySessionId(sessionId, PageRequest.of(0, 2));
+        if (recent.isEmpty() || recent.getFirst().getType() != MessageType.ASSISTANT
+            || recent.size() < 2 || recent.get(1).getType() != MessageType.USER) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "没有可重试的回答");
+        }
+        RagChatMessageEntity answer = recent.getFirst();
+
+        String question = recent.get(1).getContent();
+        answer.setContent("");
+        answer.setToolStepsJson(null);
+        answer.setTimelineJson(null);
+        answer.setCompleted(false);
+        messageRepository.save(answer);
+
+        log.info("重试流式消息: sessionId={}, messageId={}", sessionId, answer.getId());
+        return new RetryPreparation(answer.getId(), question);
+    }
+
+    /**
+     * 流式响应失败或中断：保留已生成的部分内容，但不标记完成——
+     * 未完成的消息不进多轮上下文，前端据此展示失败态与「重试」入口
+     */
+    @Transactional
+    public void failStreamMessage(Long messageId, String content) {
+        RagChatMessageEntity message = messageRepository.findById(messageId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "消息不存在"));
+
+        message.setContent(content == null ? "" : content);
+        message.setCompleted(false);
+        messageRepository.save(message);
+
+        log.info("标记流式消息失败: messageId={}, partialLength={}", messageId, message.getContent().length());
     }
 
     /**

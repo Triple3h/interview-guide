@@ -31,6 +31,7 @@ import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 import java.time.Duration;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 学习帮手 Agent 控制器
@@ -93,17 +94,47 @@ public class LearningAgentController {
         // 1. 保存用户消息并创建 AI 消息占位（含归属校验）
         Long messageId = sessionService.prepareStreamMessage(sessionId, request.question(), currentUser.id());
 
+        return streamAnswer(sessionId, messageId, request.question(), currentUser.id());
+    }
+
+    /**
+     * 重试上一条回答：后端把最后一条 AI 回复原位重置为占位（不重复落学员提问），再跑一次 Agent。
+     * 失败的回答本身不进多轮上下文（completed=false），因此重试等同于干净地重问一次。
+     */
+    @PostMapping(value = "/api/learning/sessions/{sessionId}/retry",
+                 produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @RateLimit(dimension = RateLimit.Dimension.GLOBAL, count = 5)
+    @RateLimit(dimension = RateLimit.Dimension.IP, count = 5)
+    public Flux<ServerSentEvent<String>> retryStream(@PathVariable Long sessionId,
+                                                     @LoginUser CurrentUser currentUser) {
+        RagChatSessionService.RetryPreparation retry = sessionService.prepareRetryMessage(sessionId, currentUser.id());
+        log.info("收到学习帮手重试请求: sessionId={}, userId={}, messageId={}",
+            sessionId, currentUser.id(), retry.messageId());
+
+        return streamAnswer(sessionId, retry.messageId(), retry.question(), currentUser.id());
+    }
+
+    /**
+     * 构建回答流：把 Agent 事件转成 SSE 实时下发，结束时落库。
+     * 失败时保留已生成的部分内容并标记为未完成（前端据此展示重试入口）。
+     */
+    private Flux<ServerSentEvent<String>> streamAnswer(Long sessionId, Long messageId, String question, Long userId) {
         // 2. 构建 Agent 流（工具步骤 + 回答分片）
-        LearningAgentService.AgentStreamResult stream = agentService.chatStream(
-            sessionId, currentUser.id(), request.question());
+        LearningAgentService.AgentStreamResult stream = agentService.chatStream(sessionId, userId, question);
+        AtomicBoolean answerFailed = new AtomicBoolean(false);
 
         return stream.events()
             .onErrorResume(e -> {
                 log.error("学习帮手流式回答失败: sessionId={}", sessionId, e);
+                answerFailed.set(true);
                 return Flux.just(AgentEvent.error(friendlyAgentError(e)));
             })
             .map(event -> sseEventWriter.typed(event.type(), event))
             .doOnComplete(() -> {
+                if (answerFailed.get()) {
+                    sessionService.failStreamMessage(messageId, stream.content().get());
+                    return;
+                }
                 // 3. 完成后落库（含工具步骤与回答时间线，供前端回放）
                 String content = stream.content().get();
                 if (content.isBlank()) {
@@ -117,7 +148,7 @@ public class LearningAgentController {
             .concatWith(Mono
                 // 4. 首轮回答结束后自动生成会话标题（标题仍是默认占位时才生成），经 title 事件推给前端
                 .defer(() -> Mono.justOrEmpty(sessionTitleService.autoRenameIfDefault(
-                        sessionId, currentUser.id(), request.question(), stream.content().get())
+                        sessionId, userId, question, stream.content().get())
                     .map(title -> sseEventWriter.typed(AgentEvent.TYPE_TITLE, AgentEvent.title(title)))))
                 .subscribeOn(Schedulers.boundedElastic())
                 .timeout(TITLE_EVENT_TIMEOUT)

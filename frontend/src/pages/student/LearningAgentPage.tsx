@@ -5,7 +5,7 @@ import remarkGfm from 'remark-gfm';
 import {Virtuoso, type VirtuosoHandle} from 'react-virtuoso';
 import {useNavigate} from 'react-router-dom';
 import {ragChatApi, type RagChatSessionListItem} from '../../api/ragChat';
-import {learningAgentApi} from '../../api/learningAgent';
+import {learningAgentApi, type AgentStreamHandlers} from '../../api/learningAgent';
 import {useAuth} from '../../auth/AuthContext';
 import type {AgentBlock, AgentStep, AskLearnerPayload, ToolInvocation} from '../../types/learning';
 import {formatDateOnly} from '../../utils/date';
@@ -15,6 +15,7 @@ import AccountMenu from '../../components/AccountMenu';
 import {groupInvocations, ReasoningBlock, ToolCallBlock} from '../../components/learning/AgentBlocks';
 import {useMobileTopBar} from '../../hooks/useMobileTopBarAction';
 import {
+  AlertCircle,
   ArrowLeft,
   ArrowUp,
   CalendarCheck,
@@ -26,6 +27,7 @@ import {
   NotebookPen,
   Pin,
   Plus,
+  RotateCcw,
   Trash2,
   Upload,
 } from 'lucide-react';
@@ -52,6 +54,10 @@ interface Message {
   content: string;
   timestamp: Date;
   blocks: MessageBlock[];
+  /** 本轮失败的提示文案（有值时渲染错误条与重试按钮） */
+  error?: string;
+  /** 后端回放的完成标记：false = 回答失败/中断，同样允许重试 */
+  completed?: boolean;
 }
 
 const SUGGESTIONS = [
@@ -199,6 +205,8 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
           type: m.type,
           content: m.content,
           timestamp: new Date(m.createdAt),
+          // 生成失败/中断的回答：完成标记为 false，界面据此给出重试入口
+          completed: m.completed,
           // 新消息按落库的时间线原顺序回放（思考 → 工具 → 正文）；旧消息退化为「工具卡 + 正文」
           blocks: timeline.length > 0 ? timeline : [
             ...groupInvocations(parseSteps(m.toolSteps))
@@ -368,41 +376,23 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
     block.kind === 'ask' && !block.ask.answer ? {...block, ask: {...block.ask, closed: true}} : block
   ));
 
-  const handleSubmitQuestion = async (preset?: string) => {
-    const raw = (preset ?? question).trim();
+  /** 回答失败：收起未回答的提问卡片，在最后一条回答上挂失败提示（渲染错误条与重试按钮） */
+  const failLastAssistant = (reason: string) => {
+    startTransition(() => {
+      updateLastAssistant((msg) => ({
+        ...msg,
+        error: reason,
+        blocks: closePendingAsks(msg.blocks),
+      }));
+    });
+  };
 
-    // 有待回答提问时，输入框提交的是该题的自定义回答（等价于选项之外的"其他"）
-    if (pendingAsk && !pendingAsk.answer && !pendingAsk.closed) {
-      if (!raw) return;
-      setQuestion('');
-      await handleAnswerAsk(pendingAsk.askId, raw);
-      return;
-    }
-
-    if (!raw || loading) return;
-
-    const userQuestion = raw;
-    setQuestion('');
+  /**
+   * 跑一轮流式回答：新提问走 stream，失败回答走 retry（后端把该条回答原位重置，不重复保存学员提问）。
+   * 调用前需自行把待回答的 assistant 消息追加（重试时为替换）到最后一条。
+   */
+  const runAnswerStream = async (sessionId: number, userQuestion: string, retry: boolean) => {
     setLoading(true);
-
-    let sessionId = currentSessionId;
-    if (!sessionId) {
-      try {
-        const session = await learningAgentApi.createSession();
-        sessionId = session.id;
-        setCurrentSessionId(sessionId);
-        setCurrentSessionTitle(session.title);
-      } catch (err) {
-        console.error('创建会话失败', err);
-        setLoading(false);
-        return;
-      }
-    }
-
-    setMessages((prev) => [...prev,
-      {type: 'user', content: userQuestion, timestamp: new Date(), blocks: []},
-      {type: 'assistant', content: '', timestamp: new Date(), blocks: []},
-    ]);
 
     let fullContent = '';
     // Agent 在本轮补充过学员档案时，流结束后刷新成员资料，让页头与资料弹窗显示最新值
@@ -446,82 +436,125 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
       }
     };
 
+    const handlers: AgentStreamHandlers = {
+      // 后端按分片推送思维链与正文，前端缓冲后按帧合并（同一段思考/正文合并进同一块）
+      onReasoning: (text) => enqueueChunk({kind: 'reasoning', text}),
+      onStep: (step) => {
+        if (step.tool === 'updateLearnerProfile' && step.phase === 'end') {
+          profileUpdated = true;
+        }
+        // 工具卡必须紧跟其前的思考/正文，先冲刷缓冲再插入，避免顺序错位
+        flushPendingChunks();
+        startTransition(() => applyToolStep(step));
+      },
+      onDelta: (text) => {
+        fullContent += text;
+        enqueueChunk({kind: 'text', text});
+      },
+      onAsk: (payload) => {
+        const askId = ++askSeq.current;
+        flushPendingChunks();
+        startTransition(() => {
+          updateLastAssistant((msg) => ({
+            ...msg,
+            blocks: [...msg.blocks, {kind: 'ask', ask: {...payload, askId}}],
+          }));
+        });
+        setPendingAskId(askId);
+      },
+      onComplete: () => {
+        streamClosed = true;
+        // 流结束前先把缓冲里剩下的分片落进时间线，否则结尾会被吞掉
+        flushPendingChunks();
+        // 还没被回答的提问卡片按超时关闭（Agent 已按超时降级继续），弹窗随之消失
+        startTransition(() => {
+          updateLastAssistant((msg) => ({...msg, blocks: closePendingAsks(msg.blocks)}));
+        });
+        setPendingAskId(null);
+        setLoading(false);
+        loadSessions();
+        if (profileUpdated) void refreshProfile();
+      },
+      onTitle: (title) => {
+        // 首轮回答结束后后端自动生成的标题（仅占位标题会被替换）
+        setCurrentSessionTitle(title);
+      },
+      onError: (error: Error) => {
+        console.error('学习帮手回答失败:', error);
+        streamClosed = true;
+        flushPendingChunks();
+        // 失败挂错误条与重试入口：已生成的部分内容与工具卡保留，未回答的提问卡片收起
+        failLastAssistant(error.message || '请重试');
+        setPendingAskId(null);
+        setLoading(false);
+        if (profileUpdated) void refreshProfile();
+      },
+    };
+
     try {
-      await learningAgentApi.streamChat(sessionId, userQuestion, {
-        // 后端按分片推送思维链与正文，前端缓冲后按帧合并（同一段思考/正文合并进同一块）
-        onReasoning: (text) => enqueueChunk({kind: 'reasoning', text}),
-        onStep: (step) => {
-          if (step.tool === 'updateLearnerProfile' && step.phase === 'end') {
-            profileUpdated = true;
-          }
-          // 工具卡必须紧跟其前的思考/正文，先冲刷缓冲再插入，避免顺序错位
-          flushPendingChunks();
-          startTransition(() => applyToolStep(step));
-        },
-        onDelta: (text) => {
-          fullContent += text;
-          enqueueChunk({kind: 'text', text});
-        },
-        onAsk: (payload) => {
-          const askId = ++askSeq.current;
-          flushPendingChunks();
-          startTransition(() => {
-            updateLastAssistant((msg) => ({
-              ...msg,
-              blocks: [...msg.blocks, {kind: 'ask', ask: {...payload, askId}}],
-            }));
-          });
-          setPendingAskId(askId);
-        },
-        onComplete: () => {
-          streamClosed = true;
-          // 流结束前先把缓冲里剩下的分片落进时间线，否则结尾会被吞掉
-          flushPendingChunks();
-          // 还没被回答的提问卡片按超时关闭（Agent 已按超时降级继续），弹窗随之消失
-          startTransition(() => {
-            updateLastAssistant((msg) => ({...msg, blocks: closePendingAsks(msg.blocks)}));
-          });
-          setPendingAskId(null);
-          setLoading(false);
-          loadSessions();
-          if (profileUpdated) void refreshProfile();
-        },
-        onTitle: (title) => {
-          // 首轮回答结束后后端自动生成的标题（仅占位标题会被替换）
-          setCurrentSessionTitle(title);
-        },
-        onError: (error: Error) => {
-          console.error('学习帮手回答失败:', error);
-          streamClosed = true;
-          flushPendingChunks();
-          const fallback = fullContent || `回答失败：${error.message || '请重试'}`;
-          startTransition(() => {
-            updateLastAssistant((msg) => ({
-              ...msg,
-              content: fallback,
-              blocks: [
-                ...closePendingAsks(msg.blocks),
-                ...(fullContent ? [] : [{kind: 'text', text: fallback} as MessageBlock]),
-              ],
-            }));
-          });
-          setPendingAskId(null);
-          setLoading(false);
-          if (profileUpdated) void refreshProfile();
-        },
-      });
+      if (retry) {
+        await learningAgentApi.retryStream(sessionId, handlers);
+      } else {
+        await learningAgentApi.streamChat(sessionId, userQuestion, handlers);
+      }
     } catch (err) {
       console.error('发起流式请求失败:', err);
       streamClosed = true;
       flushPendingChunks();
-      const fallback = fullContent || (err instanceof Error ? err.message : '回答失败，请重试');
-      updateLastAssistant((msg) => ({
-        ...msg,
-        content: fallback,
-        blocks: fullContent ? msg.blocks : [...msg.blocks, {kind: 'text', text: fallback} as MessageBlock],
-      }));
+      failLastAssistant(err instanceof Error ? err.message : '回答失败，请重试');
       setLoading(false);
     }
+  };
+
+  // 重试最后一条失败回答：后端原位重置该条回复，前端换成一个全新的流式气泡
+  const handleRetryAnswer = async () => {
+    const last = messages[messages.length - 1];
+    if (loading || !currentSessionId || !last || last.type !== 'assistant') {
+      return;
+    }
+    setMessages((prev) => [...prev.slice(0, -1),
+      {type: 'assistant', content: '', timestamp: new Date(), blocks: []},
+    ]);
+    await runAnswerStream(currentSessionId, '', true);
+  };
+
+  const handleSubmitQuestion = async (preset?: string) => {
+    const raw = (preset ?? question).trim();
+
+    // 有待回答提问时，输入框提交的是该题的自定义回答（等价于选项之外的"其他"）
+    if (pendingAsk && !pendingAsk.answer && !pendingAsk.closed) {
+      if (!raw) return;
+      setQuestion('');
+      await handleAnswerAsk(pendingAsk.askId, raw);
+      return;
+    }
+
+    if (!raw || loading) return;
+
+    const userQuestion = raw;
+    setQuestion('');
+    setLoading(true);
+
+    let sessionId = currentSessionId;
+    if (!sessionId) {
+      try {
+        const session = await learningAgentApi.createSession();
+        sessionId = session.id;
+        setCurrentSessionId(sessionId);
+        setCurrentSessionTitle(session.title);
+      } catch (err) {
+        console.error('创建会话失败', err);
+        setLoading(false);
+        return;
+      }
+    }
+
+    setMessages((prev) => [...prev,
+      {type: 'user', content: userQuestion, timestamp: new Date(), blocks: []},
+      {type: 'assistant', content: '', timestamp: new Date(), blocks: []},
+    ]);
+
+    await runAnswerStream(sessionId, userQuestion, false);
   };
 
   const formatTimeAgo = (dateStr: string): string => {
@@ -625,6 +658,11 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
   const renderAssistantBody = (msg: Message, index: number) => {
     const streaming = loading && index === messages.length - 1;
     const blocks = msg.blocks;
+    // 失败态：本轮请求失败（error）或历史回放里后端标记为未完成的回答。
+    // 后端重试只针对最后一条回答，所以只有最后一条挂「重试」按钮，更早的失败只保留提示
+    const failReason = msg.error ?? (msg.completed === false ? '回答未完成，请重试' : undefined);
+    const showFailure = !!failReason && !streaming;
+    const canRetry = showFailure && index === messages.length - 1;
     return (
       // 各块自带 mb-3，最后一块去掉，避免气泡底部多出一段空白
       <div className="[&>*:last-child]:mb-0">
@@ -643,6 +681,29 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
           // 未回答 / 超时的提问卡片不占正文（弹窗负责交互）
           return block.ask.answer ? <AskAnswerCard key={i} ask={block.ask}/> : null;
         })}
+        {showFailure && (
+          // 已生成的部分内容保留在错误条上方；重试时后端把这条回答原位重置后重跑
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 dark:border-red-800 dark:bg-red-900/30">
+            <p className="flex items-start gap-2 text-sm leading-relaxed text-red-600 dark:text-red-400">
+              <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0"/>
+              <span>{msg.error ? `回答失败：${msg.error}` : failReason}</span>
+            </p>
+            {canRetry && (
+              <div className="mt-2.5 flex justify-end">
+                <motion.button
+                  onClick={handleRetryAnswer}
+                  disabled={loading}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 active:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-800 dark:bg-transparent dark:text-red-400 dark:hover:bg-red-900/20 dark:active:bg-red-900/40 max-md:px-4 max-md:py-2.5"
+                  whileHover={{scale: 1.02}}
+                  whileTap={{scale: 0.98}}
+                >
+                  <RotateCcw className="w-3.5 h-3.5"/>
+                  重试
+                </motion.button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     );
   };

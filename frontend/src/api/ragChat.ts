@@ -26,6 +26,8 @@ export interface RagChatMessage {
   toolSteps?: string | null;
   /** Agent 回答时间线（JSON 字符串：思考 / 工具调用 / 正文，仅新消息有） */
   timeline?: string | null;
+  /** 回答是否已完成：false = 生成失败/中断（前端展示失败态与重试入口） */
+  completed?: boolean;
   createdAt: string;
 }
 

@@ -29,6 +29,46 @@ interface AgentEventPayload {
   options?: string[];
 }
 
+/** 问答与重试共用同一套 SSE 类型化事件解析（delta/step/reasoning/ask/title） */
+function streamAgent(url: string, init: RequestInit, handlers: AgentStreamHandlers): Promise<void> {
+  return streamSse({
+    url,
+    init,
+    onMessage: (chunk: string) => {
+      let event: AgentEventPayload;
+      try {
+        event = JSON.parse(chunk) as AgentEventPayload;
+      } catch {
+        return;
+      }
+
+      if (event.type === 'delta' && typeof event.text === 'string') {
+        handlers.onDelta(event.text);
+      } else if (event.type === 'reasoning' && typeof event.text === 'string') {
+        handlers.onReasoning(event.text);
+      } else if (event.type === 'ask' && typeof event.question === 'string') {
+        handlers.onAsk({ question: event.question, options: event.options ?? [] });
+      } else if (event.type === 'title' && typeof event.text === 'string') {
+        handlers.onTitle?.(event.text);
+      } else if (event.type === 'step') {
+        handlers.onStep({
+          tool: event.tool ?? 'unknown',
+          phase: (event.phase === 'end' || event.phase === 'error') ? event.phase : 'start',
+          summary: event.summary ?? '',
+          detail: event.detail,
+        });
+      }
+      // error 类型事件由 streamSse 统一抛给 onError
+    },
+    onComplete: handlers.onComplete,
+    onError: handlers.onError,
+    parseMode: 'event',
+    trimDataPrefixSpace: false,
+    unescapeEscapedNewlines: false,
+    dataJoiner: '',
+  });
+}
+
 export const learningAgentApi = {
   /**
    * 创建学习会话（不绑定知识库，由 Agent 自主检索）
@@ -45,48 +85,18 @@ export const learningAgentApi = {
     question: string,
     handlers: AgentStreamHandlers
   ): Promise<void> {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    return streamAgent(`/api/learning/sessions/${sessionId}/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question }),
+    }, handlers);
+  },
 
-    return streamSse({
-      url: `/api/learning/sessions/${sessionId}/stream`,
-      init: {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ question }),
-      },
-      onMessage: (chunk: string) => {
-        let event: AgentEventPayload;
-        try {
-          event = JSON.parse(chunk) as AgentEventPayload;
-        } catch {
-          return;
-        }
-
-        if (event.type === 'delta' && typeof event.text === 'string') {
-          handlers.onDelta(event.text);
-        } else if (event.type === 'reasoning' && typeof event.text === 'string') {
-          handlers.onReasoning(event.text);
-        } else if (event.type === 'ask' && typeof event.question === 'string') {
-          handlers.onAsk({ question: event.question, options: event.options ?? [] });
-        } else if (event.type === 'title' && typeof event.text === 'string') {
-          handlers.onTitle?.(event.text);
-        } else if (event.type === 'step') {
-          handlers.onStep({
-            tool: event.tool ?? 'unknown',
-            phase: (event.phase === 'end' || event.phase === 'error') ? event.phase : 'start',
-            summary: event.summary ?? '',
-            detail: event.detail,
-          });
-        }
-        // error 类型事件由 streamSse 统一抛给 onError
-      },
-      onComplete: handlers.onComplete,
-      onError: handlers.onError,
-      parseMode: 'event',
-      trimDataPrefixSpace: false,
-      unescapeEscapedNewlines: false,
-      dataJoiner: '',
-    });
+  /**
+   * 重试上一条失败的回答：后端把该条回复原位重置后重跑，不会重复保存学员提问
+   */
+  async retryStream(sessionId: number, handlers: AgentStreamHandlers): Promise<void> {
+    return streamAgent(`/api/learning/sessions/${sessionId}/retry`, { method: 'POST' }, handlers);
   },
 
   /**

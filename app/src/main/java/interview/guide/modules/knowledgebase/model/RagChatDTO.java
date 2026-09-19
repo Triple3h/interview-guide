@@ -92,6 +92,7 @@ public class RagChatDTO {
         String content,
         String toolSteps,  // JSON 字符串，Agent 工具调用步骤（仅 ASSISTANT 消息）
         String timeline,  // JSON 字符串，Agent 回答时间线（思考/工具/正文，仅新消息有）
+        Boolean completed,  // 回答是否已完成：false = 生成失败/中断，前端展示重试入口
         LocalDateTime createdAt
     ) {}
 }

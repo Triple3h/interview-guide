@@ -34,6 +34,12 @@ public interface RagChatMessageRepository extends JpaRepository<RagChatMessageEn
     List<RagChatMessageEntity> findRecentCompletedBySessionId(@Param("sessionId") Long sessionId, Pageable pageable);
 
     /**
+     * 获取会话中最近 N 条消息（含未完成，按 messageOrder 倒序取，重试时定位最后一条回答用）
+     */
+    @Query("SELECT m FROM RagChatMessageEntity m WHERE m.session.id = :sessionId ORDER BY m.messageOrder DESC")
+    List<RagChatMessageEntity> findRecentBySessionId(@Param("sessionId") Long sessionId, Pageable pageable);
+
+    /**
     @Query("SELECT COUNT(m) FROM RagChatMessageEntity m WHERE m.session.id = :sessionId")
     Integer countBySessionId(@Param("sessionId") Long sessionId);
 
