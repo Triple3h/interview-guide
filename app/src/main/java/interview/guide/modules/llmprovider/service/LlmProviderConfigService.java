@@ -1274,7 +1274,8 @@ public class LlmProviderConfigService {
       LinkedHashMap<String, Object> values = new LinkedHashMap<>();
       values.put("url", asr.getUrl());
       values.put("model", asr.getModel());
-      values.put("api-key", "${AI_BAILIAN_API_KEY}");
+      // 占位符带空默认值：环境变量缺失时退回空串，避免重启解析失败导致启动中断
+      values.put("api-key", "${AI_BAILIAN_API_KEY:}");
       values.put("language", asr.getLanguage());
       values.put("format", asr.getFormat());
       values.put("sample-rate", asr.getSampleRate());
@@ -1290,7 +1291,7 @@ public class LlmProviderConfigService {
     mutateYamlText(ErrorCode.VOICE_CONFIG_WRITE_FAILED, "写入 TTS 配置失败", editor -> {
       LinkedHashMap<String, Object> values = new LinkedHashMap<>();
       values.put("model", tts.getModel());
-      values.put("api-key", "${AI_BAILIAN_API_KEY}");
+      values.put("api-key", "${AI_BAILIAN_API_KEY:}");
       values.put("voice", tts.getVoice());
       values.put("format", tts.getFormat());
       values.put("sample-rate", tts.getSampleRate());
@@ -1306,7 +1307,7 @@ public class LlmProviderConfigService {
     mutateYamlText(ErrorCode.VOICE_CONFIG_WRITE_FAILED, "写入火山 ASR 配置失败", editor -> {
       LinkedHashMap<String, Object> values = new LinkedHashMap<>();
       values.put("url", asr.getUrl());
-      values.put("api-key", "${VOLC_AGENT_PLAN_VOICE_API_KEY}");
+      values.put("api-key", "${VOLC_AGENT_PLAN_VOICE_API_KEY:}");
       values.put("resource-id", asr.getResourceId());
       values.put("model-name", asr.getModelName());
       values.put("format", asr.getFormat());
@@ -1326,7 +1327,7 @@ public class LlmProviderConfigService {
     mutateYamlText(ErrorCode.VOICE_CONFIG_WRITE_FAILED, "写入火山 TTS 配置失败", editor -> {
       LinkedHashMap<String, Object> values = new LinkedHashMap<>();
       values.put("url", tts.getUrl());
-      values.put("api-key", "${VOLC_AGENT_PLAN_VOICE_API_KEY}");
+      values.put("api-key", "${VOLC_AGENT_PLAN_VOICE_API_KEY:}");
       values.put("resource-id", tts.getResourceId());
       values.put("speaker", tts.getSpeaker());
       values.put("format", tts.getFormat());

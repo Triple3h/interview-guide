@@ -495,7 +495,7 @@ class LlmProviderConfigServiceTest {
             String yamlContent = Files.readString(yaml, StandardCharsets.UTF_8);
             assertTrue(yamlContent.contains("asr-provider: volcengine"));
             assertTrue(yamlContent.contains("resource-id: volc.seedasr.sauc.duration"));
-            assertTrue(yamlContent.contains("${VOLC_AGENT_PLAN_VOICE_API_KEY}"));
+            assertTrue(yamlContent.contains("${VOLC_AGENT_PLAN_VOICE_API_KEY:}"));
             String envContent = Files.readString(env, StandardCharsets.UTF_8);
             assertTrue(envContent.contains("VOLC_AGENT_PLAN_VOICE_API_KEY=volc-key"));
             verify(asrService).reload(any(VoiceInterviewProperties.class));

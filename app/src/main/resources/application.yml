@@ -27,7 +27,14 @@ springdoc:
 
 spring:
   config:
-    import: optional:classpath:voice-interview-opening.yml
+    # 运行期写入的配置（设置页保存的语音/模型参数）必须在重启后仍然生效：
+    # - llm-providers.env 以 properties 形式导入（承载 API Key，扩展名需用 [.properties] 提示）
+    # - llm-providers.yml 覆盖 app.* 参数（provider 选择、URL、音色等）
+    # 两者由 LlmProviderConfigService 写入 ${user.home}/.interview-guide/，容器部署必须挂载该目录（见 docs/deploy-tc-cloud.md）
+    import:
+      - optional:classpath:voice-interview-opening.yml
+      - optional:file:${APP_AI_CONFIG_ENV_PATH:${user.home}/.interview-guide/llm-providers.env}[.properties]
+      - optional:file:${APP_AI_CONFIG_YAML_PATH:${user.home}/.interview-guide/llm-providers.yml}
   application:
     name: ai-interview-platform
 
@@ -111,8 +118,6 @@ sa-token:
 # Application custom configuration
 app:
   auth:
-    # 管理端固定登录 Token（只放 .env，改动后需重启 app 生效）
-    admin-token: ${APP_ADMIN_TOKEN:}
     # 过渡开关：允许旧版 X-User-Id 请求头兜底（前后端全部切换完成后置 false）
     legacy-header-enabled: ${APP_AUTH_LEGACY_HEADER_ENABLED:true}
   ai:

@@ -45,6 +45,29 @@
 - **18080（HTTP）已于 2026-09-19 撤销**，公网只保留 443。要临时恢复：把 `docker-compose.prod.yml` 的 `- "443:443"` 旁边加回 `- "18080:80"` 并 `up -d frontend`（备份见 `docker-compose.prod.yml.bak.before-no18080`）。
 - 切换入口后 origin 改变，浏览器 `localStorage` 里的登录 token 不通用，**学员端与管理端各需重新登录一次**。
 
+## 运行期配置的持久化（设置页保存的模型 / 语音配置）
+
+设置页保存的内容分两类，落点不同：
+
+- **LLM Provider（对话 / 向量模型）** → 存 PostgreSQL（`llm_provider_config` + `llm_global_setting`，Key 加密），跟数据库走，容器重建不受影响。
+- **语音服务（ASR / TTS）** → 写文件：`~/.interview-guide/llm-providers.yml`（provider 选择、URL、音色等）+ `llm-providers.env`（API Key）。
+
+容器内 `~/.interview-guide/` 默认**不挂卷**，`docker compose up -d app` 重建容器即清空。因此：
+
+1. `docker-compose.prod.yml` 的 `app` 服务必须挂载：
+   ```yaml
+   volumes:
+     - /data/docker/interview-guide/app-config:/root/.interview-guide
+   ```
+   （2026-09-19 已加；改前备份 `docker-compose.prod.yml.bak.before-configvolume`。）
+2. 应用启动时通过 `application.yml` 的 `spring.config.import` 把这两个文件读回 Environment：
+   - `llm-providers.env` 用 `[.properties]` 后缀提示，才能按 properties 解析（`optional:file:.../llm-providers.env[.properties]`）；
+   - `llm-providers.yml` 直接作为 YAML 导入。
+   两者都是 `optional:`，文件不存在时静默跳过。
+3. 写入端 YAML 里的 Key 占位符统一带空默认值（`${XXX:}`），**不要改回不带默认值的写法** —— 环境变量缺失时会导致启动期绑定失败。
+
+排查：容器重建后如果语音配置「又变回未配置」，先看启动日志里 `VolcAsrService 未配置专属 API Key` 是否回归（说明文件没读到或目录没挂上）。
+
 ## 日常部署流程
 
 一条命令：
@@ -79,6 +102,7 @@ scripts/deploy-tc-cloud.sh
 - **rsync 源路径受 shell 当前目录影响**：曾因 shell 工作目录停在 `frontend/`，把前端文件拷到服务器项目根、并 `--delete` 误删服务器后端源码树。任何手写 rsync 一律用绝对路径；`--exclude '.env'` 和 `--exclude 'docker-compose.prod.yml'` 在全量同步时永远不能省（服务器上仅此两份）。
 - **服务器构建 Gradle 下载超时**：`Read timed out` 即国内网络问题，按上文备用方案处理；薄构建路径完全不受影响。
 - **pnpm 身份校验**：见上，只影响多阶段构建路径。
+- **语音配置「配好又丢」**（2026-09-19 实测）：`app` 容器没挂 `~/.interview-guide` 卷 + 应用启动时没有任何代码读回那两个配置文件的组合，会让设置页保存的 ASR/TTS 配置在**每次重建容器后回到默认值**（表现为：切了火山方舟、填了 Key，过一阵打开又显示「未配置」）。已由「挂卷 + `spring.config.import`」修复，详见上一节。
 
 ## 首次部署 / 服务器重装后
 
