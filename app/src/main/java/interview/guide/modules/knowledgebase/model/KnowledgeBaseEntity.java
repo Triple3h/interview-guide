@@ -73,6 +73,24 @@ public class KnowledgeBaseEntity {
     // 向量分块数量
     private Integer chunkCount = 0;
 
+    /**
+     * 本次向量化使用的分块策略快照（无密钥 JSON）；null 表示旧版默认策略。
+     */
+    @Column(name = "vector_config")
+    private String vectorConfig;
+
+    /**
+     * 最近一次向量化完成时间。
+     */
+    @Column(name = "vectorized_at")
+    private LocalDateTime vectorizedAt;
+
+    /**
+     * 最后一次有效进展时间（状态变化与心跳都推进），用于卡住任务恢复判定。
+     */
+    @Column(name = "vector_updated_at")
+    private LocalDateTime vectorUpdatedAt;
+
     // 问题生成状态
     @Enumerated(EnumType.STRING)
     @Column(length = 20)
@@ -248,6 +266,30 @@ public class KnowledgeBaseEntity {
 
     public void setChunkCount(Integer chunkCount) {
         this.chunkCount = chunkCount;
+    }
+
+    public String getVectorConfig() {
+        return vectorConfig;
+    }
+
+    public void setVectorConfig(String vectorConfig) {
+        this.vectorConfig = vectorConfig;
+    }
+
+    public LocalDateTime getVectorizedAt() {
+        return vectorizedAt;
+    }
+
+    public void setVectorizedAt(LocalDateTime vectorizedAt) {
+        this.vectorizedAt = vectorizedAt;
+    }
+
+    public LocalDateTime getVectorUpdatedAt() {
+        return vectorUpdatedAt;
+    }
+
+    public void setVectorUpdatedAt(LocalDateTime vectorUpdatedAt) {
+        this.vectorUpdatedAt = vectorUpdatedAt;
     }
 
     public QuestionGenStatus getQuestionGenStatus() {
