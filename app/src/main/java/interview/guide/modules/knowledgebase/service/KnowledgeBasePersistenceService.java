@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.LocalDateTime;
 import java.util.Map;
 
 /**
@@ -38,12 +39,14 @@ public class KnowledgeBasePersistenceService {
         kb.incrementAccessCount();
         knowledgeBaseRepository.save(kb);
 
-        // 重复知识库的向量数据应该已经存在，不需要重新向量化
+        // 重复知识库的向量数据应该已经存在，不需要重新向量化；响应契约与新上传保持一致
         return Map.of(
             "knowledgeBase", Map.of(
                 "id", kb.getId(),
                 "name", kb.getName(),
-                "fileSize", kb.getFileSize()
+                "category", kb.getCategory() != null ? kb.getCategory() : "",
+                "fileSize", kb.getFileSize(),
+                "vectorStatus", kb.getVectorStatus() != null ? kb.getVectorStatus().name() : "PENDING"
             ),
             "storage", Map.of(
                 "fileKey", kb.getStorageKey() != null ? kb.getStorageKey() : "",
@@ -92,6 +95,22 @@ public class KnowledgeBasePersistenceService {
         knowledgeBaseRepository.save(kb);
 
         log.info("知识库向量化状态已更新为 PENDING: kbId={}", kbId);
+    }
+
+    /**
+     * 向量化成功后的快照更新：Chunk 数、分块策略 JSON、完成时间与进展时间。
+     * 由调用方以独立短事务触发，失败路径不写成功快照。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void updateVectorizationSnapshot(Long knowledgeBaseId, int chunkCount, String vectorConfig) {
+        knowledgeBaseRepository.findById(knowledgeBaseId).ifPresent(kb -> {
+            LocalDateTime now = LocalDateTime.now();
+            kb.setChunkCount(chunkCount);
+            kb.setVectorConfig(vectorConfig);
+            kb.setVectorizedAt(now);
+            kb.setVectorUpdatedAt(now);
+            knowledgeBaseRepository.save(kb);
+        });
     }
 
     /**

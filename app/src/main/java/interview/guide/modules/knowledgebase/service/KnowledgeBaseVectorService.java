@@ -41,6 +41,7 @@ public class KnowledgeBaseVectorService {
     private final VectorRepository vectorRepository;
     private final TransactionalExecutor transactionalExecutor;
     private final KnowledgeBaseVectorizeProperties vectorizeProperties;
+    private final KnowledgeBasePersistenceService persistenceService;
     /** 上一次 embedding 请求的发起时间，用于把请求速率压在供应商限流阈值内 */
     private final AtomicLong lastEmbeddingRequestAt = new AtomicLong(0L);
     private final Object embeddingRequestLock = new Object();
@@ -51,17 +52,19 @@ public class KnowledgeBaseVectorService {
         DocumentChunkingService chunkingService,
         VectorRepository vectorRepository,
         TransactionalExecutor transactionalExecutor,
-        KnowledgeBaseVectorizeProperties vectorizeProperties
+        KnowledgeBaseVectorizeProperties vectorizeProperties,
+        KnowledgeBasePersistenceService persistenceService
     ) {
         this.vectorStore = vectorStore;
         this.chunkingService = chunkingService;
         this.vectorRepository = vectorRepository;
         this.transactionalExecutor = transactionalExecutor;
         this.vectorizeProperties = vectorizeProperties;
+        this.persistenceService = persistenceService;
     }
 
     KnowledgeBaseVectorService(VectorStore vectorStore, DocumentChunkingService chunkingService, VectorRepository vectorRepository) {
-        this(vectorStore, chunkingService, vectorRepository, null, disabledThrottleProperties());
+        this(vectorStore, chunkingService, vectorRepository, null, disabledThrottleProperties(), null);
     }
 
     KnowledgeBaseVectorService(
@@ -70,7 +73,7 @@ public class KnowledgeBaseVectorService {
         VectorRepository vectorRepository,
         KnowledgeBaseVectorizeProperties vectorizeProperties
     ) {
-        this(vectorStore, chunkingService, vectorRepository, null, vectorizeProperties);
+        this(vectorStore, chunkingService, vectorRepository, null, vectorizeProperties, null);
     }
 
     /** 单测专用：关闭请求间隔与退避等待，避免用例被节流拖慢 */
@@ -119,6 +122,8 @@ public class KnowledgeBaseVectorService {
                 addBatchWithThrottle(knowledgeBaseId, batch, i + 1, batchCount);
             }
             activateVectorJob(knowledgeBaseId, jobId);
+            // 提升成功后以独立短事务写入分块策略快照与统计（失败路径不写成功快照）
+            updateVectorizationSnapshot(knowledgeBaseId, totalChunks);
             log.info("知识库向量化完成: kbId={}, jobId={}, chunks={}, batches={}",
                     knowledgeBaseId, jobId, totalChunks, batchCount);
             return totalChunks;
@@ -129,6 +134,27 @@ public class KnowledgeBaseVectorService {
             throw new BusinessException(ErrorCode.KNOWLEDGE_BASE_VECTORIZATION_FAILED,
                 "向量化知识库失败: " + e.getMessage());
         }
+    }
+
+    /**
+     * 向量化成功后的快照：chunk 数、分块策略标识、完成时间。
+     * 分块策略由 {@code DocumentChunkingService} 按文档类型动态选择，
+     * 快照只记录策略族与版本，不含任何密钥或原文。
+     */
+    private void updateVectorizationSnapshot(Long knowledgeBaseId, int chunkCount) {
+        if (persistenceService == null) {
+            return;
+        }
+        String configJson = String.format(
+            "{\"splitter\":\"document-chunking\",\"chunkCount\":%d,\"strategyVersion\":\"kb-chunking-v1\"}",
+            chunkCount);
+        Runnable update = () -> persistenceService.updateVectorizationSnapshot(
+            knowledgeBaseId, chunkCount, configJson);
+        if (transactionalExecutor == null) {
+            update.run();
+            return;
+        }
+        transactionalExecutor.run(update);
     }
 
     /**
@@ -221,8 +247,8 @@ public class KnowledgeBaseVectorService {
      * @return 相关文档列表
      */
     public List<Document> similaritySearch(String query, List<Long> knowledgeBaseIds, int topK, double minScore) {
-        log.info("向量相似度搜索: query={}, kbIds={}, topK={}, minScore={}",
-            query, knowledgeBaseIds, topK, minScore);
+        log.info("向量相似度搜索: queryLength={}, kbIds={}, topK={}, minScore={}",
+            query.length(), knowledgeBaseIds, topK, minScore);
         
         try {
             SearchRequest.Builder builder = SearchRequest.builder()

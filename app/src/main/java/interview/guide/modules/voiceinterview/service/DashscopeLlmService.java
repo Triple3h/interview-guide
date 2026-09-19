@@ -2,6 +2,7 @@ package interview.guide.modules.voiceinterview.service;
 
 import interview.guide.common.ai.LlmProviderRegistry;
 import interview.guide.common.ai.PromptSanitizer;
+import interview.guide.common.log.ErrorLogSanitizer;
 import interview.guide.modules.resume.model.ResumeEntity;
 import interview.guide.modules.resume.repository.ResumeRepository;
 import interview.guide.modules.voiceinterview.config.VoiceInterviewProperties;
@@ -56,13 +57,13 @@ public class DashscopeLlmService {
             String content = response.chatResponse().getResult().getOutput().getText();
             String optimized = optimizeForVoice(content);
 
-            log.info("LLM response generated for session {}: {}", session.getId(),
-                     optimized.substring(0, Math.min(100, optimized.length())));
+            log.info("LLM response generated for session {}: replyLength={}",
+                     session.getId(), optimized.length());
 
             return optimized;
 
         } catch (Exception e) {
-            log.error("LLM chat error for session {}: {}", session.getId(), e.getMessage(), e);
+            log.error("LLM chat error for session {}: {}", session.getId(), ErrorLogSanitizer.summarize(e), e);
             return mapLlmErrorToUserMessage(e);
         }
     }
@@ -154,11 +155,11 @@ public class DashscopeLlmService {
                 onToken.accept(optimized);
             }
 
-            log.info("LLM sentence stream response for session {}: {}", session.getId(),
-                optimized.substring(0, Math.min(100, optimized.length())));
+            log.info("LLM sentence stream response for session {}: replyLength={}",
+                session.getId(), optimized.length());
             return optimized;
         } catch (Exception e) {
-            log.error("LLM sentence stream error for session {}: {}", session.getId(), e.getMessage(), e);
+            log.error("LLM sentence stream error for session {}: {}", session.getId(), ErrorLogSanitizer.summarize(e), e);
             return mapLlmErrorToUserMessage(e);
         }
     }

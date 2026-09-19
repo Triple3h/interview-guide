@@ -9,6 +9,10 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "app.ai.rag")
 public class KnowledgeBaseQueryProperties {
 
+    /**
+     * RAG 业务指标开关（app.rag.* Micrometer 指标），默认开启。
+     */
+    private boolean metricsEnabled = true;
     private Rewrite rewrite = new Rewrite();
     private Search search = new Search();
     private History history = new History();
@@ -23,6 +27,11 @@ public class KnowledgeBaseQueryProperties {
 
     @Data
     public static class Search {
+        /**
+         * 双路召回融合：开启后改写 Query 与原始 Query 各自检索一次并按 Document 去重融合。
+         * 测评证明整体收益成立前默认关闭。
+         */
+        private boolean mergeOriginalQuery = false;
         private int shortQueryLength = 4;
         private int topkShort = 20;
         private int topkMedium = 12;

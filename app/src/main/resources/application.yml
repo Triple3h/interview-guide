@@ -79,7 +79,7 @@ spring:
       config: |
         singleServerConfig:
           address: "redis://${REDIS_HOST:localhost}:${REDIS_PORT:6379}"
-          database: 0
+          database: ${REDIS_DATABASE:0}
           connectionMinimumIdleSize: 10
           connectionPoolSize: 64
           subscriptionConnectionMinimumIdleSize: 1
@@ -191,9 +191,13 @@ app:
     # 是否启用 Spring AI 2.0 entity schema validation retry（失败时仍受 structured-max-attempts 外层控制）
     structured-schema-validation-enabled: ${APP_AI_STRUCTURED_SCHEMA_VALIDATION_ENABLED:true}
     rag:
+      # RAG 业务指标（app.rag.*）开关
+      metrics-enabled: ${APP_AI_RAG_METRICS_ENABLED:true}
       rewrite:
         enabled: ${APP_AI_RAG_REWRITE_ENABLED:true}
       search:
+        # 双路召回融合（改写 Query + 原始 Query），测评证明收益前默认关闭
+        merge-original-query: ${APP_AI_RAG_MERGE_ORIGINAL_QUERY:false}
         short-query-length: ${APP_AI_RAG_SHORT_QUERY_LENGTH:4}
         topk-short: ${APP_AI_RAG_TOPK_SHORT:20}
         topk-medium: ${APP_AI_RAG_TOPK_MEDIUM:12}
@@ -214,6 +218,10 @@ app:
     follow-up-count: ${APP_INTERVIEW_FOLLOW_UP_COUNT:1}
     evaluation:
       batch-size: ${APP_INTERVIEW_EVALUATION_BATCH_SIZE:8}
+      # 批次失败后按问答组二分重试（共享额外调用预算）
+      fallback-split-enabled: ${APP_INTERVIEW_EVALUATION_FALLBACK_SPLIT_ENABLED:true}
+      fallback-max-extra-calls: ${APP_INTERVIEW_EVALUATION_FALLBACK_MAX_EXTRA_CALLS:6}
+      fallback-min-groups: ${APP_INTERVIEW_EVALUATION_FALLBACK_MIN_GROUPS:2}
   resume:
     upload-dir: ${java.io.tmpdir}/ai-interview/resumes
     allowed-types:
@@ -250,6 +258,16 @@ app:
 
   # Voice interview configuration
   voice-interview:
+    # 上下文压缩：enabled=false 是唯一关闭方式（仅本地排查用）；
+    # enabled=true 时无论何种模式都执行字符硬预算（摘要 + 近期历史 <= max-history-chars）
+    context-compression:
+      enabled: ${APP_VOICE_INTERVIEW_CONTEXT_COMPRESSION_ENABLED:true}
+      mode: ${APP_VOICE_INTERVIEW_CONTEXT_COMPRESSION_MODE:SUMMARY}
+      window-size: ${APP_VOICE_INTERVIEW_CONTEXT_COMPRESSION_WINDOW_SIZE:20}
+      summary-batch-size: ${APP_VOICE_INTERVIEW_CONTEXT_COMPRESSION_SUMMARY_BATCH_SIZE:10}
+      max-history-chars: ${APP_VOICE_INTERVIEW_CONTEXT_COMPRESSION_MAX_HISTORY_CHARS:12000}
+      max-summary-chars: ${APP_VOICE_INTERVIEW_CONTEXT_COMPRESSION_MAX_SUMMARY_CHARS:4000}
+
     # Phase duration settings (minutes)
     phase:
       intro:
