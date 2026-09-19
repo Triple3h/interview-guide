@@ -18,10 +18,32 @@
 | 容器 | 镜像来源 | 说明 |
 | --- | --- | --- |
 | `interview-app` | `app/Dockerfile.prod` | Spring Boot 后端，映射 8080 |
-| `interview-frontend` | `frontend/Dockerfile.prod` | Nginx 托管前端产物，映射 18080 |
+| `interview-frontend` | `frontend/Dockerfile.prod` | Nginx 托管前端产物，映射 443（HTTPS） |
 | `interview-postgres` / `interview-redis` / `interview-minio` | 官方镜像 | 常驻基础组件，日常部署不动 |
 
 - 数据全部在 docker named volumes（`postgres_data` / `redis_data` / `minio_data`），重建应用容器不丢数据。
+
+## 统一入口网关（443）
+
+443 由**独立网关容器**占用，interview 前端容器只映射 18080（HTTP），不再自己对外提供 TLS。
+
+- 网关在服务器 `/data/docker/gateway/`（`docker-compose.yml` + `conf.d/default.conf` + `certs/`），仓库里留了一份备份在 `deploy/gateway/`。
+- 启停与改配置：`cd /data/docker/gateway && docker compose up -d`；改完配置 `docker exec gateway-nginx nginx -s reload`。
+- 它用 **host 网络**，所以能直接 `proxy_pass http://127.0.0.1:18080` 转发给 interview，不必加入任何项目的 docker network；将来接入别的项目同理（各项目的宿主端口）。
+- 证书与 interview 共用同一张自签证书（SAN 是 IP，一张通用）。换证书只需替换 `certs/` 下两个文件再 reload。
+- 网关对代理做了三处针对性设置：`proxy_buffering off`（否则学习帮手的 SSE 流式会被攒着一次性吐出）、`proxy_read_timeout 3600s`（语音面试单场最长 1 小时）、WebSocket 升级头映射（`/ws/voice-interview/{id}`）。
+- `X-Forwarded-For` 用 `$remote_addr` **覆写**（丢弃客户端自带的），这样后端 `RateLimitAspect` 取到的第一段永远是真实来源 IP，既保证按 IP 限流准确、也不能靠伪造 XFF 绕过。
+- 宿主机 80 被 `realestate-frontend` 占用，所以网关只监听 443。
+- 接入新项目：在 `conf.d/default.conf` 追加带前缀的 location（文件内附注释示例），**同时该项目自己要支持子路径**（vite `base` + router `basename` + API 前缀），否则它的 `/api` 会和别人撞车。
+
+## HTTPS 与证书
+
+- 站点使用**自建 CA 签发的自签证书**（SAN = `IP:159.75.135.213`，10 年有效期至 2036，无需续期）。CA 与私钥存放在本机 `~/.keys/interview-guide-tls/`，部署副本在 `frontend/certs/`（已在 `frontend/.gitignore` 中，不会入库）。
+- `frontend/nginx.conf` 用**同一个 server 块同时 `listen 80` 与 `listen 443 ssl`**，`/`、`/api/`、`/ws/` 三处 location 天然共用 —— 刻意不拆成两个块，避免漏配（漏掉 `/ws/` 会让语音面试直接挂掉）。
+- `frontend/Dockerfile.prod` 会 `COPY certs /etc/nginx/certs`；`scripts/deploy-tc-cloud.sh` 负责把 `frontend/certs/` 同步到服务器。**换证书只需替换本地文件后重跑一次部署。**
+- 安卓 APK 内置了这张 CA（`frontend/android/app/src/main/res/xml/network_security_config.xml` + `res/raw/home_ca.crt`），WebView 不会报证书错误；手机浏览器直接访问会有自签警告，点「继续访问」即可。
+- **18080（HTTP）已于 2026-09-19 撤销**，公网只保留 443。要临时恢复：把 `docker-compose.prod.yml` 的 `- "443:443"` 旁边加回 `- "18080:80"` 并 `up -d frontend`（备份见 `docker-compose.prod.yml.bak.before-no18080`）。
+- 切换入口后 origin 改变，浏览器 `localStorage` 里的登录 token 不通用，**学员端与管理端各需重新登录一次**。
 
 ## 日常部署流程
 

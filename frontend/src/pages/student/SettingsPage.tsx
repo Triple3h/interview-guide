@@ -11,6 +11,8 @@ import Select from '../../components/ui/Select';
 import type {
   ProviderItem, CreateProviderRequest, UpdateProviderRequest,
   ProviderTestResult, AsrConfig, TtsConfig, AsrConfigRequest, TtsConfigRequest,
+  VoiceProvider, DashscopeAsrConfigRequest, VolcengineAsrConfigRequest,
+  DashscopeTtsConfigRequest, VolcengineTtsConfigRequest,
 } from '../../types/llmProvider';
 
 // Provider 预设：已知 Provider 的 Base URL、推荐模型和向量模型
@@ -118,6 +120,35 @@ function StatusBadge({ icon, children }: StatusBadgeProps) {
   );
 }
 
+// 语音服务：提供方展示与提示
+const VOICE_PROVIDER_LABELS: Record<VoiceProvider, string> = {
+  dashscope: 'DashScope',
+  volcengine: '火山方舟',
+};
+
+const VOICE_PROVIDER_OPTIONS: { value: VoiceProvider; label: string }[] = [
+  { value: 'dashscope', label: 'DashScope（Qwen3 Realtime）' },
+  { value: 'volcengine', label: '火山方舟（Agent Plan 语音）' },
+];
+
+const VOICE_INPUT_CLASS = `w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600
+  bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white
+  placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500/50
+  focus:border-primary-400 transition-shadow`;
+
+function ProviderBadge({ provider }: { provider: VoiceProvider }) {
+  return (
+    <span className="inline-flex h-6 flex-shrink-0 items-center gap-1.5 rounded-full bg-slate-100 px-2.5 text-xs font-semibold text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+      <Server className="h-3 w-3" />
+      {VOICE_PROVIDER_LABELS[provider]}
+    </span>
+  );
+}
+
+function formatMaskedKey(maskedApiKey?: string): string {
+  return !maskedApiKey || maskedApiKey === '***' ? '未配置' : maskedApiKey;
+}
+
 function ConfigRow({ label, value, title, monospace = false, emphasis = false }: ConfigRowProps) {
   return (
     <div
@@ -191,7 +222,11 @@ export default function SettingsPage() {
   const [showVoiceModal, setShowVoiceModal] = useState<'asr' | 'tts' | null>(null);
   const [testingAsr, setTestingAsr] = useState(false);
   const [asrTestResult, setAsrTestResult] = useState<ProviderTestResult | null>(null);
+  const [testingTts, setTestingTts] = useState(false);
+  const [ttsTestResult, setTtsTestResult] = useState<ProviderTestResult | null>(null);
   const [voiceSaving, setVoiceSaving] = useState(false);
+  // 火山方舟参数已按官方推荐预置，默认收起「高级设置」
+  const [showVolcAdvanced, setShowVolcAdvanced] = useState(false);
 
   // ASR/TTS form fields
   const [asrForm, setAsrForm] = useState<AsrConfigRequest>({});
@@ -467,38 +502,84 @@ export default function SettingsPage() {
   const openAsrModal = () => {
     if (!asrConfig) return;
     setAsrForm({
-      url: asrConfig.url,
-      model: asrConfig.model,
-      language: asrConfig.language,
-      format: asrConfig.format,
-      sampleRate: asrConfig.sampleRate,
-      enableTurnDetection: asrConfig.enableTurnDetection,
-      turnDetectionType: asrConfig.turnDetectionType,
-      turnDetectionThreshold: asrConfig.turnDetectionThreshold,
-      turnDetectionSilenceDurationMs: asrConfig.turnDetectionSilenceDurationMs,
+      provider: asrConfig.provider,
+      dashscope: { ...asrConfig.dashscope },
+      volcengine: { ...asrConfig.volcengine },
     });
+    setShowVolcAdvanced(false);
     setShowVoiceModal('asr');
   };
 
   const openTtsModal = () => {
     if (!ttsConfig) return;
     setTtsForm({
-      model: ttsConfig.model,
-      voice: ttsConfig.voice,
-      format: ttsConfig.format,
-      sampleRate: ttsConfig.sampleRate,
-      mode: ttsConfig.mode,
-      languageType: ttsConfig.languageType,
-      speechRate: ttsConfig.speechRate,
-      volume: ttsConfig.volume,
+      provider: ttsConfig.provider,
+      dashscope: { ...ttsConfig.dashscope },
+      volcengine: { ...ttsConfig.volcengine },
     });
+    setShowVolcAdvanced(false);
     setShowVoiceModal('tts');
   };
 
+  const validateAsrForm = (): string | null => {
+    if (asrForm.provider === 'volcengine') {
+      const volc = asrForm.volcengine ?? {};
+      const hasExistingKey = !!asrConfig?.volcengine.maskedApiKey && asrConfig.volcengine.maskedApiKey !== '***';
+      if (!volc.apiKey?.trim() && !hasExistingKey) return '请填写 Agent Plan 专属 API Key';
+      if (!volc.url?.trim()) return '请填写火山方舟 ASR WebSocket URL';
+      if (!volc.resourceId?.trim()) return '请填写 X-Api-Resource-Id';
+      if (!volc.modelName?.trim()) return '请填写 Model Name';
+      if (volc.sampleRate !== undefined && volc.sampleRate !== 16000) {
+        return '火山方舟 ASR 采样率仅支持 16000';
+      }
+      if (volc.bits !== undefined && volc.bits !== 16) return '火山方舟 ASR 位深仅支持 16';
+      if (volc.segmentMs !== undefined && (volc.segmentMs < 100 || volc.segmentMs > 1000)) {
+        return '分包时长需在 100-1000ms（推荐 200ms）';
+      }
+      return null;
+    }
+    const dashscope = asrForm.dashscope ?? {};
+    if (!dashscope.url?.trim()) return '请填写 ASR WebSocket URL';
+    if (!dashscope.model?.trim()) return '请填写识别模型';
+    return null;
+  };
+
+  const validateTtsForm = (): string | null => {
+    if (ttsForm.provider === 'volcengine') {
+      const volc = ttsForm.volcengine ?? {};
+      const hasExistingKey = !!ttsConfig?.volcengine.maskedApiKey && ttsConfig.volcengine.maskedApiKey !== '***';
+      if (!volc.apiKey?.trim() && !hasExistingKey) return '请填写 Agent Plan 专属 API Key';
+      if (!volc.url?.trim()) return '请填写火山方舟 TTS WebSocket URL';
+      if (!volc.resourceId?.trim()) return '请填写 X-Api-Resource-Id';
+      if (!volc.speaker?.trim()) return '请填写音色 ID';
+      return null;
+    }
+    const dashscope = ttsForm.dashscope ?? {};
+    if (!dashscope.model?.trim()) return '请填写合成模型';
+    if (!dashscope.voice?.trim()) return '请填写音色';
+    return null;
+  };
+
   const handleSaveAsr = async () => {
+    const validationError = validateAsrForm();
+    if (validationError) {
+      showToast(validationError, 'error');
+      return;
+    }
+    const provider = asrForm.provider ?? 'dashscope';
+    const payload: AsrConfigRequest = { provider };
+    if (provider === 'volcengine') {
+      const part: VolcengineAsrConfigRequest = { ...(asrForm.volcengine ?? {}) };
+      if (!part.apiKey?.trim()) delete part.apiKey;
+      payload.volcengine = part;
+    } else {
+      const part: DashscopeAsrConfigRequest = { ...(asrForm.dashscope ?? {}) };
+      if (!part.apiKey?.trim()) delete part.apiKey;
+      payload.dashscope = part;
+    }
     setVoiceSaving(true);
     try {
-      await llmProviderApi.updateAsrConfig(asrForm);
+      await llmProviderApi.updateAsrConfig(payload);
       showToast('ASR 配置已更新');
       setShowVoiceModal(null);
       await loadData();
@@ -510,9 +591,25 @@ export default function SettingsPage() {
   };
 
   const handleSaveTts = async () => {
+    const validationError = validateTtsForm();
+    if (validationError) {
+      showToast(validationError, 'error');
+      return;
+    }
+    const provider = ttsForm.provider ?? 'dashscope';
+    const payload: TtsConfigRequest = { provider };
+    if (provider === 'volcengine') {
+      const part: VolcengineTtsConfigRequest = { ...(ttsForm.volcengine ?? {}) };
+      if (!part.apiKey?.trim()) delete part.apiKey;
+      payload.volcengine = part;
+    } else {
+      const part: DashscopeTtsConfigRequest = { ...(ttsForm.dashscope ?? {}) };
+      if (!part.apiKey?.trim()) delete part.apiKey;
+      payload.dashscope = part;
+    }
     setVoiceSaving(true);
     try {
-      await llmProviderApi.updateTtsConfig(ttsForm);
+      await llmProviderApi.updateTtsConfig(payload);
       showToast('TTS 配置已更新');
       setShowVoiceModal(null);
       await loadData();
@@ -539,6 +636,36 @@ export default function SettingsPage() {
       setTestingAsr(false);
     }
   };
+
+  const handleTestTts = async () => {
+    setTestingTts(true);
+    setTtsTestResult(null);
+    try {
+      const result = await llmProviderApi.testTts();
+      setTtsTestResult(result);
+    } catch (err) {
+      setTtsTestResult({
+        success: false,
+        message: err instanceof Error ? err.message : '连接测试失败',
+        model: '',
+      });
+    } finally {
+      setTestingTts(false);
+    }
+  };
+
+  // --- Voice form part updaters ---
+  const updateDashscopeAsr = (patch: Partial<DashscopeAsrConfigRequest>) =>
+    setAsrForm(f => ({ ...f, dashscope: { ...(f.dashscope ?? {}), ...patch } }));
+
+  const updateVolcAsr = (patch: Partial<VolcengineAsrConfigRequest>) =>
+    setAsrForm(f => ({ ...f, volcengine: { ...(f.volcengine ?? {}), ...patch } }));
+
+  const updateDashscopeTts = (patch: Partial<DashscopeTtsConfigRequest>) =>
+    setTtsForm(f => ({ ...f, dashscope: { ...(f.dashscope ?? {}), ...patch } }));
+
+  const updateVolcTts = (patch: Partial<VolcengineTtsConfigRequest>) =>
+    setTtsForm(f => ({ ...f, volcengine: { ...(f.volcengine ?? {}), ...patch } }));
 
   // --- Render ---
   return (
@@ -759,21 +886,48 @@ export default function SettingsPage() {
                             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">实时语音转写配置</p>
                           </div>
                         </div>
-                        <StatusBadge icon={<Mic className="h-3 w-3" />}>语音服务</StatusBadge>
+                        <ProviderBadge provider={asrConfig.provider} />
                       </div>
 
                       <dl className={DETAILS_CLASS}>
-                        <ConfigRow label="WebSocket URL" value={asrConfig.url} title={asrConfig.url} emphasis />
-                        <ConfigRow label="识别模型" value={asrConfig.model} title={asrConfig.model} emphasis />
-                        <ConfigRow label="识别语言" value={asrConfig.language} />
-                        <ConfigRow label="采样率" value={`${asrConfig.sampleRate}Hz`} />
-                        <ConfigRow
-                          label="API Key"
-                          value={asrConfig.maskedApiKey}
-                          title={asrConfig.maskedApiKey}
-                          monospace
-                          emphasis
-                        />
+                        {asrConfig.provider === 'volcengine' ? (
+                          <>
+                            <ConfigRow
+                              label="API Key"
+                              value={formatMaskedKey(asrConfig.volcengine.maskedApiKey)}
+                              title={asrConfig.volcengine.maskedApiKey}
+                              monospace
+                              emphasis
+                            />
+                            <ConfigRow
+                              label="音频参数"
+                              value={`${asrConfig.volcengine.format} · ${asrConfig.volcengine.sampleRate}Hz · ${asrConfig.volcengine.channel === 1 ? '单声道' : '立体声'}`}
+                            />
+                            <ConfigRow
+                              label="识别增强"
+                              value={[
+                                asrConfig.volcengine.enableItn ? 'ITN' : null,
+                                asrConfig.volcengine.enablePunc ? '标点' : null,
+                                asrConfig.volcengine.enableDdc ? '顺滑' : null,
+                                asrConfig.volcengine.enableNonstream ? '二遍识别' : null,
+                              ].filter(Boolean).join(' · ') || '基础模式'}
+                            />
+                          </>
+                        ) : (
+                          <>
+                            <ConfigRow label="WebSocket URL" value={asrConfig.dashscope.url} title={asrConfig.dashscope.url} emphasis />
+                            <ConfigRow label="识别模型" value={asrConfig.dashscope.model} title={asrConfig.dashscope.model} emphasis />
+                            <ConfigRow label="识别语言" value={asrConfig.dashscope.language} />
+                            <ConfigRow label="采样率" value={`${asrConfig.dashscope.sampleRate}Hz`} />
+                            <ConfigRow
+                              label="API Key"
+                              value={asrConfig.dashscope.maskedApiKey}
+                              title={asrConfig.dashscope.maskedApiKey}
+                              monospace
+                              emphasis
+                            />
+                          </>
+                        )}
                       </dl>
 
                       {asrTestResult && (
@@ -835,22 +989,57 @@ export default function SettingsPage() {
                             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">文本转语音输出配置</p>
                           </div>
                         </div>
-                        <StatusBadge icon={<Volume2 className="h-3 w-3" />}>语音服务</StatusBadge>
+                        <ProviderBadge provider={ttsConfig.provider} />
                       </div>
 
                       <dl className={DETAILS_CLASS}>
-                        <ConfigRow label="合成模型" value={ttsConfig.model} title={ttsConfig.model} emphasis />
-                        <ConfigRow label="音色" value={ttsConfig.voice} title={ttsConfig.voice} emphasis />
-                        <ConfigRow label="采样率" value={`${ttsConfig.sampleRate}Hz`} />
-                        <ConfigRow label="音量" value={ttsConfig.volume} />
-                        <ConfigRow
-                          label="API Key"
-                          value={ttsConfig.maskedApiKey}
-                          title={ttsConfig.maskedApiKey}
-                          monospace
-                          emphasis
-                        />
+                        {ttsConfig.provider === 'volcengine' ? (
+                          <>
+                            <ConfigRow
+                              label="API Key"
+                              value={formatMaskedKey(ttsConfig.volcengine.maskedApiKey)}
+                              title={ttsConfig.volcengine.maskedApiKey}
+                              monospace
+                              emphasis
+                            />
+                            <ConfigRow label="音色" value={ttsConfig.volcengine.speaker} title={ttsConfig.volcengine.speaker} />
+                            <ConfigRow
+                              label="音频参数"
+                              value={`${ttsConfig.volcengine.format} · ${ttsConfig.volcengine.sampleRate}Hz`}
+                            />
+                          </>
+                        ) : (
+                          <>
+                            <ConfigRow label="合成模型" value={ttsConfig.dashscope.model} title={ttsConfig.dashscope.model} emphasis />
+                            <ConfigRow label="音色" value={ttsConfig.dashscope.voice} title={ttsConfig.dashscope.voice} emphasis />
+                            <ConfigRow label="采样率" value={`${ttsConfig.dashscope.sampleRate}Hz`} />
+                            <ConfigRow label="音量" value={ttsConfig.dashscope.volume} />
+                            <ConfigRow
+                              label="API Key"
+                              value={ttsConfig.dashscope.maskedApiKey}
+                              title={ttsConfig.dashscope.maskedApiKey}
+                              monospace
+                              emphasis
+                            />
+                          </>
+                        )}
                       </dl>
+
+                      {ttsTestResult && (
+                        <div className={`mb-3 px-3 py-2 rounded-lg text-xs font-medium ${
+                          ttsTestResult.success
+                            ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300'
+                            : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'
+                        }`}>
+                          <div className="flex items-center gap-1.5">
+                            {ttsTestResult.success
+                              ? <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                              : <XCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                            }
+                            <span>{ttsTestResult.message}</span>
+                          </div>
+                        </div>
+                      )}
 
                       <div className={ACTION_BAR_CLASS}>
                         <button
@@ -859,6 +1048,17 @@ export default function SettingsPage() {
                         >
                           <Edit2 className="w-3.5 h-3.5" />
                           编辑
+                        </button>
+                        <button
+                          onClick={handleTestTts}
+                          disabled={testingTts}
+                          className={`${ACTION_BUTTON_CLASS} text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20`}
+                        >
+                          {testingTts
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <RefreshCw className="w-3.5 h-3.5" />
+                          }
+                          测试
                         </button>
                       </div>
                     </motion.div>
@@ -1213,138 +1413,380 @@ export default function SettingsPage() {
 
                 {showVoiceModal === 'asr' ? (
                   <div className="space-y-4">
-                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">连接配置</p>
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">WebSocket URL</label>
-                      <input type="text" value={asrForm.url || ''} onChange={(e) => setAsrForm(f => ({ ...f, url: e.target.value }))}
-                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-400 transition-shadow" />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Model</label>
-                        <input type="text" value={asrForm.model || ''} onChange={(e) => setAsrForm(f => ({ ...f, model: e.target.value }))}
-                          className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-400 transition-shadow" />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">API Key <span className="text-slate-400 font-normal">(留空不改)</span></label>
-                        <input type="password" value={asrForm.apiKey || ''} onChange={(e) => setAsrForm(f => ({ ...f, apiKey: e.target.value }))}
-                          placeholder="留空则保持原值"
-                          className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-400 transition-shadow" />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Language</label>
-                      <input type="text" value={asrForm.language || ''} onChange={(e) => setAsrForm(f => ({ ...f, language: e.target.value }))}
-                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-400 transition-shadow" />
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">服务提供方</label>
+                      <Select
+                        variant="form"
+                        value={asrForm.provider ?? 'dashscope'}
+                        onChange={(e) => setAsrForm(f => ({ ...f, provider: e.target.value as VoiceProvider }))}
+                      >
+                        {VOICE_PROVIDER_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </Select>
                     </div>
 
-                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider pt-2">音频参数</p>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Format</label>
-                        <input type="text" value={asrForm.format || ''} onChange={(e) => setAsrForm(f => ({ ...f, format: e.target.value }))}
-                          className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-400 transition-shadow" />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Sample Rate</label>
-                        <input type="number" value={asrForm.sampleRate || 0} onChange={(e) => setAsrForm(f => ({ ...f, sampleRate: Number(e.target.value) }))}
-                          className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-400 transition-shadow" />
-                      </div>
-                    </div>
+                    {asrForm.provider === 'volcengine' ? (
+                      <>
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                            Agent Plan 专属 API Key <span className="text-slate-400 font-normal">(留空不改)</span>
+                          </label>
+                          <input type="password" value={asrForm.volcengine?.apiKey ?? ''}
+                            onChange={(e) => updateVolcAsr({ apiKey: e.target.value })}
+                            placeholder="粘贴 Agent Plan 专属 API Key"
+                            className={VOICE_INPUT_CLASS} />
+                          <p className="mt-1.5 text-xs text-slate-400 dark:text-slate-500">
+                            当前：{formatMaskedKey(asrConfig?.volcengine.maskedApiKey)}。ASR 与 TTS 共用这一把 Key；
+                            其余参数已按官方推荐预置（{asrForm.volcengine?.format ?? 'pcm'} · {asrForm.volcengine?.sampleRate ?? 16000}Hz · {asrForm.volcengine?.channel === 2 ? '立体声' : '单声道'}），无需填写。
+                          </p>
+                        </div>
 
-                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider pt-2">VAD 参数</p>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Turn Detection</label>
-                        <Select
-                          variant="form"
-                          value={asrForm.enableTurnDetection ? 'true' : 'false'}
-                          onChange={(e) => setAsrForm(f => ({ ...f, enableTurnDetection: e.target.value === 'true' }))}
+                        <button
+                          type="button"
+                          onClick={() => setShowVolcAdvanced(v => !v)}
+                          className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-primary-600 dark:text-slate-400 dark:hover:text-primary-400 transition-colors"
                         >
-                          <option value="true">Enabled</option>
-                          <option value="false">Disabled</option>
-                        </Select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Detection Type</label>
-                        <input type="text" value={asrForm.turnDetectionType || ''} onChange={(e) => setAsrForm(f => ({ ...f, turnDetectionType: e.target.value }))}
-                          className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-400 transition-shadow" />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Threshold</label>
-                        <input type="number" step="0.1" value={asrForm.turnDetectionThreshold || 0} onChange={(e) => setAsrForm(f => ({ ...f, turnDetectionThreshold: Number(e.target.value) }))}
-                          className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-400 transition-shadow" />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Silence Duration (ms)</label>
-                        <input type="number" value={asrForm.turnDetectionSilenceDurationMs || 0} onChange={(e) => setAsrForm(f => ({ ...f, turnDetectionSilenceDurationMs: Number(e.target.value) }))}
-                          className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-400 transition-shadow" />
-                      </div>
-                    </div>
+                          <ChevronDown className={`w-4 h-4 transition-transform ${showVolcAdvanced ? 'rotate-180' : ''}`} />
+                          高级设置（一般无需修改）
+                        </button>
+
+                        {showVolcAdvanced && (
+                          <>
+                            <div>
+                              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">WebSocket URL</label>
+                              <input type="text" value={asrForm.volcengine?.url ?? ''} onChange={(e) => updateVolcAsr({ url: e.target.value })}
+                                className={VOICE_INPUT_CLASS} />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">X-Api-Resource-Id</label>
+                                <input type="text" value={asrForm.volcengine?.resourceId ?? ''} onChange={(e) => updateVolcAsr({ resourceId: e.target.value })}
+                                  className={VOICE_INPUT_CLASS} />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Model Name</label>
+                                <input type="text" value={asrForm.volcengine?.modelName ?? ''} onChange={(e) => updateVolcAsr({ modelName: e.target.value })}
+                                  className={VOICE_INPUT_CLASS} />
+                              </div>
+                            </div>
+
+                            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider pt-2">音频参数</p>
+                            <div className="grid grid-cols-3 gap-3">
+                              <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Format</label>
+                                <Select variant="form" value={asrForm.volcengine?.format ?? 'pcm'}
+                                  onChange={(e) => updateVolcAsr({ format: e.target.value })}>
+                                  <option value="pcm">pcm</option>
+                                  <option value="wav">wav</option>
+                                  <option value="ogg">ogg</option>
+                                  <option value="mp3">mp3</option>
+                                </Select>
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Sample Rate</label>
+                                <Select variant="form" value={String(asrForm.volcengine?.sampleRate ?? 16000)}
+                                  onChange={(e) => updateVolcAsr({ sampleRate: Number(e.target.value) })}>
+                                  <option value="16000">16000（仅支持）</option>
+                                </Select>
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Channel</label>
+                                <Select variant="form" value={String(asrForm.volcengine?.channel ?? 1)}
+                                  onChange={(e) => updateVolcAsr({ channel: Number(e.target.value) })}>
+                                  <option value="1">1 单声道</option>
+                                  <option value="2">2 立体声</option>
+                                </Select>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">分包时长 (ms)</label>
+                                <input type="number" value={asrForm.volcengine?.segmentMs ?? 200}
+                                  onChange={(e) => updateVolcAsr({ segmentMs: Number(e.target.value) })}
+                                  className={VOICE_INPUT_CLASS} />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Bits</label>
+                                <Select variant="form" value={String(asrForm.volcengine?.bits ?? 16)}
+                                  onChange={(e) => updateVolcAsr({ bits: Number(e.target.value) })}>
+                                  <option value="16">16（仅支持）</option>
+                                </Select>
+                              </div>
+                            </div>
+
+                            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider pt-2">识别增强</p>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">ITN 文本规范化</label>
+                                <Select variant="form" value={asrForm.volcengine?.enableItn === false ? 'false' : 'true'}
+                                  onChange={(e) => updateVolcAsr({ enableItn: e.target.value === 'true' })}>
+                                  <option value="true">Enabled</option>
+                                  <option value="false">Disabled</option>
+                                </Select>
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">标点符号</label>
+                                <Select variant="form" value={asrForm.volcengine?.enablePunc === false ? 'false' : 'true'}
+                                  onChange={(e) => updateVolcAsr({ enablePunc: e.target.value === 'true' })}>
+                                  <option value="true">Enabled</option>
+                                  <option value="false">Disabled</option>
+                                </Select>
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">语义顺滑 (DDC)</label>
+                                <Select variant="form" value={asrForm.volcengine?.enableDdc ? 'true' : 'false'}
+                                  onChange={(e) => updateVolcAsr({ enableDdc: e.target.value === 'true' })}>
+                                  <option value="true">Enabled</option>
+                                  <option value="false">Disabled</option>
+                                </Select>
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">二遍识别</label>
+                                <Select variant="form" value={asrForm.volcengine?.enableNonstream ? 'true' : 'false'}
+                                  onChange={(e) => updateVolcAsr({ enableNonstream: e.target.value === 'true' })}>
+                                  <option value="true">Enabled</option>
+                                  <option value="false">Disabled</option>
+                                </Select>
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">连接配置</p>
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">WebSocket URL</label>
+                          <input type="text" value={asrForm.dashscope?.url ?? ''} onChange={(e) => updateDashscopeAsr({ url: e.target.value })}
+                            className={VOICE_INPUT_CLASS} />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Model</label>
+                            <input type="text" value={asrForm.dashscope?.model ?? ''} onChange={(e) => updateDashscopeAsr({ model: e.target.value })}
+                              className={VOICE_INPUT_CLASS} />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">API Key <span className="text-slate-400 font-normal">(留空不改)</span></label>
+                            <input type="password" value={asrForm.dashscope?.apiKey ?? ''} onChange={(e) => updateDashscopeAsr({ apiKey: e.target.value })}
+                              placeholder="留空则保持原值"
+                              className={VOICE_INPUT_CLASS} />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Language</label>
+                          <input type="text" value={asrForm.dashscope?.language ?? ''} onChange={(e) => updateDashscopeAsr({ language: e.target.value })}
+                            className={VOICE_INPUT_CLASS} />
+                        </div>
+
+                        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider pt-2">音频参数</p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Format</label>
+                            <input type="text" value={asrForm.dashscope?.format ?? ''} onChange={(e) => updateDashscopeAsr({ format: e.target.value })}
+                              className={VOICE_INPUT_CLASS} />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Sample Rate</label>
+                            <input type="number" value={asrForm.dashscope?.sampleRate ?? 0}
+                              onChange={(e) => updateDashscopeAsr({ sampleRate: Number(e.target.value) })}
+                              className={VOICE_INPUT_CLASS} />
+                          </div>
+                        </div>
+
+                        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider pt-2">VAD 参数</p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Turn Detection</label>
+                            <Select
+                              variant="form"
+                              value={asrForm.dashscope?.enableTurnDetection === false ? 'false' : 'true'}
+                              onChange={(e) => updateDashscopeAsr({ enableTurnDetection: e.target.value === 'true' })}
+                            >
+                              <option value="true">Enabled</option>
+                              <option value="false">Disabled</option>
+                            </Select>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Detection Type</label>
+                            <input type="text" value={asrForm.dashscope?.turnDetectionType ?? ''}
+                              onChange={(e) => updateDashscopeAsr({ turnDetectionType: e.target.value })}
+                              className={VOICE_INPUT_CLASS} />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Threshold</label>
+                            <input type="number" step="0.1" value={asrForm.dashscope?.turnDetectionThreshold ?? 0}
+                              onChange={(e) => updateDashscopeAsr({ turnDetectionThreshold: Number(e.target.value) })}
+                              className={VOICE_INPUT_CLASS} />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Silence Duration (ms)</label>
+                            <input type="number" value={asrForm.dashscope?.turnDetectionSilenceDurationMs ?? 0}
+                              onChange={(e) => updateDashscopeAsr({ turnDetectionSilenceDurationMs: Number(e.target.value) })}
+                              className={VOICE_INPUT_CLASS} />
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">连接配置</p>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Model</label>
-                        <input type="text" value={ttsForm.model || ''} onChange={(e) => setTtsForm(f => ({ ...f, model: e.target.value }))}
-                          className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-400 transition-shadow" />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">API Key <span className="text-slate-400 font-normal">(留空不改)</span></label>
-                        <input type="password" value={ttsForm.apiKey || ''} onChange={(e) => setTtsForm(f => ({ ...f, apiKey: e.target.value }))}
-                          placeholder="留空则保持原值"
-                          className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-400 transition-shadow" />
-                      </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">服务提供方</label>
+                      <Select
+                        variant="form"
+                        value={ttsForm.provider ?? 'dashscope'}
+                        onChange={(e) => setTtsForm(f => ({ ...f, provider: e.target.value as VoiceProvider }))}
+                      >
+                        {VOICE_PROVIDER_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </Select>
                     </div>
 
-                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider pt-2">语音参数</p>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Voice</label>
-                        <input type="text" value={ttsForm.voice || ''} onChange={(e) => setTtsForm(f => ({ ...f, voice: e.target.value }))}
-                          className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-400 transition-shadow" />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Format</label>
-                        <input type="text" value={ttsForm.format || ''} onChange={(e) => setTtsForm(f => ({ ...f, format: e.target.value }))}
-                          className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-400 transition-shadow" />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-3">
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Sample Rate</label>
-                        <input type="number" value={ttsForm.sampleRate || 0} onChange={(e) => setTtsForm(f => ({ ...f, sampleRate: Number(e.target.value) }))}
-                          className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-400 transition-shadow" />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Mode</label>
-                        <input type="text" value={ttsForm.mode || ''} onChange={(e) => setTtsForm(f => ({ ...f, mode: e.target.value }))}
-                          className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-400 transition-shadow" />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Language</label>
-                        <input type="text" value={ttsForm.languageType || ''} onChange={(e) => setTtsForm(f => ({ ...f, languageType: e.target.value }))}
-                          className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-400 transition-shadow" />
-                      </div>
-                    </div>
+                    {ttsForm.provider === 'volcengine' ? (
+                      <>
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                            Agent Plan 专属 API Key <span className="text-slate-400 font-normal">(留空不改)</span>
+                          </label>
+                          <input type="password" value={ttsForm.volcengine?.apiKey ?? ''}
+                            onChange={(e) => updateVolcTts({ apiKey: e.target.value })}
+                            placeholder="粘贴 Agent Plan 专属 API Key"
+                            className={VOICE_INPUT_CLASS} />
+                          <p className="mt-1.5 text-xs text-slate-400 dark:text-slate-500">
+                            当前：{formatMaskedKey(ttsConfig?.volcengine.maskedApiKey)}。与 ASR 共用这一把 Key；
+                            音色与音频参数已按官方推荐预置（{ttsForm.volcengine?.speaker ?? 'zh_female_vv_uranus_bigtts'} · {ttsForm.volcengine?.format ?? 'pcm'} · {ttsForm.volcengine?.sampleRate ?? 24000}Hz），无需填写。
+                          </p>
+                        </div>
 
-                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider pt-2">输出控制</p>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Speech Rate</label>
-                        <input type="number" step="0.1" value={ttsForm.speechRate || 0} onChange={(e) => setTtsForm(f => ({ ...f, speechRate: Number(e.target.value) }))}
-                          className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-400 transition-shadow" />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Volume</label>
-                        <input type="number" value={ttsForm.volume || 0} onChange={(e) => setTtsForm(f => ({ ...f, volume: Number(e.target.value) }))}
-                          className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-400 transition-shadow" />
-                      </div>
-                    </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowVolcAdvanced(v => !v)}
+                          className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-primary-600 dark:text-slate-400 dark:hover:text-primary-400 transition-colors"
+                        >
+                          <ChevronDown className={`w-4 h-4 transition-transform ${showVolcAdvanced ? 'rotate-180' : ''}`} />
+                          高级设置（一般无需修改）
+                        </button>
+
+                        {showVolcAdvanced && (
+                          <>
+                            <div>
+                              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">WebSocket URL</label>
+                              <input type="text" value={ttsForm.volcengine?.url ?? ''} onChange={(e) => updateVolcTts({ url: e.target.value })}
+                                className={VOICE_INPUT_CLASS} />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">X-Api-Resource-Id</label>
+                                <input type="text" value={ttsForm.volcengine?.resourceId ?? ''} onChange={(e) => updateVolcTts({ resourceId: e.target.value })}
+                                  className={VOICE_INPUT_CLASS} />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">音色 ID</label>
+                                <input type="text" value={ttsForm.volcengine?.speaker ?? ''} onChange={(e) => updateVolcTts({ speaker: e.target.value })}
+                                  placeholder="如 zh_female_vv_uranus_bigtts"
+                                  className={VOICE_INPUT_CLASS} />
+                              </div>
+                            </div>
+
+                            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider pt-2">音频参数</p>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Format</label>
+                                <Select variant="form" value={ttsForm.volcengine?.format ?? 'pcm'}
+                                  onChange={(e) => updateVolcTts({ format: e.target.value })}>
+                                  <option value="pcm">pcm</option>
+                                  <option value="mp3">mp3</option>
+                                  <option value="ogg_opus">ogg_opus</option>
+                                </Select>
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Sample Rate</label>
+                                <Select variant="form" value={String(ttsForm.volcengine?.sampleRate ?? 24000)}
+                                  onChange={(e) => updateVolcTts({ sampleRate: Number(e.target.value) })}>
+                                  <option value="8000">8000</option>
+                                  <option value="16000">16000</option>
+                                  <option value="22050">22050</option>
+                                  <option value="24000">24000</option>
+                                  <option value="32000">32000</option>
+                                  <option value="44100">44100</option>
+                                  <option value="48000">48000</option>
+                                </Select>
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">连接配置</p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Model</label>
+                            <input type="text" value={ttsForm.dashscope?.model ?? ''} onChange={(e) => updateDashscopeTts({ model: e.target.value })}
+                              className={VOICE_INPUT_CLASS} />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">API Key <span className="text-slate-400 font-normal">(留空不改)</span></label>
+                            <input type="password" value={ttsForm.dashscope?.apiKey ?? ''} onChange={(e) => updateDashscopeTts({ apiKey: e.target.value })}
+                              placeholder="留空则保持原值"
+                              className={VOICE_INPUT_CLASS} />
+                          </div>
+                        </div>
+
+                        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider pt-2">语音参数</p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Voice</label>
+                            <input type="text" value={ttsForm.dashscope?.voice ?? ''} onChange={(e) => updateDashscopeTts({ voice: e.target.value })}
+                              className={VOICE_INPUT_CLASS} />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Format</label>
+                            <input type="text" value={ttsForm.dashscope?.format ?? ''} onChange={(e) => updateDashscopeTts({ format: e.target.value })}
+                              className={VOICE_INPUT_CLASS} />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-3 gap-3">
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Sample Rate</label>
+                            <input type="number" value={ttsForm.dashscope?.sampleRate ?? 0}
+                              onChange={(e) => updateDashscopeTts({ sampleRate: Number(e.target.value) })}
+                              className={VOICE_INPUT_CLASS} />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Mode</label>
+                            <input type="text" value={ttsForm.dashscope?.mode ?? ''} onChange={(e) => updateDashscopeTts({ mode: e.target.value })}
+                              className={VOICE_INPUT_CLASS} />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Language</label>
+                            <input type="text" value={ttsForm.dashscope?.languageType ?? ''} onChange={(e) => updateDashscopeTts({ languageType: e.target.value })}
+                              className={VOICE_INPUT_CLASS} />
+                          </div>
+                        </div>
+
+                        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider pt-2">输出控制</p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Speech Rate</label>
+                            <input type="number" step="0.1" value={ttsForm.dashscope?.speechRate ?? 0}
+                              onChange={(e) => updateDashscopeTts({ speechRate: Number(e.target.value) })}
+                              className={VOICE_INPUT_CLASS} />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Volume</label>
+                            <input type="number" value={ttsForm.dashscope?.volume ?? 0}
+                              onChange={(e) => updateDashscopeTts({ volume: Number(e.target.value) })}
+                              className={VOICE_INPUT_CLASS} />
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
 

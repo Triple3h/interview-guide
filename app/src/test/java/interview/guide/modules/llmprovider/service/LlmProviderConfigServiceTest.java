@@ -4,8 +4,13 @@ import interview.guide.common.ai.LlmProviderRegistry;
 import interview.guide.common.config.LlmProviderProperties;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
+import interview.guide.modules.llmprovider.dto.AsrConfigDTO;
+import interview.guide.modules.llmprovider.dto.AsrConfigRequest;
 import interview.guide.modules.llmprovider.dto.CreateProviderRequest;
 import interview.guide.modules.llmprovider.dto.DefaultProviderDTO;
+import interview.guide.modules.llmprovider.dto.ProviderTestResult;
+import interview.guide.modules.llmprovider.dto.TtsConfigDTO;
+import interview.guide.modules.llmprovider.dto.TtsConfigRequest;
 import interview.guide.modules.llmprovider.dto.UpdateProviderRequest;
 import interview.guide.modules.voiceinterview.config.VoiceInterviewProperties;
 import interview.guide.modules.voiceinterview.service.QwenAsrService;
@@ -36,6 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -419,6 +425,149 @@ class LlmProviderConfigServiceTest {
 
             assertDoesNotThrow(() -> nullYamlService.createProvider(
                 new CreateProviderRequest("test", "http://localhost", "key", "model", null, null)));
+        }
+    }
+
+    @Nested
+    @DisplayName("语音服务配置（dashscope / volcengine）")
+    class VoiceConfig {
+
+        private LlmProviderConfigService createVoiceService(Path yamlFile, Path envFile) {
+            when(properties.getConfigYamlPath()).thenReturn(yamlFile == null ? null : yamlFile.toString());
+            when(properties.getConfigEnvPath()).thenReturn(envFile == null ? null : envFile.toString());
+            return new LlmProviderConfigService(
+                properties, registry, new VoiceInterviewProperties(), asrService, ttsService);
+        }
+
+        private AsrConfigRequest.VolcPart volcAsrPart(
+            String apiKey, String resourceId, String modelName, Integer sampleRate, Integer segmentMs) {
+            return new AsrConfigRequest.VolcPart(
+                null, apiKey, resourceId, modelName, null, sampleRate, null, null, null, null, null, null, segmentMs);
+        }
+
+        @Test
+        @DisplayName("getAsrConfig 返回当前提供方与两个提供方配置块")
+        void getAsrConfigReturnsBothProviders() {
+            LlmProviderConfigService voiceService = createVoiceService(null, null);
+
+            AsrConfigDTO config = voiceService.getAsrConfig();
+
+            assertEquals("dashscope", config.getProvider());
+            assertEquals("wss://dashscope.aliyuncs.com/api-ws/v1/realtime", config.getDashscope().getUrl());
+            assertEquals("volc.seedasr.sauc.duration", config.getVolcengine().getResourceId());
+            assertEquals(16000, config.getVolcengine().getSampleRate());
+            assertEquals("***", config.getVolcengine().getMaskedApiKey());
+        }
+
+        @Test
+        @DisplayName("getTtsConfig 返回当前提供方与两个提供方配置块")
+        void getTtsConfigReturnsBothProviders() {
+            LlmProviderConfigService voiceService = createVoiceService(null, null);
+
+            TtsConfigDTO config = voiceService.getTtsConfig();
+
+            assertEquals("dashscope", config.getProvider());
+            assertEquals("Cherry", config.getDashscope().getVoice());
+            assertEquals("seed-tts-2.0", config.getVolcengine().getResourceId());
+        }
+
+        @Test
+        @DisplayName("updateAsrConfig 切换提供方为 volcengine 并写入 YAML 与环境变量")
+        void updateAsrConfigSwitchesProviderToVolcengine(@TempDir Path tempDir) throws IOException {
+            Path yaml = tempDir.resolve("application.yml");
+            Path env = tempDir.resolve(".env");
+            Files.writeString(yaml, """
+                app:
+                  voice-interview:
+                    qwen:
+                      asr:
+                        model: qwen3-asr-flash-realtime
+                """);
+            Files.writeString(env, "");
+            LlmProviderConfigService voiceService = createVoiceService(yaml, env);
+
+            voiceService.updateAsrConfig(new AsrConfigRequest(
+                "volcengine",
+                null,
+                volcAsrPart("volc-key", null, null, null, null)
+            ));
+
+            String yamlContent = Files.readString(yaml, StandardCharsets.UTF_8);
+            assertTrue(yamlContent.contains("asr-provider: volcengine"));
+            assertTrue(yamlContent.contains("resource-id: volc.seedasr.sauc.duration"));
+            assertTrue(yamlContent.contains("${VOLC_AGENT_PLAN_VOICE_API_KEY}"));
+            String envContent = Files.readString(env, StandardCharsets.UTF_8);
+            assertTrue(envContent.contains("VOLC_AGENT_PLAN_VOICE_API_KEY=volc-key"));
+            verify(asrService).reload(any(VoiceInterviewProperties.class));
+        }
+
+        @Test
+        @DisplayName("updateAsrConfig 拒绝火山 ASR 非 16000 采样率")
+        void updateAsrConfigRejectsInvalidVolcSampleRate() {
+            LlmProviderConfigService voiceService = createVoiceService(null, null);
+
+            AsrConfigRequest request = new AsrConfigRequest(
+                null, null, volcAsrPart(null, null, null, 24000, null));
+
+            assertThrows(BusinessException.class, () -> voiceService.updateAsrConfig(request));
+        }
+
+        @Test
+        @DisplayName("updateAsrConfig 拒绝未知提供方")
+        void updateAsrConfigRejectsUnknownProvider() {
+            LlmProviderConfigService voiceService = createVoiceService(null, null);
+
+            AsrConfigRequest request = new AsrConfigRequest("openai", null, null);
+
+            assertThrows(BusinessException.class, () -> voiceService.updateAsrConfig(request));
+        }
+
+        @Test
+        @DisplayName("updateAsrConfig 校验火山分包时长范围")
+        void updateAsrConfigValidatesSegmentMs() {
+            LlmProviderConfigService voiceService = createVoiceService(null, null);
+
+            AsrConfigRequest request = new AsrConfigRequest(
+                null, null, volcAsrPart(null, null, null, null, 5000));
+
+            assertThrows(BusinessException.class, () -> voiceService.updateAsrConfig(request));
+        }
+
+        @Test
+        @DisplayName("updateTtsConfig 更新火山音色并切换提供方")
+        void updateTtsConfigUpdatesVolcSpeaker(@TempDir Path tempDir) throws IOException {
+            Path yaml = tempDir.resolve("application.yml");
+            Path env = tempDir.resolve(".env");
+            Files.writeString(yaml, "app:\n  voice-interview:\n    qwen:\n      tts:\n        voice: Cherry\n");
+            Files.writeString(env, "");
+            LlmProviderConfigService voiceService = createVoiceService(yaml, env);
+
+            voiceService.updateTtsConfig(new TtsConfigRequest(
+                "volcengine",
+                null,
+                new TtsConfigRequest.VolcPart(null, null, null, "zh_female_vv_uranus_bigtts", null, null)
+            ));
+
+            String yamlContent = Files.readString(yaml, StandardCharsets.UTF_8);
+            assertTrue(yamlContent.contains("tts-provider: volcengine"));
+            assertTrue(yamlContent.contains("speaker: zh_female_vv_uranus_bigtts"));
+            assertTrue(yamlContent.contains("voice: Cherry"));
+        }
+
+        @Test
+        @DisplayName("testAsrConfig 在火山缺少 API Key 时返回失败")
+        void testAsrConfigFailsWithoutVolcApiKey() {
+            VoiceInterviewProperties realProperties = new VoiceInterviewProperties();
+            realProperties.setAsrProvider("volcengine");
+            when(properties.getConfigYamlPath()).thenReturn(null);
+            when(properties.getConfigEnvPath()).thenReturn(null);
+            LlmProviderConfigService voiceService = new LlmProviderConfigService(
+                properties, registry, realProperties, asrService, ttsService);
+
+            ProviderTestResult result = voiceService.testAsrConfig();
+
+            assertFalse(result.success());
+            assertTrue(result.message().contains("API Key"));
         }
     }
 

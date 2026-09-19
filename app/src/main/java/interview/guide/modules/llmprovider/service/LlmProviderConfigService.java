@@ -20,8 +20,8 @@ import interview.guide.modules.llmprovider.model.LlmProviderEntity;
 import interview.guide.modules.llmprovider.repository.LlmGlobalSettingRepository;
 import interview.guide.modules.llmprovider.repository.LlmProviderRepository;
 import interview.guide.modules.voiceinterview.config.VoiceInterviewProperties;
-import interview.guide.modules.voiceinterview.service.QwenAsrService;
-import interview.guide.modules.voiceinterview.service.QwenTtsService;
+import interview.guide.modules.voiceinterview.service.AsrService;
+import interview.guide.modules.voiceinterview.service.TtsService;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
@@ -35,7 +35,12 @@ import org.springframework.web.client.RestClientResponseException;
 
 import java.io.IOException;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.WebSocket;
+import java.net.http.WebSocketHandshakeException;
 import java.time.Duration;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -48,6 +53,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
@@ -66,8 +74,8 @@ public class LlmProviderConfigService {
   private final String envPath;
   private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
   private final VoiceInterviewProperties voiceProperties;
-  private final QwenAsrService asrService;
-  private final QwenTtsService ttsService;
+  private final AsrService asrService;
+  private final TtsService ttsService;
 
   private static final Map<String, String> RECOMMENDED_EMBEDDING_MODELS = Map.of(
       "dashscope", "text-embedding-v3",
@@ -77,6 +85,24 @@ public class LlmProviderConfigService {
       "minimax", "embo-01"
   );
 
+  // ===== 语音服务提供方常量（dashscope 现役；volcengine 配置层已接入，运行时接入中） =====
+
+  private static final String PROVIDER_DASHSCOPE = "dashscope";
+  private static final String PROVIDER_VOLCENGINE = "volcengine";
+  private static final Set<String> VOICE_PROVIDERS = Set.of(PROVIDER_DASHSCOPE, PROVIDER_VOLCENGINE);
+  private static final String VOICE_ENV_KEY_DASHSCOPE = "AI_BAILIAN_API_KEY";
+  private static final String VOICE_ENV_KEY_VOLC = "VOLC_AGENT_PLAN_VOICE_API_KEY";
+  private static final Set<String> VOLC_ASR_FORMATS = Set.of("pcm", "wav", "ogg", "mp3");
+  private static final int VOLC_ASR_SAMPLE_RATE = 16000;
+  private static final int VOLC_ASR_BITS = 16;
+  private static final Set<String> VOLC_TTS_FORMATS = Set.of("pcm", "mp3", "ogg_opus");
+  private static final Set<Integer> VOLC_TTS_SAMPLE_RATES =
+      Set.of(8000, 16000, 22050, 24000, 32000, 44100, 48000);
+  private static final int VOLC_ASR_MIN_SEGMENT_MS = 100;
+  private static final int VOLC_ASR_MAX_SEGMENT_MS = 1000;
+  private static final String DASHSCOPE_REALTIME_URL = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime";
+  private static final String VOLC_TTS_TEST_TEXT = "你好";
+
   @Autowired
   public LlmProviderConfigService(
       LlmProviderProperties properties,
@@ -85,8 +111,8 @@ public class LlmProviderConfigService {
       LlmGlobalSettingRepository globalSettingRepository,
       ApiKeyEncryptionService encryptionService,
       VoiceInterviewProperties voiceProperties,
-      QwenAsrService asrService,
-      QwenTtsService ttsService) {
+      AsrService asrService,
+      TtsService ttsService) {
     this.properties = properties;
     this.registry = registry;
     this.providerRepository = providerRepository;
@@ -103,8 +129,8 @@ public class LlmProviderConfigService {
       LlmProviderProperties properties,
       LlmProviderRegistry registry,
       VoiceInterviewProperties voiceProperties,
-      QwenAsrService asrService,
-      QwenTtsService ttsService) {
+      AsrService asrService,
+      TtsService ttsService) {
     this(properties, registry, null, null, null, voiceProperties, asrService, ttsService);
   }
 
@@ -237,17 +263,36 @@ public class LlmProviderConfigService {
     rwLock.readLock().lock();
     try {
       VoiceInterviewProperties.AsrConfig asr = voiceProperties.getQwen().getAsr();
+      VoiceInterviewProperties.VolcAsrConfig volcAsr = voiceProperties.getVolc().getAsr();
       return AsrConfigDTO.builder()
-          .url(asr.getUrl())
-          .model(asr.getModel())
-          .maskedApiKey(maskApiKey(asr.getApiKey()))
-          .language(asr.getLanguage())
-          .format(asr.getFormat())
-          .sampleRate(asr.getSampleRate())
-          .enableTurnDetection(asr.isEnableTurnDetection())
-          .turnDetectionType(asr.getTurnDetectionType())
-          .turnDetectionThreshold(asr.getTurnDetectionThreshold())
-          .turnDetectionSilenceDurationMs(asr.getTurnDetectionSilenceDurationMs())
+          .provider(resolveVoiceProvider(voiceProperties.getAsrProvider()))
+          .dashscope(AsrConfigDTO.DashscopeAsrConfig.builder()
+              .url(asr.getUrl())
+              .model(asr.getModel())
+              .maskedApiKey(maskApiKey(asr.getApiKey()))
+              .language(asr.getLanguage())
+              .format(asr.getFormat())
+              .sampleRate(asr.getSampleRate())
+              .enableTurnDetection(asr.isEnableTurnDetection())
+              .turnDetectionType(asr.getTurnDetectionType())
+              .turnDetectionThreshold(asr.getTurnDetectionThreshold())
+              .turnDetectionSilenceDurationMs(asr.getTurnDetectionSilenceDurationMs())
+              .build())
+          .volcengine(AsrConfigDTO.VolcAsrConfig.builder()
+              .url(volcAsr.getUrl())
+              .resourceId(volcAsr.getResourceId())
+              .modelName(volcAsr.getModelName())
+              .maskedApiKey(maskApiKey(volcAsr.getApiKey()))
+              .format(volcAsr.getFormat())
+              .sampleRate(volcAsr.getSampleRate())
+              .bits(volcAsr.getBits())
+              .channel(volcAsr.getChannel())
+              .enableItn(volcAsr.isEnableItn())
+              .enablePunc(volcAsr.isEnablePunc())
+              .enableDdc(volcAsr.isEnableDdc())
+              .enableNonstream(volcAsr.isEnableNonstream())
+              .segmentMs(volcAsr.getSegmentMs())
+              .build())
           .build();
     } finally {
       rwLock.readLock().unlock();
@@ -258,16 +303,28 @@ public class LlmProviderConfigService {
     rwLock.readLock().lock();
     try {
       VoiceInterviewProperties.QwenTtsConfig tts = voiceProperties.getQwen().getTts();
+      VoiceInterviewProperties.VolcTtsConfig volcTts = voiceProperties.getVolc().getTts();
       return TtsConfigDTO.builder()
-          .model(tts.getModel())
-          .maskedApiKey(maskApiKey(tts.getApiKey()))
-          .voice(tts.getVoice())
-          .format(tts.getFormat())
-          .sampleRate(tts.getSampleRate())
-          .mode(tts.getMode())
-          .languageType(tts.getLanguageType())
-          .speechRate(tts.getSpeechRate())
-          .volume(tts.getVolume())
+          .provider(resolveVoiceProvider(voiceProperties.getTtsProvider()))
+          .dashscope(TtsConfigDTO.DashscopeTtsConfig.builder()
+              .model(tts.getModel())
+              .maskedApiKey(maskApiKey(tts.getApiKey()))
+              .voice(tts.getVoice())
+              .format(tts.getFormat())
+              .sampleRate(tts.getSampleRate())
+              .mode(tts.getMode())
+              .languageType(tts.getLanguageType())
+              .speechRate(tts.getSpeechRate())
+              .volume(tts.getVolume())
+              .build())
+          .volcengine(TtsConfigDTO.VolcTtsConfig.builder()
+              .url(volcTts.getUrl())
+              .resourceId(volcTts.getResourceId())
+              .speaker(volcTts.getSpeaker())
+              .maskedApiKey(maskApiKey(volcTts.getApiKey()))
+              .format(volcTts.getFormat())
+              .sampleRate(volcTts.getSampleRate())
+              .build())
           .build();
     } finally {
       rwLock.readLock().unlock();
@@ -289,30 +346,144 @@ public class LlmProviderConfigService {
   public ProviderTestResult testAsrConfig() {
     rwLock.readLock().lock();
     try {
-      VoiceInterviewProperties.AsrConfig asr = voiceProperties.getQwen().getAsr();
-      try {
-        java.net.URI wsUri = java.net.URI.create(asr.getUrl());
-        String host = wsUri.getHost();
-        int port = wsUri.getPort() > 0 ? wsUri.getPort() : (wsUri.getScheme().equals("wss") ? 443 : 80);
-        java.net.InetSocketAddress address = new java.net.InetSocketAddress(host, port);
-        java.net.Socket socket = new java.net.Socket();
-        socket.connect(address, 5000);
-        socket.close();
-        return ProviderTestResult.builder()
-            .success(true)
-            .message("ASR WebSocket 连接成功: " + host)
-            .model(asr.getModel())
-            .build();
-      } catch (Exception e) {
-        return ProviderTestResult.builder()
-            .success(false)
-            .message("ASR 连接失败: " + e.getMessage())
-            .model(asr.getModel())
-            .build();
+      String provider = resolveVoiceProvider(voiceProperties.getAsrProvider());
+      if (PROVIDER_VOLCENGINE.equals(provider)) {
+        return testVolcAsrConnection();
       }
+      VoiceInterviewProperties.AsrConfig asr = voiceProperties.getQwen().getAsr();
+      return testTcpEndpoint(asr.getUrl(), "DashScope ASR", asr.getModel());
     } finally {
       rwLock.readLock().unlock();
     }
+  }
+
+  public ProviderTestResult testTtsConfig() {
+    rwLock.readLock().lock();
+    try {
+      String provider = resolveVoiceProvider(voiceProperties.getTtsProvider());
+      if (PROVIDER_VOLCENGINE.equals(provider)) {
+        return testVolcTtsConnection();
+      }
+      VoiceInterviewProperties.QwenTtsConfig tts = voiceProperties.getQwen().getTts();
+      return testTcpEndpoint(DASHSCOPE_REALTIME_URL, "DashScope TTS", tts.getModel());
+    } finally {
+      rwLock.readLock().unlock();
+    }
+  }
+
+  /** TCP 连通性探活（DashScope 实时语音端点，SDK 无独立可配 URL）。 */
+  private ProviderTestResult testTcpEndpoint(String url, String label, String model) {
+    try {
+      URI uri = URI.create(url);
+      String host = uri.getHost();
+      int port = uri.getPort() > 0
+          ? uri.getPort()
+          : ("wss".equals(uri.getScheme()) || "https".equals(uri.getScheme()) ? 443 : 80);
+      try (Socket socket = new Socket()) {
+        socket.connect(new InetSocketAddress(host, port), 5000);
+      }
+      return ProviderTestResult.builder()
+          .success(true)
+          .message(label + " 连接成功: " + host)
+          .model(model)
+          .build();
+    } catch (Exception e) {
+      return ProviderTestResult.builder()
+          .success(false)
+          .message(label + " 连接失败: " + e.getMessage())
+          .model(model)
+          .build();
+    }
+  }
+
+  /**
+   * 火山方舟 TTS 连通性测试：真实合成一小段文本，验证专属 Key + Resource ID + 音色。
+   * 走运行时同一套 {@link TtsService}（当前 tts-provider=volcengine）。
+   */
+  private ProviderTestResult testVolcTtsConnection() {
+    VoiceInterviewProperties.VolcTtsConfig tts = voiceProperties.getVolc().getTts();
+    if (trimOrNull(tts.getApiKey()) == null) {
+      return ProviderTestResult.builder()
+          .success(false)
+          .message("未配置火山方舟语音 API Key（Agent Plan 专属 API Key）")
+          .model(tts.getResourceId())
+          .build();
+    }
+    long startedAt = System.currentTimeMillis();
+    byte[] audio = ttsService.synthesize(VOLC_TTS_TEST_TEXT);
+    long elapsed = System.currentTimeMillis() - startedAt;
+    if (audio != null && audio.length > 0) {
+      return ProviderTestResult.builder()
+          .success(true)
+          .message("火山方舟 TTS 合成成功（" + audio.length + " 字节音频，耗时 " + elapsed + "ms）")
+          .model(tts.getResourceId())
+          .build();
+    }
+    return ProviderTestResult.builder()
+        .success(false)
+        .message("火山方舟 TTS 合成失败：请检查专属 API Key / Resource ID / 音色，详见服务端日志")
+        .model(tts.getResourceId())
+        .build();
+  }
+
+  /**
+   * 火山方舟 ASR 连通性测试：带鉴权头做一次 WebSocket 握手后立即关闭，不产生合成/识别调用。
+   */
+  private ProviderTestResult testVolcAsrConnection() {
+    VoiceInterviewProperties.VolcAsrConfig asr = voiceProperties.getVolc().getAsr();
+    String apiKey = trimOrNull(asr.getApiKey());
+    if (apiKey == null) {
+      return ProviderTestResult.builder()
+          .success(false)
+          .message("未配置火山方舟语音 API Key（Agent Plan 专属 API Key）")
+          .model(asr.getModelName())
+          .build();
+    }
+    try {
+      HttpClient client = HttpClient.newBuilder()
+          .connectTimeout(Duration.ofSeconds(5))
+          .build();
+      WebSocket webSocket = client.newWebSocketBuilder()
+          .header("X-Api-Key", apiKey)
+          .header("X-Api-Resource-Id", asr.getResourceId())
+          .header("X-Api-Connect-Id", UUID.randomUUID().toString())
+          .buildAsync(URI.create(asr.getUrl()), new WebSocket.Listener() {})
+          .get(8, TimeUnit.SECONDS);
+      webSocket.sendClose(WebSocket.NORMAL_CLOSURE, "test").join();
+      return ProviderTestResult.builder()
+          .success(true)
+          .message("火山方舟 ASR WebSocket 握手成功: " + asr.getResourceId())
+          .model(asr.getModelName())
+          .build();
+    } catch (ExecutionException e) {
+      log.warn("Volc ASR handshake failed: url={}, resourceId={}, error={}",
+          asr.getUrl(), asr.getResourceId(), e.getMessage(), e);
+      return ProviderTestResult.builder()
+          .success(false)
+          .message("火山方舟 ASR 连接失败: " + describeVolcHandshakeFailure(e))
+          .model(asr.getModelName())
+          .build();
+    } catch (Exception e) {
+      log.warn("Volc ASR handshake failed: url={}, resourceId={}, error={}",
+          asr.getUrl(), asr.getResourceId(), e.getMessage(), e);
+      return ProviderTestResult.builder()
+          .success(false)
+          .message("火山方舟 ASR 连接失败: " + e.getMessage())
+          .model(asr.getModelName())
+          .build();
+    }
+  }
+
+  private String describeVolcHandshakeFailure(ExecutionException e) {
+    Throwable cause = e.getCause() != null ? e.getCause() : e;
+    if (cause instanceof WebSocketHandshakeException handshake) {
+      int status = handshake.getResponse().statusCode();
+      String hint = status == 401 || status == 403
+          ? "，请检查 Agent Plan 专属 API Key 与 X-Api-Resource-Id"
+          : "";
+      return "WebSocket 握手失败 HTTP " + status + hint;
+    }
+    return cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName();
   }
 
   // ===== Write operations (write lock) =====
@@ -495,29 +666,28 @@ public class LlmProviderConfigService {
   public void updateAsrConfig(AsrConfigRequest request) {
     rwLock.writeLock().lock();
     try {
-      VoiceInterviewProperties.AsrConfig asr = voiceProperties.getQwen().getAsr();
-      VoiceInterviewProperties.QwenTtsConfig tts = voiceProperties.getQwen().getTts();
-      if (request.url() != null) asr.setUrl(request.url());
-      if (request.model() != null) asr.setModel(request.model());
-      if (request.language() != null) asr.setLanguage(request.language());
-      if (request.format() != null) asr.setFormat(request.format());
-      if (request.sampleRate() != null) asr.setSampleRate(request.sampleRate());
-      if (request.enableTurnDetection() != null) asr.setEnableTurnDetection(request.enableTurnDetection());
-      if (request.turnDetectionType() != null) asr.setTurnDetectionType(request.turnDetectionType());
-      if (request.turnDetectionThreshold() != null) asr.setTurnDetectionThreshold(request.turnDetectionThreshold());
-      if (request.turnDetectionSilenceDurationMs() != null) asr.setTurnDetectionSilenceDurationMs(request.turnDetectionSilenceDurationMs());
-      if (request.apiKey() != null) {
-        asr.setApiKey(request.apiKey());
-        tts.setApiKey(request.apiKey());
-        updateEnvValue("AI_BAILIAN_API_KEY", request.apiKey());
+      boolean dashscopeTouched = request.dashscope() != null;
+      boolean volcTouched = request.volcengine() != null;
+      boolean apiKeyChanged = false;
+
+      if (request.provider() != null) {
+        String provider = normalizeVoiceProvider(request.provider());
+        voiceProperties.setAsrProvider(provider);
+        writeVoiceProviderToYaml("asr-provider", provider);
+      }
+      if (dashscopeTouched) {
+        apiKeyChanged = applyDashscopeAsrConfig(request.dashscope());
+      }
+      if (volcTouched) {
+        apiKeyChanged = applyVolcAsrConfig(request.volcengine()) || apiKeyChanged;
       }
 
-      writeAsrConfigToYaml(asr);
       asrService.reload(voiceProperties);
-      if (request.apiKey() != null) {
+      if (apiKeyChanged) {
         ttsService.reload(voiceProperties);
       }
-      log.info("Updated ASR config");
+      log.info("Updated ASR config: provider={}, dashscope={}, volcengine={}",
+          voiceProperties.getAsrProvider(), dashscopeTouched, volcTouched);
     } finally {
       rwLock.writeLock().unlock();
     }
@@ -526,31 +696,158 @@ public class LlmProviderConfigService {
   public void updateTtsConfig(TtsConfigRequest request) {
     rwLock.writeLock().lock();
     try {
-      VoiceInterviewProperties.AsrConfig asr = voiceProperties.getQwen().getAsr();
-      VoiceInterviewProperties.QwenTtsConfig tts = voiceProperties.getQwen().getTts();
-      if (request.model() != null) tts.setModel(request.model());
-      if (request.voice() != null) tts.setVoice(request.voice());
-      if (request.format() != null) tts.setFormat(request.format());
-      if (request.sampleRate() != null) tts.setSampleRate(request.sampleRate());
-      if (request.mode() != null) tts.setMode(request.mode());
-      if (request.languageType() != null) tts.setLanguageType(request.languageType());
-      if (request.speechRate() != null) tts.setSpeechRate(request.speechRate());
-      if (request.volume() != null) tts.setVolume(request.volume());
-      if (request.apiKey() != null) {
-        tts.setApiKey(request.apiKey());
-        asr.setApiKey(request.apiKey());
-        updateEnvValue("AI_BAILIAN_API_KEY", request.apiKey());
+      boolean dashscopeTouched = request.dashscope() != null;
+      boolean volcTouched = request.volcengine() != null;
+      boolean apiKeyChanged = false;
+
+      if (request.provider() != null) {
+        String provider = normalizeVoiceProvider(request.provider());
+        voiceProperties.setTtsProvider(provider);
+        writeVoiceProviderToYaml("tts-provider", provider);
+      }
+      if (dashscopeTouched) {
+        apiKeyChanged = applyDashscopeTtsConfig(request.dashscope());
+      }
+      if (volcTouched) {
+        apiKeyChanged = applyVolcTtsConfig(request.volcengine()) || apiKeyChanged;
       }
 
-      writeTtsConfigToYaml(tts);
       ttsService.reload(voiceProperties);
-      if (request.apiKey() != null) {
+      if (apiKeyChanged) {
         asrService.reload(voiceProperties);
       }
-      log.info("Updated TTS config");
+      log.info("Updated TTS config: provider={}, dashscope={}, volcengine={}",
+          voiceProperties.getTtsProvider(), dashscopeTouched, volcTouched);
     } finally {
       rwLock.writeLock().unlock();
     }
+  }
+
+  private boolean applyDashscopeAsrConfig(AsrConfigRequest.DashscopePart part) {
+    VoiceInterviewProperties.AsrConfig asr = voiceProperties.getQwen().getAsr();
+    if (part.url() != null) asr.setUrl(requireNonBlank(part.url(), "ASR WebSocket URL"));
+    if (part.model() != null) asr.setModel(requireNonBlank(part.model(), "ASR 模型"));
+    if (part.language() != null) asr.setLanguage(requireNonBlank(part.language(), "ASR 语言"));
+    if (part.format() != null) asr.setFormat(requireNonBlank(part.format(), "ASR 音频格式"));
+    if (part.sampleRate() != null) asr.setSampleRate(part.sampleRate());
+    if (part.enableTurnDetection() != null) asr.setEnableTurnDetection(part.enableTurnDetection());
+    if (part.turnDetectionType() != null) asr.setTurnDetectionType(requireNonBlank(part.turnDetectionType(), "Turn Detection 类型"));
+    if (part.turnDetectionThreshold() != null) asr.setTurnDetectionThreshold(part.turnDetectionThreshold());
+    if (part.turnDetectionSilenceDurationMs() != null) {
+      asr.setTurnDetectionSilenceDurationMs(part.turnDetectionSilenceDurationMs());
+    }
+
+    boolean apiKeyChanged = false;
+    String apiKey = requireApiKeyOrNull(part.apiKey());
+    if (apiKey != null) {
+      asr.setApiKey(apiKey);
+      voiceProperties.getQwen().getTts().setApiKey(apiKey);
+      writeEnvValue(VOICE_ENV_KEY_DASHSCOPE, apiKey);
+      apiKeyChanged = true;
+    }
+    writeDashscopeAsrConfigToYaml(asr);
+    return apiKeyChanged;
+  }
+
+  private boolean applyVolcAsrConfig(AsrConfigRequest.VolcPart part) {
+    VoiceInterviewProperties.VolcAsrConfig volc = voiceProperties.getVolc().getAsr();
+    if (part.url() != null) volc.setUrl(requireNonBlank(part.url(), "火山 ASR WebSocket URL"));
+    if (part.resourceId() != null) volc.setResourceId(requireNonBlank(part.resourceId(), "X-Api-Resource-Id"));
+    if (part.modelName() != null) volc.setModelName(requireNonBlank(part.modelName(), "ASR Model Name"));
+    if (part.format() != null) {
+      volc.setFormat(requireOneOf(part.format(), VOLC_ASR_FORMATS, "火山 ASR 音频格式"));
+    }
+    if (part.sampleRate() != null) {
+      if (part.sampleRate() != VOLC_ASR_SAMPLE_RATE) {
+        throw new BusinessException(ErrorCode.BAD_REQUEST, "火山方舟 ASR 采样率仅支持 16000");
+      }
+      volc.setSampleRate(part.sampleRate());
+    }
+    if (part.bits() != null) {
+      if (part.bits() != VOLC_ASR_BITS) {
+        throw new BusinessException(ErrorCode.BAD_REQUEST, "火山方舟 ASR 位深仅支持 16");
+      }
+      volc.setBits(part.bits());
+    }
+    if (part.channel() != null) {
+      if (part.channel() != 1 && part.channel() != 2) {
+        throw new BusinessException(ErrorCode.BAD_REQUEST, "火山方舟 ASR 声道数仅支持 1（单声道）或 2（立体声）");
+      }
+      volc.setChannel(part.channel());
+    }
+    if (part.enableItn() != null) volc.setEnableItn(part.enableItn());
+    if (part.enablePunc() != null) volc.setEnablePunc(part.enablePunc());
+    if (part.enableDdc() != null) volc.setEnableDdc(part.enableDdc());
+    if (part.enableNonstream() != null) volc.setEnableNonstream(part.enableNonstream());
+    if (part.segmentMs() != null) {
+      if (part.segmentMs() < VOLC_ASR_MIN_SEGMENT_MS || part.segmentMs() > VOLC_ASR_MAX_SEGMENT_MS) {
+        throw new BusinessException(ErrorCode.BAD_REQUEST,
+            "火山方舟 ASR 分包时长需在 " + VOLC_ASR_MIN_SEGMENT_MS + "-" + VOLC_ASR_MAX_SEGMENT_MS + "ms（推荐 200ms）");
+      }
+      volc.setSegmentMs(part.segmentMs());
+    }
+
+    boolean apiKeyChanged = false;
+    String apiKey = requireApiKeyOrNull(part.apiKey());
+    if (apiKey != null) {
+      volc.setApiKey(apiKey);
+      voiceProperties.getVolc().getTts().setApiKey(apiKey);
+      writeEnvValue(VOICE_ENV_KEY_VOLC, apiKey);
+      apiKeyChanged = true;
+    }
+    writeVolcAsrConfigToYaml(volc);
+    return apiKeyChanged;
+  }
+
+  private boolean applyDashscopeTtsConfig(TtsConfigRequest.DashscopePart part) {
+    VoiceInterviewProperties.QwenTtsConfig tts = voiceProperties.getQwen().getTts();
+    if (part.model() != null) tts.setModel(requireNonBlank(part.model(), "TTS 模型"));
+    if (part.voice() != null) tts.setVoice(requireNonBlank(part.voice(), "TTS 音色"));
+    if (part.format() != null) tts.setFormat(requireNonBlank(part.format(), "TTS 音频格式"));
+    if (part.sampleRate() != null) tts.setSampleRate(part.sampleRate());
+    if (part.mode() != null) tts.setMode(requireNonBlank(part.mode(), "TTS 模式"));
+    if (part.languageType() != null) tts.setLanguageType(requireNonBlank(part.languageType(), "TTS 语言"));
+    if (part.speechRate() != null) tts.setSpeechRate(part.speechRate());
+    if (part.volume() != null) tts.setVolume(part.volume());
+
+    boolean apiKeyChanged = false;
+    String apiKey = requireApiKeyOrNull(part.apiKey());
+    if (apiKey != null) {
+      tts.setApiKey(apiKey);
+      voiceProperties.getQwen().getAsr().setApiKey(apiKey);
+      writeEnvValue(VOICE_ENV_KEY_DASHSCOPE, apiKey);
+      apiKeyChanged = true;
+    }
+    writeDashscopeTtsConfigToYaml(tts);
+    return apiKeyChanged;
+  }
+
+  private boolean applyVolcTtsConfig(TtsConfigRequest.VolcPart part) {
+    VoiceInterviewProperties.VolcTtsConfig volc = voiceProperties.getVolc().getTts();
+    if (part.url() != null) volc.setUrl(requireNonBlank(part.url(), "火山 TTS WebSocket URL"));
+    if (part.resourceId() != null) volc.setResourceId(requireNonBlank(part.resourceId(), "X-Api-Resource-Id"));
+    if (part.speaker() != null) volc.setSpeaker(requireNonBlank(part.speaker(), "TTS 音色 ID"));
+    if (part.format() != null) {
+      volc.setFormat(requireOneOf(part.format(), VOLC_TTS_FORMATS, "火山 TTS 音频格式"));
+    }
+    if (part.sampleRate() != null) {
+      if (!VOLC_TTS_SAMPLE_RATES.contains(part.sampleRate())) {
+        throw new BusinessException(ErrorCode.BAD_REQUEST,
+            "火山方舟 TTS 采样率仅支持 8000 / 16000 / 22050 / 24000 / 32000 / 44100 / 48000");
+      }
+      volc.setSampleRate(part.sampleRate());
+    }
+
+    boolean apiKeyChanged = false;
+    String apiKey = requireApiKeyOrNull(part.apiKey());
+    if (apiKey != null) {
+      volc.setApiKey(apiKey);
+      voiceProperties.getVolc().getAsr().setApiKey(apiKey);
+      writeEnvValue(VOICE_ENV_KEY_VOLC, apiKey);
+      apiKeyChanged = true;
+    }
+    writeVolcTtsConfigToYaml(volc);
+    return apiKeyChanged;
   }
 
   public void reloadProviders() {
@@ -765,6 +1062,39 @@ public class LlmProviderConfigService {
     return normalized;
   }
 
+  private String normalizeVoiceProvider(String rawProvider) {
+    String provider = trimOrNull(rawProvider);
+    if (provider == null || !VOICE_PROVIDERS.contains(provider)) {
+      throw new BusinessException(ErrorCode.BAD_REQUEST, "语音服务提供方仅支持 dashscope / volcengine");
+    }
+    return provider;
+  }
+
+  private String resolveVoiceProvider(String configuredProvider) {
+    String provider = trimOrNull(configuredProvider);
+    return provider == null ? PROVIDER_DASHSCOPE : provider;
+  }
+
+  private String requireOneOf(String value, Set<String> allowed, String fieldName) {
+    String normalized = trimOrNull(value);
+    if (normalized == null || !allowed.contains(normalized)) {
+      throw new BusinessException(ErrorCode.BAD_REQUEST,
+          fieldName + " 仅支持 " + String.join(" / ", allowed));
+    }
+    return normalized;
+  }
+
+  private String requireApiKeyOrNull(String rawApiKey) {
+    if (rawApiKey == null) {
+      return null;
+    }
+    String apiKey = trimOrNull(rawApiKey);
+    if (apiKey == null) {
+      throw new BusinessException(ErrorCode.BAD_REQUEST, "API Key 不能为空字符串（留空表示保持原值）");
+    }
+    return apiKey;
+  }
+
   private void validateEmbeddingConfig(
       String providerId,
       boolean supportsEmbedding,
@@ -934,7 +1264,12 @@ public class LlmProviderConfigService {
     });
   }
 
-  private void writeAsrConfigToYaml(VoiceInterviewProperties.AsrConfig asr) {
+  private void writeVoiceProviderToYaml(String key, String provider) {
+    mutateYamlText(ErrorCode.VOICE_CONFIG_WRITE_FAILED, "写入语音服务提供方失败", editor ->
+        editor.setScalar(new String[]{"app", "voice-interview", key}, provider));
+  }
+
+  private void writeDashscopeAsrConfigToYaml(VoiceInterviewProperties.AsrConfig asr) {
     mutateYamlText(ErrorCode.VOICE_CONFIG_WRITE_FAILED, "写入 ASR 配置失败", editor -> {
       LinkedHashMap<String, Object> values = new LinkedHashMap<>();
       values.put("url", asr.getUrl());
@@ -951,7 +1286,7 @@ public class LlmProviderConfigService {
     });
   }
 
-  private void writeTtsConfigToYaml(VoiceInterviewProperties.QwenTtsConfig tts) {
+  private void writeDashscopeTtsConfigToYaml(VoiceInterviewProperties.QwenTtsConfig tts) {
     mutateYamlText(ErrorCode.VOICE_CONFIG_WRITE_FAILED, "写入 TTS 配置失败", editor -> {
       LinkedHashMap<String, Object> values = new LinkedHashMap<>();
       values.put("model", tts.getModel());
@@ -964,6 +1299,39 @@ public class LlmProviderConfigService {
       values.put("speech-rate", tts.getSpeechRate());
       values.put("volume", tts.getVolume());
       editor.setBlock(new String[]{"app", "voice-interview", "qwen"}, "tts", values);
+    });
+  }
+
+  private void writeVolcAsrConfigToYaml(VoiceInterviewProperties.VolcAsrConfig asr) {
+    mutateYamlText(ErrorCode.VOICE_CONFIG_WRITE_FAILED, "写入火山 ASR 配置失败", editor -> {
+      LinkedHashMap<String, Object> values = new LinkedHashMap<>();
+      values.put("url", asr.getUrl());
+      values.put("api-key", "${VOLC_AGENT_PLAN_VOICE_API_KEY}");
+      values.put("resource-id", asr.getResourceId());
+      values.put("model-name", asr.getModelName());
+      values.put("format", asr.getFormat());
+      values.put("sample-rate", asr.getSampleRate());
+      values.put("bits", asr.getBits());
+      values.put("channel", asr.getChannel());
+      values.put("enable-itn", asr.isEnableItn());
+      values.put("enable-punc", asr.isEnablePunc());
+      values.put("enable-ddc", asr.isEnableDdc());
+      values.put("enable-nonstream", asr.isEnableNonstream());
+      values.put("segment-ms", asr.getSegmentMs());
+      editor.setBlock(new String[]{"app", "voice-interview", "volc"}, "asr", values);
+    });
+  }
+
+  private void writeVolcTtsConfigToYaml(VoiceInterviewProperties.VolcTtsConfig tts) {
+    mutateYamlText(ErrorCode.VOICE_CONFIG_WRITE_FAILED, "写入火山 TTS 配置失败", editor -> {
+      LinkedHashMap<String, Object> values = new LinkedHashMap<>();
+      values.put("url", tts.getUrl());
+      values.put("api-key", "${VOLC_AGENT_PLAN_VOICE_API_KEY}");
+      values.put("resource-id", tts.getResourceId());
+      values.put("speaker", tts.getSpeaker());
+      values.put("format", tts.getFormat());
+      values.put("sample-rate", tts.getSampleRate());
+      editor.setBlock(new String[]{"app", "voice-interview", "volc"}, "tts", values);
     });
   }
 

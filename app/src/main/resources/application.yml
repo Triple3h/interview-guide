@@ -304,6 +304,41 @@ app:
         speech-rate: 1.0
         volume: 60
 
+    # 语音服务提供方：dashscope（Qwen3 Realtime，现役）| volcengine（火山方舟 Agent Plan 语音）
+    # 注意：volcengine 当前仅配置层接入（可保存/校验/连通测试），语音面试运行时仍使用 dashscope
+    asr-provider: ${APP_VOICE_ASR_PROVIDER:dashscope}
+    tts-provider: ${APP_VOICE_TTS_PROVIDER:dashscope}
+
+    # 火山方舟 Agent Plan 语音 Configuration
+    # 文档：https://docs.volcengine.com/docs/ark/agent-plan-personal-voice-model
+    # 专属 API Key 在 Agent Plan 管理页获取；Resource ID 与模型对应（计费也按它区分）
+    volc:
+      asr:
+        url: wss://openspeech.bytedance.com/api/v3/plan/sauc/bigmodel_async
+        api-key: ${VOLC_AGENT_PLAN_VOICE_API_KEY:}
+        resource-id: volc.seedasr.sauc.duration
+        model-name: bigmodel
+        format: pcm
+        # 火山 ASR 采样率仅支持 16000、位深仅支持 16
+        sample-rate: 16000
+        bits: 16
+        channel: 1
+        enable-itn: true
+        enable-punc: true
+        enable-ddc: false
+        # 二遍识别（流式实时 + 分句重新识别），仅双向流式链路支持
+        enable-nonstream: false
+        # 音频分包时长，官方建议 100-200ms（双向流式 200ms 性能最优）
+        segment-ms: 200
+      tts:
+        url: wss://openspeech.bytedance.com/api/v3/plan/tts/bidirection
+        api-key: ${VOLC_AGENT_PLAN_VOICE_API_KEY:}
+        resource-id: seed-tts-2.0
+        # 音色列表：https://www.volcengine.com/docs/6561/1257544
+        speaker: zh_female_vv_uranus_bigtts
+        format: pcm
+        sample-rate: 24000
+
     # 用户说完一小段 STT 定稿后，再等多久（毫秒）才触发面试官回复；需大于 VAD 静音阈值以确保用户继续说话时 partials 能取消
     user-utterance-debounce-ms: ${APP_VOICE_USER_UTTERANCE_DEBOUNCE_MS:2500}
     # 触发提交前要求的最小静音时长（毫秒），从最后一次 STT 活动（含 partial）算起

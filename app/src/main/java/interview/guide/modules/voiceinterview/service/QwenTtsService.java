@@ -44,7 +44,7 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 @Slf4j
 @Service
-public class QwenTtsService {
+public class QwenTtsService implements TtsService {
 
     // Runtime configuration values (loaded from VoiceInterviewProperties; setters kept for tests)
     private String model;
@@ -71,6 +71,7 @@ public class QwenTtsService {
         applyTtsConfig(voiceInterviewProperties);
     }
 
+    @Override
     public void reload(VoiceInterviewProperties voiceInterviewProperties) {
         applyTtsConfig(voiceInterviewProperties);
         log.info("QwenTtsService reloaded: model={}, voice={}, connectTimeoutSeconds={}",
@@ -101,7 +102,8 @@ public class QwenTtsService {
     @PostConstruct
     public void init() {
         if (apiKey == null || apiKey.trim().isEmpty()) {
-            throw new IllegalStateException("API key must be configured before initializing QwenTtsService");
+            log.warn("DashScope TTS 未配置 API Key（AI_BAILIAN_API_KEY）；若 tts-provider=dashscope 将无法合成");
+            return;
         }
         log.info("QwenTtsService initialized with model: {}, voice: {}, sampleRate: {}Hz",
                  model, voice, sampleRate);
@@ -120,10 +122,16 @@ public class QwenTtsService {
      * @param text Text to synthesize (null, empty, or whitespace-only text returns empty array)
      * @return PCM audio data at configured sample rate, or empty array if synthesis fails
      */
+    @Override
     public byte[] synthesize(String text) {
         // Handle null, empty, or whitespace-only text
         if (text == null || text.trim().isEmpty()) {
             log.debug("Empty or null text provided, returning empty audio array");
+            return new byte[0];
+        }
+
+        if (apiKey == null || apiKey.trim().isEmpty()) {
+            log.error("DashScope TTS 未配置 API Key（AI_BAILIAN_API_KEY），跳过合成");
             return new byte[0];
         }
 

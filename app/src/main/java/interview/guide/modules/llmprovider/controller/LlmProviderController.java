@@ -134,4 +134,10 @@ public class LlmProviderController {
   public Result<ProviderTestResult> testAsrConfig() {
     return Result.success(configService.testAsrConfig());
   }
+
+  @PostMapping("/voice/tts/test")
+  @RateLimit(dimension = RateLimit.Dimension.GLOBAL, count = 10)
+  public Result<ProviderTestResult> testTtsConfig() {
+    return Result.success(configService.testTtsConfig());
+  }
 }

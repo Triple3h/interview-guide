@@ -18,6 +18,8 @@
     "test:question-generation-queue": "node --test src/components/knowledgebaseInterview/questionGenerationQueue.test.ts"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
     "@tailwindcss/postcss": "^4.1.18",
     "axios": "^1.7.7",
     "dayjs": "^1.11.20",
@@ -36,6 +38,7 @@
     "remark-gfm": "^4.0.0"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.2",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/typography": "^0.5.15",
     "@types/node": "^25.5.2",

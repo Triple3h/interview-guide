@@ -48,7 +48,7 @@ import java.util.function.Consumer;
  */
 @Slf4j
 @Service
-public class QwenAsrService {
+public class QwenAsrService implements AsrService {
 
     // Runtime configuration values (loaded from VoiceInterviewProperties; setters kept for tests)
     private String url;
@@ -75,6 +75,7 @@ public class QwenAsrService {
         applyAsrConfig(voiceInterviewProperties.getQwen().getAsr());
     }
 
+    @Override
     public void reload(VoiceInterviewProperties voiceInterviewProperties) {
         applyAsrConfig(voiceInterviewProperties.getQwen().getAsr());
         log.info("QwenAsrService reloaded: model={}, url={}", model, url);
@@ -117,7 +118,8 @@ public class QwenAsrService {
     @PostConstruct
     public void init() {
         if (apiKey == null || apiKey.trim().isEmpty()) {
-            throw new IllegalStateException("API key must be configured before initializing QwenAsrService");
+            log.warn("DashScope ASR 未配置 API Key（AI_BAILIAN_API_KEY）；若 asr-provider=dashscope 将无法识别");
+            return;
         }
         log.info("QwenAsrService initialized with model: {}, url: {}", model, url);
     }
@@ -155,6 +157,7 @@ public class QwenAsrService {
         startTranscription(sessionId, onFinal, onPartial, null, onError);
     }
 
+    @Override
     public void startTranscription(
             String sessionId,
             Consumer<String> onFinal,
@@ -177,6 +180,7 @@ public class QwenAsrService {
         restartTranscription(sessionId, onFinal, onPartial, null, onError);
     }
 
+    @Override
     public void restartTranscription(
             String sessionId,
             Consumer<String> onFinal,
@@ -221,6 +225,14 @@ public class QwenAsrService {
             Consumer<Throwable> onError) {
         if (sessions.containsKey(sessionId)) {
             throw new IllegalStateException("Session already exists: " + sessionId);
+        }
+        if (apiKey == null || apiKey.trim().isEmpty()) {
+            IllegalStateException ex = new IllegalStateException(
+                "DashScope ASR 未配置 API Key（AI_BAILIAN_API_KEY），请在设置页配置");
+            if (onError != null) {
+                onError.accept(ex);
+            }
+            return;
         }
 
         try {
@@ -337,6 +349,7 @@ public class QwenAsrService {
      * @param audioData Raw PCM audio bytes
      * @throws IllegalStateException if session does not exist
      */
+    @Override
     public void sendAudio(String sessionId, byte[] audioData) {
         AsrSession session = sessions.get(sessionId);
         if (session == null) {
@@ -376,6 +389,7 @@ public class QwenAsrService {
      *
      * @param sessionId Session identifier
      */
+    @Override
     public void stopTranscription(String sessionId) {
         synchronized (lockForSession(sessionId)) {
             AsrSession session = sessions.remove(sessionId);
@@ -410,10 +424,12 @@ public class QwenAsrService {
      * @param sessionId Session identifier
      * @return true if session exists and is active, false otherwise
      */
+    @Override
     public boolean hasActiveSession(String sessionId) {
         return sessions.containsKey(sessionId);
     }
 
+    @Override
     public boolean isReady(String sessionId) {
         AsrSession session = sessions.get(sessionId);
         return session != null && session.isReady();

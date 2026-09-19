@@ -31,12 +31,14 @@ echo "==> [2/4] 本地构建前端 dist"
 
 echo "==> [3/4] 同步产物与薄构建文件到 $REMOTE_HOST:$REMOTE_DIR"
 # 产物目录首次部署时不存在，先创建
-ssh "$REMOTE_HOST" "mkdir -p $REMOTE_DIR/app/build/libs $REMOTE_DIR/frontend/dist"
+ssh "$REMOTE_HOST" "mkdir -p $REMOTE_DIR/app/build/libs $REMOTE_DIR/frontend/dist $REMOTE_DIR/frontend/certs"
 JAR_PATH=$(ls -t app/build/libs/app-*.jar | head -n 1)
 rsync -az -e ssh "$JAR_PATH" "$REMOTE_HOST:$REMOTE_DIR/app/build/libs/app.jar"
 rsync -az --delete -e ssh frontend/dist/ "$REMOTE_HOST:$REMOTE_DIR/frontend/dist/"
 rsync -az -e ssh app/Dockerfile.prod "$REMOTE_HOST:$REMOTE_DIR/app/Dockerfile.prod"
 rsync -az -e ssh frontend/Dockerfile.prod frontend/nginx.conf frontend/.dockerignore "$REMOTE_HOST:$REMOTE_DIR/frontend/"
+# 自签 TLS 证书（frontend/certs/ 已在 .gitignore 中，只在本机与服务器之间传递）
+rsync -az -e ssh frontend/certs/ "$REMOTE_HOST:$REMOTE_DIR/frontend/certs/"
 # docker/（postgres 初始化脚本）体积小，每次带上，保证重装后可直接全量启动
 rsync -az --delete -e ssh docker/ "$REMOTE_HOST:$REMOTE_DIR/docker/"
 

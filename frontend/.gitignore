@@ -22,3 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Capacitor 原生工程与 web 产物：由 `npx cap add/copy android` 生成，体积大且可重建
+android/
+capacitor-webdir/
+
+# 自签 TLS 证书与私钥：只在本机 ~/.keys/ 与服务器之间经 rsync 传递，绝不入库
+certs/

@@ -1,0 +1,21 @@
+# ==============================================================================
+# 统一入口网关：独占宿主机 443，把请求按路径分发给同机的各个项目。
+#
+# 用 host 网络，因此可以直接 proxy_pass 到 127.0.0.1:<各项目的宿主端口>，
+# 不需要加入任何项目的 docker network。
+#
+# 部署位置：服务器 /data/docker/gateway/
+# 启动：docker compose up -d
+# 证书：certs/server.crt + certs/server.key（与 interview-guide 共用同一张自签证书）
+#
+# 注意：宿主机 80 端口已被 realestate-frontend 占用，因此本网关只监听 443。
+# ==============================================================================
+services:
+  gateway:
+    image: nginx:alpine
+    container_name: gateway-nginx
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./conf.d:/etc/nginx/conf.d:ro
+      - ./certs:/etc/nginx/certs:ro

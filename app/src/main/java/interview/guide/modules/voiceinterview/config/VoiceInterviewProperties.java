@@ -21,8 +21,18 @@ public class VoiceInterviewProperties {
     private RateLimitConfig rateLimit = new RateLimitConfig();
     private AudioConfig audio = new AudioConfig();
     private QwenConfig qwen = new QwenConfig();
+    private VolcConfig volc = new VolcConfig();
     private OpeningConfig opening = new OpeningConfig();
     private ContextCompressionConfig contextCompression = new ContextCompressionConfig();
+
+    /**
+     * ASR 服务提供方：dashscope（Qwen3 Realtime，现役）| volcengine（火山方舟 Agent Plan 语音，配置层已接入、运行时接入中）。
+     */
+    private String asrProvider = "dashscope";
+    /**
+     * TTS 服务提供方：dashscope（Qwen3 Realtime，现役）| volcengine（火山方舟 Agent Plan 语音，配置层已接入、运行时接入中）。
+     */
+    private String ttsProvider = "dashscope";
 
     /**
      * 语音面试单轮面试官回复最大字符数（超出会截断到句子边界）。
@@ -156,6 +166,44 @@ public class VoiceInterviewProperties {
         private String languageType = "Chinese";
         private float speechRate = 1.0f;
         private int volume = 60;
+    }
+
+    /**
+     * 火山方舟 Agent Plan 语音配置。
+     * 说明：当前仅配置层接入（可保存/校验/连通测试），语音面试运行时仍走 DashScope。
+     * 参考：https://docs.volcengine.com/docs/ark/agent-plan-personal-voice-model
+     */
+    @Data
+    public static class VolcConfig {
+        private VolcAsrConfig asr = new VolcAsrConfig();
+        private VolcTtsConfig tts = new VolcTtsConfig();
+    }
+
+    @Data
+    public static class VolcAsrConfig {
+        private String url = "wss://openspeech.bytedance.com/api/v3/plan/sauc/bigmodel_async";
+        private String apiKey;
+        private String resourceId = "volc.seedasr.sauc.duration";
+        private String modelName = "bigmodel";
+        private String format = "pcm";
+        private int sampleRate = 16000;
+        private int bits = 16;
+        private int channel = 1;
+        private boolean enableItn = true;
+        private boolean enablePunc = true;
+        private boolean enableDdc = false;
+        private boolean enableNonstream = false;
+        private int segmentMs = 200;
+    }
+
+    @Data
+    public static class VolcTtsConfig {
+        private String url = "wss://openspeech.bytedance.com/api/v3/plan/tts/bidirection";
+        private String apiKey;
+        private String resourceId = "seed-tts-2.0";
+        private String speaker = "zh_female_vv_uranus_bigtts";
+        private String format = "pcm";
+        private int sampleRate = 24000;
     }
 
     @Data

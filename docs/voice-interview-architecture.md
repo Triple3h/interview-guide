@@ -479,6 +479,15 @@ app:
         sample-rate: 16000
 ```
 
+### 语音服务提供方（2026-09-19 起）
+- `app.voice-interview.asr-provider` / `tts-provider`：`dashscope`（DashScope Qwen3 Realtime）| `volcengine`（火山方舟 Agent Plan 语音）；设置页保存后热加载生效，**无需重启**。
+- 两套配置并存：`app.voice-interview.qwen.{asr,tts}` 与 `app.voice-interview.volc.{asr,tts}`。API Key 分 key 存放：DashScope → `.env` 的 `AI_BAILIAN_API_KEY`；火山 → `.env` 的 `VOLC_AGENT_PLAN_VOICE_API_KEY`（Agent Plan 专属 Key，与 Resource ID 配套）。
+- 运行时调用面：`AsrService` / `TtsService` 两个接口 + `AsrServiceRouter` / `TtsServiceRouter` 按 provider 分发；`VoiceInterviewWebSocketHandler` 只依赖接口，不再直接依赖具体实现类。
+  - DashScope：`QwenAsrService`（OmniRealtime JSON 帧）/ `QwenTtsService`（WebSocket 合成）。
+  - 火山：`VolcAsrService`（`wss://.../plan/sauc/bigmodel_async`，自定义二进制帧 + gzip，按 `utterances.definite` 判定稿分句）/ `VolcTtsService`（HTTP 单向流式 `https://.../plan/tts/unidirectional`，逐句合成，输出 PCM）。
+  - 协议编解码集中在 `VolcSpeechProtocol`；端到端探针见 `VolcVoiceProbeTest`（设置 `VOLC_AGENT_PLAN_VOICE_API_KEY` 才会执行，否则跳过）。
+- 未配置某提供方的 Key 时**不再阻塞应用启动**，只在该提供方真正被调用时报错（ASR 走 onError，TTS 返回空音频）。
+
 ### 可选配置
 ```yaml
 # 面试配置

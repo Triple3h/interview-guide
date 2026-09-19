@@ -10,8 +10,8 @@ import interview.guide.modules.voiceinterview.model.VoiceInterviewSessionEntity;
 import interview.guide.modules.voiceinterview.config.VoiceInterviewHandshakeInterceptor;
 import interview.guide.modules.voiceinterview.config.VoiceInterviewProperties;
 import interview.guide.modules.voiceinterview.context.VoiceContextCompressor;
-import interview.guide.modules.voiceinterview.service.QwenAsrService;
-import interview.guide.modules.voiceinterview.service.QwenTtsService;
+import interview.guide.modules.voiceinterview.service.AsrService;
+import interview.guide.modules.voiceinterview.service.TtsService;
 import interview.guide.modules.voiceinterview.service.DashscopeLlmService;
 import interview.guide.modules.voiceinterview.service.VoiceInterviewService;
 import jakarta.annotation.PostConstruct;
@@ -59,8 +59,8 @@ import java.util.concurrent.atomic.AtomicReference;
 public class VoiceInterviewWebSocketHandler extends TextWebSocketHandler implements DisposableBean {
 
     private final ObjectMapper objectMapper;
-    private final QwenAsrService sttService;
-    private final QwenTtsService ttsService;
+    private final AsrService sttService;
+    private final TtsService ttsService;
     private final DashscopeLlmService llmService;
     private final VoiceInterviewService interviewService;
     private final VoiceContextCompressor voiceContextCompressor;
