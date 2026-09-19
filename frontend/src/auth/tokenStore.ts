@@ -1,19 +1,16 @@
 /**
- * 登录态 token 存取与请求头选择（SA-Token 双账号体系）
+ * 登录态 token 存取与请求头（全站单一登录态）
  *
- * - 学员端：localStorage `auth.token`，其余 /api/** 请求携带
- * - 管理端：localStorage `admin.token`，仅 /api/admin/** 请求携带
+ * - 学员与管理员共用同一份登录态：localStorage `auth.token`
+ * - 能否进后台由账号角色决定（见 auth/AuthContext 的 role），不再区分接口前缀
  *
- * 纯函数（isAdminApiUrl / parseStoredToken / pickAuthToken / buildAuthHeader）与浏览器
- * 存储读写分离，便于 node --test 直接单测。
+ * 纯函数（parseStoredToken / buildAuthHeader）与浏览器存储读写分离，
+ * 便于 node --test 直接单测。
  */
 
-export const STUDENT_TOKEN_KEY = 'auth.token';
-export const ADMIN_TOKEN_KEY = 'admin.token';
+export const TOKEN_KEY = 'auth.token';
 /** 与后端 sa-token.token-name 的默认值一致；登录响应会回传实际值 */
 export const DEFAULT_TOKEN_HEADER = 'sa-token';
-
-export type AuthScope = 'student' | 'admin';
 
 export interface StoredToken {
   token: string;
@@ -24,15 +21,6 @@ export interface StoredToken {
 export interface LoginTokenPayload {
   token: string;
   tokenName?: string;
-}
-
-/** /api/admin/** 判定（忽略查询串） */
-export function isAdminApiUrl(url?: string): boolean {
-  if (!url) {
-    return false;
-  }
-  const path = url.split('?')[0];
-  return path === '/api/admin' || path.startsWith('/api/admin/');
 }
 
 export function parseStoredToken(raw: string | null): StoredToken | null {
@@ -55,60 +43,42 @@ export function parseStoredToken(raw: string | null): StoredToken | null {
   return null;
 }
 
-/** 按目标 URL 选择应使用的登录态：管理端接口用 admin，其余用学员 */
-export function pickAuthToken(
-  url: string | undefined,
-  student: StoredToken | null,
-  admin: StoredToken | null,
-): StoredToken | null {
-  return isAdminApiUrl(url) ? admin : student;
-}
-
-export function buildAuthHeader(
-  url: string | undefined,
-  student: StoredToken | null,
-  admin: StoredToken | null,
-): Record<string, string> {
-  const picked = pickAuthToken(url, student, admin);
-  if (!picked) {
+export function buildAuthHeader(token: StoredToken | null): Record<string, string> {
+  if (!token) {
     return {};
   }
-  return { [picked.tokenName]: picked.token };
+  return { [token.tokenName]: token.token };
 }
 
-function storageKey(scope: AuthScope): string {
-  return scope === 'admin' ? ADMIN_TOKEN_KEY : STUDENT_TOKEN_KEY;
-}
-
-export function readStoredToken(scope: AuthScope): StoredToken | null {
+export function readStoredToken(): StoredToken | null {
   try {
-    return parseStoredToken(localStorage.getItem(storageKey(scope)));
+    return parseStoredToken(localStorage.getItem(TOKEN_KEY));
   } catch {
     return null;
   }
 }
 
-export function writeStoredToken(scope: AuthScope, payload: LoginTokenPayload): void {
+export function writeStoredToken(payload: LoginTokenPayload): void {
   try {
     const stored: StoredToken = {
       token: payload.token,
       tokenName: payload.tokenName || DEFAULT_TOKEN_HEADER,
     };
-    localStorage.setItem(storageKey(scope), JSON.stringify(stored));
+    localStorage.setItem(TOKEN_KEY, JSON.stringify(stored));
   } catch {
     // 隐私模式等存储不可用场景：忽略，仅本次会话内存态生效
   }
 }
 
-export function clearStoredToken(scope: AuthScope): void {
+export function clearStoredToken(): void {
   try {
-    localStorage.removeItem(storageKey(scope));
+    localStorage.removeItem(TOKEN_KEY);
   } catch {
     // 忽略
   }
 }
 
 /** axios 拦截器与 fetch（SSE）共用的鉴权头 */
-export function getAuthHeaderForUrl(url?: string): Record<string, string> {
-  return buildAuthHeader(url, readStoredToken('student'), readStoredToken('admin'));
+export function getAuthHeader(): Record<string, string> {
+  return buildAuthHeader(readStoredToken());
 }

@@ -3,6 +3,7 @@ import {lazy, useEffect, useState} from 'react';
 import {Loader2} from 'lucide-react';
 import StudentLayout from '../layouts/StudentLayout';
 import RequireAuth from '../auth/RequireAuth';
+import RequireAdminRole from '../auth/RequireAdminRole';
 import LoginPage from '../pages/student/LoginPage';
 import {historyApi, type InterviewDetail} from '../api/history';
 import type {Difficulty} from '../components/UnifiedInterviewModal';
@@ -30,6 +31,9 @@ const InterviewSchedulePage = lazy(() => import('../pages/student/InterviewSched
 const InterviewHubPage = lazy(() => import('../pages/student/InterviewHubPage'));
 const SettingsPage = lazy(() => import('../pages/student/SettingsPage'));
 const InterviewDetailPanel = lazy(() => import('../components/InterviewDetailPanel'));
+
+// 后台页面（懒加载，仅管理员 / 超级管理员可见）
+const AdminUsersPage = lazy(() => import('../pages/admin/AdminUsersPage'));
 
 // 上传页面包装器
 function UploadPageWrapper() {
@@ -437,6 +441,12 @@ export default function StudentRoutes() {
 
           {/* 学习计划 */}
           <Route path="learning/plan" element={<LearningPlanPage />} />
+
+          {/* 后台管理：与学员端共用登录态，仅管理员 / 超级管理员可进入 */}
+          <Route path="admin" element={<RequireAdminRole />}>
+            <Route index element={<Navigate to="/admin/users" replace />} />
+            <Route path="users" element={<AdminUsersPage />} />
+          </Route>
 
           {/* 未知路径回首页 */}
           <Route path="*" element={<Navigate to="/" replace />} />

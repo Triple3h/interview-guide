@@ -5,7 +5,6 @@ import cn.dev33.satoken.dao.SaTokenDao;
 import cn.dev33.satoken.dao.SaTokenDaoForRedisson;
 import cn.dev33.satoken.interceptor.SaInterceptor;
 import interview.guide.common.web.CurrentUserArgumentResolver;
-import interview.guide.modules.auth.StpAdminUtil;
 import interview.guide.modules.auth.StpUserUtil;
 import lombok.RequiredArgsConstructor;
 import org.redisson.api.RedissonClient;
@@ -19,10 +18,12 @@ import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
- * 鉴权装配：密码哈希 Bean + 双账号体系拦截器
+ * 鉴权装配：密码哈希 Bean + 登录态拦截器
  *
- * <p>管理端体系校验 /api/admin/**（登录接口除外）；学员体系校验其余 /api/**（登录接口除外）。
- * 过渡期内（app.auth.legacy-header-enabled=true）允许旧 X-User-Id 请求头兜底，便于前后端分批切换。</p>
+ * <p>全站只有一套登录态：学员与管理员走同一个 /api/auth/login 入口，
+ * /api/admin/** 同样只要求「已登录」，具体能做什么由角色决定
+ * （见 AdminUserService 里的 requirePermission：查看需管理员、改角色/删号/重置密码需超级管理员）。
+ * 过渡期内（app.auth.legacy-header-enabled=true）允许旧 X-User-Id 请求头兜底。</p>
  */
 @Configuration
 @RequiredArgsConstructor
@@ -51,18 +52,9 @@ public class AuthWebConfig implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        // 管理端：固定 Token 登录态
-        registry.addInterceptor(new SaInterceptor(handle -> StpAdminUtil.checkLogin()))
-            .addPathPatterns("/api/admin/**")
-            .excludePathPatterns("/api/admin/login");
-
-        // 学员端：账号登录态
         registry.addInterceptor(new SaInterceptor(handle -> checkUserLogin()))
             .addPathPatterns("/api/**")
-            .excludePathPatterns(
-                "/api/auth/login",
-                "/api/admin/**"
-            );
+            .excludePathPatterns("/api/auth/login");
     }
 
     private void checkUserLogin() {

@@ -1,5 +1,5 @@
 import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
-import { clearStoredToken, getAuthHeaderForUrl, isAdminApiUrl } from '../auth/tokenStore';
+import { clearStoredToken, getAuthHeader } from '../auth/tokenStore';
 
 declare module 'axios' {
   interface AxiosRequestConfig {
@@ -34,21 +34,20 @@ const instance: AxiosInstance = axios.create({
  * （请求头名由后端登录响应回传，默认 sa-token）
  */
 instance.interceptors.request.use((config) => {
-  Object.assign(config.headers, getAuthHeaderForUrl(config.url));
+  Object.assign(config.headers, getAuthHeader());
   return config;
 });
 
 /**
  * 登录态失效：清理对应体系的本地 token 并跳转登录页（带 redirect 回跳）
  */
-function handleUnauthorized(url?: string): void {
-  const adminRequest = isAdminApiUrl(url);
-  clearStoredToken(adminRequest ? 'admin' : 'student');
+function handleUnauthorized(): void {
+  clearStoredToken();
 
   if (typeof window === 'undefined') {
     return;
   }
-  const loginPath = adminRequest ? '/admin/login' : '/login';
+  const loginPath = '/login';
   if (window.location.pathname === loginPath) {
     return;
   }
@@ -158,7 +157,7 @@ instance.interceptors.response.use(
       }
       // 登录态失效：清 token 并跳转对应登录页（登录接口等已显式跳过）
       if (result.code === UNAUTHORIZED_CODE && !response.config.skipAuthRedirect) {
-        handleUnauthorized(response.config.url);
+        handleUnauthorized();
       }
       // 失败：直接抛出 message
       return Promise.reject(new Error(result.message || '请求失败'));
@@ -173,7 +172,7 @@ instance.interceptors.response.use(
       const { data, status } = error.response;
       // 网关/容器层直接返回 401（非 Result 约定）时同样跳登录页
       if (status === 401 && !error.config?.skipAuthRedirect) {
-        handleUnauthorized(error.config?.url);
+        handleUnauthorized();
         return Promise.reject(new Error('登录状态已失效，请重新登录'));
       }
       // 尝试解析 Result 格式

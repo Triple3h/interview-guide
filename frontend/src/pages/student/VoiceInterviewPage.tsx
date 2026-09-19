@@ -560,7 +560,7 @@ export default function VoiceInterviewPage() {
       setSessionId(session.sessionId);
       setCurrentPhase(session.currentPhase);
 
-      connectWithHandlers(session.sessionId, voiceInterviewWsUrl(session.sessionId, readStoredToken('student')?.token ?? null));
+      connectWithHandlers(session.sessionId, voiceInterviewWsUrl(session.sessionId, readStoredToken()?.token ?? null));
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '创建面试会话失败，请重试';
       setError(errorMessage);
@@ -620,7 +620,7 @@ export default function VoiceInterviewPage() {
       }
       setMessages(restored);
 
-      connectWithHandlers(session.sessionId, voiceInterviewWsUrl(session.sessionId, readStoredToken('student')?.token ?? null));
+      connectWithHandlers(session.sessionId, voiceInterviewWsUrl(session.sessionId, readStoredToken()?.token ?? null));
     } catch (error) {
       setError(error instanceof Error ? error.message : '恢复会话失败');
       setConnectionStatus('disconnected');

@@ -31,13 +31,15 @@ public class AuthDTO {
     ) {}
 
     /**
-     * 当前登录学员资料摘要
+     * 当前登录账号资料摘要（含角色，前端据此决定菜单与后台入口）
      */
     public record UserProfile(
         Long id,
         String username,
         String nickname,
-        String avatarEmoji
+        String avatarEmoji,
+        String role,
+        String roleLabel
     ) {}
 
     /**
@@ -52,19 +54,4 @@ public class AuthDTO {
         String newPassword
     ) {}
 
-    /**
-     * 管理端 Token 登录请求
-     */
-    public record AdminLoginRequest(
-        @NotBlank(message = "Token 不能为空")
-        String token
-    ) {}
-
-    /**
-     * 管理端登录响应
-     */
-    public record AdminLoginResponse(
-        String token,
-        String tokenName
-    ) {}
 }

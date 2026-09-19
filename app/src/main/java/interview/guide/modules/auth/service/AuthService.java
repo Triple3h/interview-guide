@@ -4,12 +4,11 @@ import cn.dev33.satoken.stp.SaTokenInfo;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.infrastructure.mapper.UserMapper;
-import interview.guide.modules.auth.StpAdminUtil;
 import interview.guide.modules.auth.StpUserUtil;
-import interview.guide.modules.auth.config.AuthProperties;
 import interview.guide.modules.auth.model.AuthDTO;
 import interview.guide.modules.user.model.UserDTO;
 import interview.guide.modules.user.model.UserEntity;
+import interview.guide.modules.user.model.UserRole;
 import interview.guide.modules.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,12 +16,13 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.time.LocalDateTime;
 
 /**
- * 鉴权服务：学员账号密码登录 / 管理端固定 Token 登录 / 修改密码
+ * 鉴权服务：账号密码登录 / 修改密码
+ *
+ * <p>全站只有一套登录态（学员体系）：管理员与超级管理员登录同一个入口，
+ * 后台能力由角色决定（见 AdminOperatorService）。</p>
  */
 @Slf4j
 @Service
@@ -31,11 +31,10 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final UserMapper userMapper;
-    private final AuthProperties authProperties;
     private final PasswordEncoder passwordEncoder;
 
     /**
-     * 学员登录：用户名 + 密码（BCrypt 校验），成功后写入学员体系登录态
+     * 账号登录：用户名 + 密码（BCrypt 校验），成功后写入登录态
      */
     @Transactional
     public AuthDTO.LoginResponse login(AuthDTO.LoginRequest request) {
@@ -57,40 +56,17 @@ public class AuthService {
 
         StpUserUtil.login(user.getId());
         SaTokenInfo tokenInfo = StpUserUtil.getTokenInfo();
-        log.info("学员登录成功: id={}, username={}", user.getId(), username);
+        UserRole role = user.getRole() == null ? UserRole.USER : user.getRole();
+        log.info("账号登录成功: id={}, username={}, role={}", user.getId(), username, role);
         return new AuthDTO.LoginResponse(
             tokenInfo.getTokenValue(),
             tokenInfo.getTokenName(),
-            new AuthDTO.UserProfile(user.getId(), user.getUsername(), user.getNickname(), user.getAvatarEmoji()));
+            new AuthDTO.UserProfile(user.getId(), user.getUsername(), user.getNickname(),
+                user.getAvatarEmoji(), role.name(), role.getLabel()));
     }
 
     /**
-     * 管理端登录：校验收到的 Token 与 .env 配置的 APP_ADMIN_TOKEN 是否一致（常量时间比较）
-     */
-    public AuthDTO.AdminLoginResponse adminLogin(AuthDTO.AdminLoginRequest request) {
-        String expected = authProperties.getAdminToken();
-        if (expected == null || expected.isBlank()) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED,
-                "管理端 Token 尚未配置，请在 .env 中设置 APP_ADMIN_TOKEN");
-        }
-
-        String given = request.token() == null ? "" : request.token().trim();
-        boolean matched = MessageDigest.isEqual(
-            given.getBytes(StandardCharsets.UTF_8),
-            expected.trim().getBytes(StandardCharsets.UTF_8));
-        if (!matched) {
-            log.warn("管理端 Token 登录失败");
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "管理端 Token 无效");
-        }
-
-        StpAdminUtil.login(StpAdminUtil.ADMIN_LOGIN_ID);
-        SaTokenInfo tokenInfo = StpAdminUtil.getTokenInfo();
-        log.info("管理端登录成功");
-        return new AuthDTO.AdminLoginResponse(tokenInfo.getTokenValue(), tokenInfo.getTokenName());
-    }
-
-    /**
-     * 当前登录学员资料（/api/auth/me）
+     * 当前登录账号资料（/api/auth/me）
      */
     public UserDTO.UserResponse profile(Long userId) {
         return userMapper.toResponse(getUser(userId));

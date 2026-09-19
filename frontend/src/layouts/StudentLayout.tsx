@@ -33,7 +33,7 @@ export default function StudentLayout() {
   const currentPath = location.pathname;
   const {theme, toggleTheme} = useTheme();
   const navigate = useNavigate();
-  const {profile, logout} = useAuth();
+  const {profile, logout, isAdmin} = useAuth();
   const [interviewModalPreset, setInterviewModalPreset] = useState<{
     defaultMode: 'text' | 'voice';
     defaultResumeId?: number;
@@ -154,6 +154,16 @@ export default function StudentLayout() {
         { id: 'settings', path: '/settings', label: '设置', icon: Settings, description: '管理模型和语音服务' },
       ],
     },
+    // 管理分组：仅管理员 / 超级管理员可见（后台与学员端共用一套登录态）
+    ...(isAdmin
+      ? [{
+          id: 'admin',
+          title: '管理',
+          items: [
+            { id: 'admin-users', path: '/admin/users', label: '用户管理', icon: Users, description: '账号、角色与权限' },
+          ],
+        }]
+      : []),
   ];
 
   // 判断当前页面是否匹配导航项
@@ -182,7 +192,7 @@ export default function StudentLayout() {
    * PC 专属页（简历管理 / 知识库管理 / 知识库面试 / 设置）不上手机，直接过滤掉。
    */
   const MOBILE_NAV_HIDDEN = new Set(['/history', '/knowledgebase', '/knowledgebase-interview', '/settings']);
-  const MOBILE_GROUP_TITLES: Record<string, string> = { interview: '面试', knowledge: '学习' };
+  const MOBILE_GROUP_TITLES: Record<string, string> = { interview: '面试', knowledge: '学习', admin: '管理' };
   const mobileNavGroups: NavGroup[] = navGroups
     .map((group) => ({
       ...group,

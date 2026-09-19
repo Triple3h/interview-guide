@@ -4,6 +4,10 @@ export interface UserProfile {
   username?: string | null;
   nickname: string;
   avatarEmoji: string | null;
+  /** 角色编码：决定菜单与后台能力（SUPER_ADMIN / ADMIN / USER） */
+  role?: string;
+  /** 角色中文名 */
+  roleLabel?: string;
   occupation: string | null;
   learningDirection: string | null;
   learningSkillId: string | null;

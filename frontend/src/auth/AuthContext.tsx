@@ -5,10 +5,17 @@ import type { UserProfile } from '../types/user';
 
 export type AuthStatus = 'loading' | 'authenticated' | 'anonymous';
 
+/** 具备后台管理资格的角色（与后端 UserRole.isAdmin() 对齐） */
+const ADMIN_ROLES = new Set(['SUPER_ADMIN', 'ADMIN']);
+
 export interface AuthContextValue {
   status: AuthStatus;
-  /** 当前登录学员完整资料（未登录为 null） */
+  /** 当前登录账号完整资料（未登录为 null） */
   profile: UserProfile | null;
+  /** 角色编码（未登录为 null） */
+  role: string | null;
+  /** 是否可进入后台（管理员 / 超级管理员） */
+  isAdmin: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   /** 拉取最新资料（改资料后用）；失败返回 null */
@@ -18,10 +25,12 @@ export interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 /**
- * 学员登录态：localStorage 保存 token，启动时用 /api/auth/me 校验有效性
+ * 全站登录态：localStorage 保存 token，启动时用 /api/auth/me 校验有效性
+ *
+ * 学员与管理员共用一份登录态，菜单与后台入口由角色决定（见 role / isAdmin）。
  */
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [status, setStatus] = useState<AuthStatus>(() => (readStoredToken('student') ? 'loading' : 'anonymous'));
+  const [status, setStatus] = useState<AuthStatus>(() => (readStoredToken() ? 'loading' : 'anonymous'));
   const [profile, setProfile] = useState<UserProfile | null>(null);
 
   useEffect(() => {
@@ -42,7 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (cancelled) {
           return;
         }
-        clearStoredToken('student');
+        clearStoredToken();
         setStatus('anonymous');
       });
 
@@ -53,14 +62,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (username: string, password: string) => {
     const response = await authApi.login({ username, password });
-    writeStoredToken('student', { token: response.token, tokenName: response.tokenName });
+    writeStoredToken({ token: response.token, tokenName: response.tokenName });
     try {
       const fresh = await authApi.me();
       setProfile(fresh);
       setStatus('authenticated');
     } catch (error) {
       // 换 token 后仍拿不到资料：按登录失败处理，避免留下半截状态
-      clearStoredToken('student');
+      clearStoredToken();
       throw error;
     }
   }, []);
@@ -71,7 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // 网络异常也要清本地登录态
     }
-    clearStoredToken('student');
+    clearStoredToken();
     setProfile(null);
     setStatus('anonymous');
   }, []);
@@ -86,9 +95,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const role = profile?.role ?? null;
+
   const value = useMemo<AuthContextValue>(
-    () => ({ status, profile, login, logout, refreshProfile }),
-    [status, profile, login, logout, refreshProfile],
+    () => ({ status, profile, role, isAdmin: role ? ADMIN_ROLES.has(role) : false, login, logout, refreshProfile }),
+    [status, profile, role, login, logout, refreshProfile],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

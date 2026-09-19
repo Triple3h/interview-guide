@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { KeyRound, Loader2, Sparkles, UserRound } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
 
@@ -112,9 +112,7 @@ export default function LoginPage() {
         </form>
 
         <p className="mt-4 text-center text-xs text-slate-400 dark:text-slate-500">
-          <Link to="/admin/login" className="hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
-            管理员入口
-          </Link>
+          管理员与学员使用同一入口登录，可用功能由账号角色决定
         </p>
       </div>
     </div>

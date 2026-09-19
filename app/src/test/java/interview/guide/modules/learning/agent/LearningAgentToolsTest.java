@@ -11,6 +11,7 @@ import interview.guide.modules.learning.service.LearningPlanService;
 import interview.guide.modules.learning.service.LearningRecordService;
 import interview.guide.modules.user.model.UserDTO.UserResponse;
 import interview.guide.modules.user.model.UserEntity;
+import interview.guide.modules.user.model.UserRole;
 import interview.guide.modules.user.service.UserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -91,7 +92,7 @@ class LearningAgentToolsTest {
     private UserResponse profileResponse(String occupation, String learningDirection,
                                          String learningSkillId, String currentLevel, String learningGoal) {
         return new UserResponse(1L, null, "Alice", "🦊", occupation, learningDirection,
-            learningSkillId, currentLevel, learningGoal, UserEntity.STATUS_ACTIVE, null, null);
+            learningSkillId, currentLevel, learningGoal, UserEntity.STATUS_ACTIVE, UserRole.USER.name(), null, null);
     }
 
     @Nested

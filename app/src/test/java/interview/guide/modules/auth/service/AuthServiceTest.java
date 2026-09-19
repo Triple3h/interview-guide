@@ -3,11 +3,10 @@ package interview.guide.modules.auth.service;
 import cn.dev33.satoken.stp.SaTokenInfo;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.infrastructure.mapper.UserMapper;
-import interview.guide.modules.auth.StpAdminUtil;
 import interview.guide.modules.auth.StpUserUtil;
-import interview.guide.modules.auth.config.AuthProperties;
 import interview.guide.modules.auth.model.AuthDTO;
 import interview.guide.modules.user.model.UserEntity;
+import interview.guide.modules.user.model.UserRole;
 import interview.guide.modules.user.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -30,7 +29,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@DisplayName("鉴权服务测试（学员登录 / 管理端 Token / 改密）")
+@DisplayName("鉴权服务测试（账号登录 / 改密）")
 class AuthServiceTest {
 
     @Mock
@@ -41,15 +40,12 @@ class AuthServiceTest {
 
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
-    private AuthProperties authProperties;
-
     private AuthService authService;
 
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        authProperties = new AuthProperties();
-        authService = new AuthService(userRepository, userMapper, authProperties, passwordEncoder);
+        authService = new AuthService(userRepository, userMapper, passwordEncoder);
     }
 
     private UserEntity activeUser() {
@@ -138,46 +134,28 @@ class AuthServiceTest {
     }
 
     @Nested
-    @DisplayName("管理端 Token 登录")
-    class AdminLogin {
+    @DisplayName("登录响应携带角色")
+    class LoginRole {
 
         @Test
-        @DisplayName("未配置 APP_ADMIN_TOKEN 时拒绝登录")
-        void shouldRejectWhenTokenNotConfigured() {
-            authProperties.setAdminToken("");
-
-            assertThatThrownBy(() -> authService.adminLogin(new AuthDTO.AdminLoginRequest("whatever")))
-                .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("尚未配置");
-        }
-
-        @Test
-        @DisplayName("Token 不匹配时拒绝登录")
-        void shouldRejectWrongToken() {
-            authProperties.setAdminToken("expected-token");
-
-            assertThatThrownBy(() -> authService.adminLogin(new AuthDTO.AdminLoginRequest("bad-token")))
-                .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("Token 无效");
-        }
-
-        @Test
-        @DisplayName("Token 匹配时写入管理端登录态并返回 token")
-        void shouldLoginSuccessfully() {
-            authProperties.setAdminToken("expected-token");
+        @DisplayName("超级管理员登录后返回角色编码与中文名")
+        void shouldReturnRoleInProfile() {
+            UserEntity user = activeUser();
+            user.setRole(UserRole.SUPER_ADMIN);
+            when(userRepository.findByUsername("alice")).thenReturn(Optional.of(user));
 
             SaTokenInfo tokenInfo = mock(SaTokenInfo.class);
-            when(tokenInfo.getTokenValue()).thenReturn("admin-token-value");
+            when(tokenInfo.getTokenValue()).thenReturn("user-token-value");
             when(tokenInfo.getTokenName()).thenReturn("sa-token");
 
-            try (MockedStatic<StpAdminUtil> mocked = Mockito.mockStatic(StpAdminUtil.class)) {
-                mocked.when(StpAdminUtil::getTokenInfo).thenReturn(tokenInfo);
+            try (MockedStatic<StpUserUtil> mocked = Mockito.mockStatic(StpUserUtil.class)) {
+                mocked.when(StpUserUtil::getTokenInfo).thenReturn(tokenInfo);
 
-                AuthDTO.AdminLoginResponse response =
-                    authService.adminLogin(new AuthDTO.AdminLoginRequest("expected-token"));
+                AuthDTO.LoginResponse response =
+                    authService.login(new AuthDTO.LoginRequest("alice", "secret123"));
 
-                assertThat(response.token()).isEqualTo("admin-token-value");
-                mocked.verify(() -> StpAdminUtil.login(StpAdminUtil.ADMIN_LOGIN_ID));
+                assertThat(response.profile().role()).isEqualTo("SUPER_ADMIN");
+                assertThat(response.profile().roleLabel()).isEqualTo("超级管理员");
             }
         }
     }

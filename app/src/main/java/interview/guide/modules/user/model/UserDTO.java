@@ -77,6 +77,7 @@ public class UserDTO {
         String currentLevel,
         String learningGoal,
         String status,
+        String role,
         LocalDateTime createdAt,
         LocalDateTime lastLoginAt
     ) {}

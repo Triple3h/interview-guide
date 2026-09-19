@@ -89,7 +89,10 @@ public enum ErrorCode {
     LEARNING_RECORD_NOT_FOUND(12003, "学习记录不存在"),
     LEARNING_MASTERY_INVALID(12004, "掌握度取值无效"),
     LEARNING_PLAN_ITEM_NOT_FOUND(12005, "学习计划条目不存在"),
-    LEARNING_PLAN_STATUS_INVALID(12006, "学习计划状态取值无效");
+    LEARNING_PLAN_STATUS_INVALID(12006, "学习计划状态取值无效"),
+    USER_USERNAME_DUPLICATED(12007, "该登录账号已被使用"),
+    USER_PERMISSION_DENIED(12008, "没有权限执行该操作"),
+    USER_LAST_SUPER_ADMIN(12009, "系统必须保留至少一个超级管理员");
 
     private final Integer code;
     private final String message;

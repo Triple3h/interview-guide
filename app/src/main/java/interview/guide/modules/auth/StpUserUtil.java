@@ -4,10 +4,10 @@ import cn.dev33.satoken.stp.SaTokenInfo;
 import cn.dev33.satoken.stp.StpLogic;
 
 /**
- * 学员账号体系（loginType = user）
+ * 全站账号体系（loginType = user）
  *
- * <p>与管理端体系 {@link StpAdminUtil} 完全隔离：两者即使共用同一请求头名，
- * 也各自在自己的 loginType 空间下解析 token，互不影响。</p>
+ * <p>学员、管理员、超级管理员共用这一套登录态：能否使用后台功能由账号角色决定，
+ * 不再为管理端单独开一套 loginType。</p>
  */
 public final class StpUserUtil {
 

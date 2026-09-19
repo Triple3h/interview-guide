@@ -88,6 +88,13 @@ public class UserEntity {
     private String status = STATUS_ACTIVE;
 
     /**
+     * 角色：决定权限集合，超级管理员为系统最高权限（见 UserRole）
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private UserRole role = UserRole.USER;
+
+    /**
      * 最近登录时间
      */
     private LocalDateTime lastLoginAt;

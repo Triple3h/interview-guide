@@ -1,7 +1,6 @@
 import {BrowserRouter, Route, Routes} from 'react-router-dom';
 import {lazy, Suspense} from 'react';
 import {AuthProvider} from './auth/AuthContext';
-import {AdminAuthProvider} from './auth/AdminAuthContext';
 
 // Loading component
 const Loading = () => (
@@ -10,22 +9,18 @@ const Loading = () => (
   </div>
 );
 
-// 双端路由：/admin/** 为后台（PC），其余为学员端（移动优先）
-const AdminRoutes = lazy(() => import('./router/AdminRoutes'));
+// 站点共用一套登录态：学员与管理员同一入口，菜单与后台能力由角色决定
 const StudentRoutes = lazy(() => import('./router/StudentRoutes'));
 
 function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AdminAuthProvider>
-          <Suspense fallback={<Loading />}>
-            <Routes>
-              <Route path="/admin/*" element={<AdminRoutes />} />
-              <Route path="/*" element={<StudentRoutes />} />
-            </Routes>
-          </Suspense>
-        </AdminAuthProvider>
+        <Suspense fallback={<Loading />}>
+          <Routes>
+            <Route path="/*" element={<StudentRoutes />} />
+          </Routes>
+        </Suspense>
       </AuthProvider>
     </BrowserRouter>
   );
