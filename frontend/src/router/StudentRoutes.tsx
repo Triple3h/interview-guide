@@ -19,6 +19,7 @@ const Interview = lazy(() => import('../pages/student/InterviewPage'));
 const InterviewHistoryPage = lazy(() => import('../pages/student/InterviewHistoryPage'));
 const LearningAgentPage = lazy(() => import('../pages/student/LearningAgentPage'));
 const LearningRecordsPage = lazy(() => import('../pages/student/LearningRecordsPage'));
+const LearningMemoriesPage = lazy(() => import('../pages/student/LearningMemoriesPage'));
 const LearningPlanPage = lazy(() => import('../pages/student/LearningPlanPage'));
 const KnowledgeBaseUploadPage = lazy(() => import('../pages/student/KnowledgeBaseUploadPage'));
 const KnowledgeBaseManagePage = lazy(() => import('../pages/student/KnowledgeBaseManagePage'));
@@ -438,6 +439,9 @@ export default function StudentRoutes() {
 
           {/* 学习台账 */}
           <Route path="learning/records" element={<LearningRecordsPage />} />
+
+          {/* 个人记忆 */}
+          <Route path="learning/memories" element={<LearningMemoriesPage />} />
 
           {/* 学习计划 */}
           <Route path="learning/plan" element={<LearningPlanPage />} />

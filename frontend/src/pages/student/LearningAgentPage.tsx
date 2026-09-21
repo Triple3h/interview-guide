@@ -18,6 +18,7 @@ import {
   AlertCircle,
   ArrowLeft,
   ArrowUp,
+  Brain,
   CalendarCheck,
   Check,
   CircleHelp,
@@ -712,11 +713,12 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
   const headerActions = [
     {key: 'plan', title: '学习计划', icon: CalendarCheck, onClick: () => navigate('/learning/plan')},
     {key: 'records', title: '学习台账', icon: NotebookPen, onClick: () => navigate('/learning/records')},
+    {key: 'memories', title: '个人记忆', icon: Brain, onClick: () => navigate('/learning/memories')},
     {key: 'upload', title: '上传知识库', icon: Upload, onClick: onUpload},
     {key: 'back', title: '返回', icon: ArrowLeft, onClick: onBack},
   ];
 
-  // 手机端顶栏：左「对话历史」· 中「会话标题」· 右「学习计划 / 学习台账」+ 圆形「新建对话」
+  // 手机端顶栏：左「对话历史」· 中「会话标题」· 右「学习计划 / 学习台账 / 个人记忆」+ 圆形「新建对话」
   // （上传 / 返回指向 PC 专属页，手机端不展示）
   useMobileTopBar({
     leading: [{key: 'history', title: '对话历史', icon: History, onClick: () => setMobileSessionsOpen(true)}],
@@ -727,6 +729,7 @@ export default function LearningAgentPage({onBack, onUpload}: LearningAgentPageP
     actions: [
       {key: 'plan', title: '学习计划', icon: CalendarCheck, onClick: () => navigate('/learning/plan')},
       {key: 'records', title: '学习台账', icon: NotebookPen, onClick: () => navigate('/learning/records')},
+      {key: 'memories', title: '个人记忆', icon: Brain, onClick: () => navigate('/learning/memories')},
     ],
     primary: {title: '新建对话', onClick: handleNewSession},
   });

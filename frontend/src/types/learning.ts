@@ -37,6 +37,24 @@ export interface SavePlanItemPayload {
   goal?: string;
 }
 
+export type LearningMemoryKind = 'PREFERENCE' | 'QUESTION' | 'MISCONCEPTION' | 'HABIT' | 'NOTE';
+
+export interface LearningMemory {
+  id: number;
+  kind: LearningMemoryKind;
+  kindLabel: string;
+  content: string;
+  sourceSessionId: number | null;
+  sourceMessageId: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SaveLearningMemoryPayload {
+  kind: LearningMemoryKind;
+  content: string;
+}
+
 /** Agent 向学员发起的选项提问（askLearner 工具） */
 export interface AskLearnerPayload {
   question: string;

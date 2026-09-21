@@ -188,4 +188,22 @@ public final class AsyncTaskStreamConstants {
      * LLM Provider字段
      */
     public static final String FIELD_LLM_PROVIDER = "llmProvider";
+
+    // ========== 学习记忆抽取 Stream 配置 ==========
+
+    public static final String LEARNING_MEMORY_EXTRACT_STREAM_KEY = "learning:memory-extract:stream";
+
+    public static final String LEARNING_MEMORY_EXTRACT_GROUP_NAME = "memory-extract-group";
+
+    public static final String LEARNING_MEMORY_EXTRACT_CONSUMER_PREFIX = "memory-extract-consumer-";
+
+    /**
+     * 学员 ID 字段
+     */
+    public static final String FIELD_USER_ID = "userId";
+
+    /**
+     * 聊天消息 ID 字段（助手回答）
+     */
+    public static final String FIELD_MESSAGE_ID = "messageId";
 }

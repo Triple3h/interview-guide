@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * RAG 聊天会话服务
@@ -186,6 +187,37 @@ public class RagChatSessionService {
 
         log.info("重试流式消息: sessionId={}, messageId={}", sessionId, answer.getId());
         return new RetryPreparation(answer.getId(), question);
+    }
+
+    /**
+     * 已完成的一轮问答（学员提问 + 助手回答），供记忆抽取使用。
+     * 消息不存在、不属于该学员、未完成或找不到对应提问时返回 empty。
+     */
+    public record CompletedTurn(Long sessionId, String question, String answer) {}
+
+    @Transactional(readOnly = true)
+    public Optional<CompletedTurn> findCompletedAssistantTurn(Long messageId, Long userId) {
+        RagChatMessageEntity message = messageRepository.findByIdWithSession(messageId).orElse(null);
+        if (message == null) {
+            return Optional.empty();
+        }
+        RagChatSessionEntity session = message.getSession();
+        if (session == null || session.getUserId() == null || !session.getUserId().equals(userId)) {
+            return Optional.empty();
+        }
+        if (message.getType() != MessageType.ASSISTANT || !Boolean.TRUE.equals(message.getCompleted())) {
+            return Optional.empty();
+        }
+        String answer = message.getContent();
+        if (answer == null || answer.isBlank() || answer.startsWith("【错误】")) {
+            return Optional.empty();
+        }
+        return messageRepository
+            .findTopBySessionIdAndMessageOrderLessThanAndTypeOrderByMessageOrderDesc(
+                session.getId(), message.getMessageOrder(), MessageType.USER)
+            .map(RagChatMessageEntity::getContent)
+            .filter(question -> question != null && !question.isBlank())
+            .map(question -> new CompletedTurn(session.getId(), question, answer));
     }
 
     /**

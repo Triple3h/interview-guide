@@ -73,6 +73,7 @@ public class LearningAgentToolCallback implements ToolCallback {
             case "searchKnowledgeBase" -> "检索完成";
             case "getLearnerProfile" -> "档案已加载";
             case "listLearnedTopics" -> "台账已加载";
+            case "searchMemories" -> "记忆已加载";
             case "loadSkillBaseline" -> "基线已加载";
             case "upsertLearningRecord", "upsertLearningPlan", "askLearner", "updateLearnerProfile" ->
                 abbreviate(result, 40);

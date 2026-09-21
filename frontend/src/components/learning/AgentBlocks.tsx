@@ -26,6 +26,7 @@ const TOOL_LABELS: Record<string, string> = {
   loadSkillBaseline: '加载知识基线',
   upsertLearningPlan: '固化学习计划',
   askLearner: '向学员提问',
+  searchMemories: '检索个人记忆',
 };
 
 const TOOL_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -37,6 +38,7 @@ const TOOL_ICONS: Record<string, React.ComponentType<{ className?: string }>> = 
   loadSkillBaseline: BookOpenCheck,
   upsertLearningPlan: ListTodo,
   askLearner: CircleHelp,
+  searchMemories: Brain,
 };
 
 /** 将 start/end/error 事件流按次配对（历史消息的 toolSteps JSON 同构） */

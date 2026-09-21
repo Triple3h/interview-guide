@@ -8,7 +8,9 @@ import interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
 import interview.guide.modules.knowledgebase.service.KnowledgeBaseVectorService;
 import interview.guide.modules.knowledgebase.service.chunking.ChunkMetadataKeys;
+import interview.guide.modules.learning.model.LearningMemoryEntity;
 import interview.guide.modules.learning.model.LearningRecordEntity;
+import interview.guide.modules.learning.service.LearningMemoryService;
 import interview.guide.modules.learning.service.LearningPlanService;
 import interview.guide.modules.learning.service.LearningRecordService;
 import interview.guide.modules.user.model.UserDTO.UserResponse;
@@ -31,7 +33,7 @@ import java.util.stream.Collectors;
 
 /**
  * 学习帮手的工具集（每次请求实例化，绑定当前学员与会话）
- * 工具即 Agent 的"手脚"：检索知识库、读档案、查台账、记台账、固化计划、向学员提问
+ * 工具即 Agent 的"手脚"：检索知识库、读档案、查台账、检索个人记忆、记台账、固化计划、向学员提问
  */
 @Slf4j
 public class LearningAgentTools {
@@ -46,6 +48,7 @@ public class LearningAgentTools {
     private final KnowledgeBaseVectorService vectorService;
     private final KnowledgeBaseRepository knowledgeBaseRepository;
     private final LearningRecordService recordService;
+    private final LearningMemoryService memoryService;
     private final LearningAgentProperties properties;
     private final InterviewSkillService skillService;
     private final LearningPlanService planService;
@@ -56,7 +59,8 @@ public class LearningAgentTools {
                               UserEntity learner, UserService userService,
                               KnowledgeBaseVectorService vectorService,
                               KnowledgeBaseRepository knowledgeBaseRepository,
-                              LearningRecordService recordService, LearningAgentProperties properties,
+                              LearningRecordService recordService, LearningMemoryService memoryService,
+                              LearningAgentProperties properties,
                               InterviewSkillService skillService, LearningPlanService planService,
                               LearningAskRegistry askRegistry, Consumer<AgentEvent> askEmitter) {
         this.userId = userId;
@@ -67,6 +71,7 @@ public class LearningAgentTools {
         this.vectorService = vectorService;
         this.knowledgeBaseRepository = knowledgeBaseRepository;
         this.recordService = recordService;
+        this.memoryService = memoryService;
         this.properties = properties;
         this.skillService = skillService;
         this.planService = planService;
@@ -170,6 +175,29 @@ public class LearningAgentTools {
                 sb.append("：").append(abbreviate(record.getSummary(), 80));
             }
             sb.append('\n');
+        }
+        return sb.toString();
+    }
+
+    @Tool(name = "searchMemories",
+        description = "检索当前学员的个人记忆（偏好、提过的问题、易错点、习惯）。"
+            + "需要接上以往提问、避开已知误解或按偏好调整讲法时使用；不需要过滤时传空字符串")
+    public String searchMemories(
+        @ToolParam(description = "过滤关键词，不需要过滤时传空字符串", required = false) String keyword) {
+        List<LearningMemoryEntity> memories = memoryService.listEntities(userId, keyword, null);
+        if (memories.isEmpty()) {
+            return "个人记忆暂无" + (keyword != null && !keyword.isBlank() ? "匹配「" + keyword + "」的" : "") + "记录。";
+        }
+        int limit = Math.min(memories.size(), 20);
+        StringBuilder sb = new StringBuilder("个人记忆共 ").append(memories.size()).append(" 条");
+        if (memories.size() > limit) {
+            sb.append("，列出最近 ").append(limit).append(" 条");
+        }
+        sb.append("：\n");
+        for (int i = 0; i < limit; i++) {
+            LearningMemoryEntity memory = memories.get(i);
+            sb.append("- [").append(memory.getKind().getLabel()).append("] ")
+                .append(abbreviate(memory.getContent(), 80)).append('\n');
         }
         return sb.toString();
     }
@@ -341,6 +369,7 @@ public class LearningAgentTools {
             case "searchKnowledgeBase" -> "检索知识库：" + extractField(toolInput, "query");
             case "upsertLearningRecord" -> "记录知识点：" + extractField(toolInput, "topic");
             case "listLearnedTopics" -> "查看学习台账";
+            case "searchMemories" -> "检索个人记忆";
             case "getLearnerProfile" -> "读取学员档案";
             case "updateLearnerProfile" -> "更新学员档案：" + describeProfileFields(toolInput);
             case "loadSkillBaseline" -> "加载知识基线：" + extractField(toolInput, "categoryKey");

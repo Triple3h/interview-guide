@@ -1,6 +1,6 @@
 import {Link, Outlet, useLocation, useNavigate} from 'react-router-dom';
 import {AnimatePresence, motion} from 'framer-motion';
-import {BookOpen, Calendar, CalendarCheck, Database, FileStack, LogOut, Menu, MessageSquare, Moon, NotebookPen, Plus, Settings, Sparkles, Sun, Users, X,} from 'lucide-react';
+import {BookOpen, Brain, Calendar, CalendarCheck, Database, FileStack, LogOut, Menu, MessageSquare, Moon, NotebookPen, Plus, Settings, Sparkles, Sun, Users, X,} from 'lucide-react';
 import {useTheme} from '../hooks/useTheme';
 import {useCallback, useEffect, useState} from 'react';
 import {MobileTopBarActionContext, type MobileTopBarConfig} from '../hooks/useMobileTopBarAction';
@@ -145,6 +145,7 @@ export default function StudentLayout() {
         { id: 'kb-interview', path: '/knowledgebase-interview', label: '知识库面试', icon: BookOpen, description: '题库维护与面试' },
         { id: 'chat', path: '/knowledgebase/chat', label: '学习帮手', icon: MessageSquare, description: 'AI 助教，进度自动记录' },
         { id: 'learning-records', path: '/learning/records', label: '学习台账', icon: NotebookPen, description: '已学知识点与掌握度' },
+        { id: 'learning-memories', path: '/learning/memories', label: '个人记忆', icon: Brain, description: '偏好、提问与易错点' },
       ],
     },
     {

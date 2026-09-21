@@ -37,6 +37,43 @@ public class LearningAgentProperties {
     private int promptTopicLimit = 30;
 
     /**
+     * 注入 system prompt 的个人记忆条数上限
+     */
+    private int promptMemoryLimit = 20;
+
+    /**
+     * 抽取时提供给模型对照的已有记忆条数上限。
+     * 太小会让较老的记忆对模型不可见（既改不了，也拦不住重复 ADD），
+     * 按每轮最多写 5 条估算，100 条够几十轮积累
+     */
+    private int extractMemoryContextLimit = 100;
+
+    /**
+     * 抽取 Prompt：系统指令
+     */
+    private String extractSystemPromptPath = "classpath:prompts/learning-memory-extract-system.st";
+
+    /**
+     * 抽取 Prompt：本轮对话与已有记忆
+     */
+    private String extractUserPromptPath = "classpath:prompts/learning-memory-extract-user.st";
+
+    /**
+     * 抽取时学员提问截断字符数
+     */
+    private int extractQuestionChars = 400;
+
+    /**
+     * 抽取时助手回答截断字符数
+     */
+    private int extractAnswerChars = 1200;
+
+    /**
+     * 单轮抽取最多落库的操作数
+     */
+    private int extractMaxOperations = 5;
+
+    /**
      * 手动 ReAct 循环的最大工具轮数，超过后强制无工具收尾
      */
     private int maxRounds = 6;

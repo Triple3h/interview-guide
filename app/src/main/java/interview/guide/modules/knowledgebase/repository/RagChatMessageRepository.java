@@ -28,6 +28,18 @@ public interface RagChatMessageRepository extends JpaRepository<RagChatMessageEn
     Optional<RagChatMessageEntity> findTopBySessionIdOrderByMessageOrderDesc(Long sessionId);
 
     /**
+     * 加载消息及其所属会话（抽取记忆时校验归属，避免懒加载在异步线程失败）
+     */
+    @Query("SELECT m FROM RagChatMessageEntity m JOIN FETCH m.session WHERE m.id = :id")
+    Optional<RagChatMessageEntity> findByIdWithSession(@Param("id") Long id);
+
+    /**
+     * 取某条消息之前最近的指定类型消息（用于定位助手回答对应的学员提问）
+     */
+    Optional<RagChatMessageEntity> findTopBySessionIdAndMessageOrderLessThanAndTypeOrderByMessageOrderDesc(
+        Long sessionId, Integer messageOrder, MessageType type);
+
+    /**
      * 获取会话中最近 N 条已完成的消息（按 messageOrder 倒序取，结果需要反转为正序）
      */
     @Query("SELECT m FROM RagChatMessageEntity m WHERE m.session.id = :sessionId AND m.completed = true ORDER BY m.messageOrder DESC")

@@ -92,7 +92,9 @@ public enum ErrorCode {
     LEARNING_PLAN_STATUS_INVALID(12006, "学习计划状态取值无效"),
     USER_USERNAME_DUPLICATED(12007, "该登录账号已被使用"),
     USER_PERMISSION_DENIED(12008, "没有权限执行该操作"),
-    USER_LAST_SUPER_ADMIN(12009, "系统必须保留至少一个超级管理员");
+    USER_LAST_SUPER_ADMIN(12009, "系统必须保留至少一个超级管理员"),
+    LEARNING_MEMORY_NOT_FOUND(12010, "学习记忆不存在"),
+    LEARNING_MEMORY_KIND_INVALID(12011, "记忆类型取值无效");
 
     private final Integer code;
     private final String message;

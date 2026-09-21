@@ -4,7 +4,10 @@ import type {
   LearningPlanStatus,
   LearningRecord,
   LearningMastery,
+  LearningMemory,
+  LearningMemoryKind,
   SaveLearningRecordPayload,
+  SaveLearningMemoryPayload,
   SavePlanItemPayload,
 } from '../types/learning';
 
@@ -57,5 +60,29 @@ export const learningApi = {
 
   async deletePlanItem(id: number): Promise<void> {
     return request.delete(`/api/learning/plans/${id}`);
+  },
+
+  async listMemories(keyword?: string, kind?: LearningMemoryKind): Promise<LearningMemory[]> {
+    const params = new URLSearchParams();
+    if (keyword && keyword.trim()) {
+      params.set('keyword', keyword.trim());
+    }
+    if (kind) {
+      params.set('kind', kind);
+    }
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return request.get<LearningMemory[]>(`/api/learning/memories${query}`);
+  },
+
+  async createMemory(payload: SaveLearningMemoryPayload): Promise<LearningMemory> {
+    return request.post<LearningMemory>('/api/learning/memories', payload);
+  },
+
+  async updateMemory(id: number, payload: Partial<SaveLearningMemoryPayload>): Promise<LearningMemory> {
+    return request.put<LearningMemory>(`/api/learning/memories/${id}`, payload);
+  },
+
+  async deleteMemory(id: number): Promise<void> {
+    return request.delete(`/api/learning/memories/${id}`);
   },
 };

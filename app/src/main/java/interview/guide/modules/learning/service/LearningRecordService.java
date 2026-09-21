@@ -36,6 +36,7 @@ public class LearningRecordService {
     /**
      * 台账列表（keyword 同时匹配主题与摘要，大小写不敏感）
      */
+    @Transactional(readOnly = true)
     public List<LearningRecordResponse> list(Long userId, String keyword) {
         return recordMapper.toResponseList(listEntities(userId, keyword));
     }
@@ -43,6 +44,7 @@ public class LearningRecordService {
     /**
      * 台账实体列表（Agent 工具与 system prompt 注入用）
      */
+    @Transactional(readOnly = true)
     public List<LearningRecordEntity> listEntities(Long userId, String keyword) {
         List<LearningRecordEntity> records = recordRepository.findByUserIdOrderByUpdatedAtDesc(userId);
         if (keyword == null || keyword.isBlank()) {
@@ -58,6 +60,7 @@ public class LearningRecordService {
     /**
      * 最近学到的知识点（注入 system prompt 用）
      */
+    @Transactional(readOnly = true)
     public List<LearningRecordEntity> recentTopics(Long userId, int limit) {
         return recordRepository.findByUserIdOrderByUpdatedAtDesc(userId)
             .stream()

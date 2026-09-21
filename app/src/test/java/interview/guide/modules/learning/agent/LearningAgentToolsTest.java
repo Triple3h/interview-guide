@@ -6,7 +6,9 @@ import interview.guide.modules.interview.skill.InterviewSkillService;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
 import interview.guide.modules.knowledgebase.service.KnowledgeBaseVectorService;
+import interview.guide.modules.learning.model.LearningMemoryEntity;
 import interview.guide.modules.learning.model.LearningRecordEntity;
+import interview.guide.modules.learning.service.LearningMemoryService;
 import interview.guide.modules.learning.service.LearningPlanService;
 import interview.guide.modules.learning.service.LearningRecordService;
 import interview.guide.modules.user.model.UserDTO.UserResponse;
@@ -50,6 +52,9 @@ class LearningAgentToolsTest {
     private LearningRecordService recordService;
 
     @Mock
+    private LearningMemoryService memoryService;
+
+    @Mock
     private InterviewSkillService skillService;
 
     @Mock
@@ -78,7 +83,7 @@ class LearningAgentToolsTest {
 
     private LearningAgentTools createTools(List<Long> preferredKbIds, UserEntity learner) {
         return new LearningAgentTools(1L, 100L, preferredKbIds, learner, userService,
-            vectorService, knowledgeBaseRepository, recordService, properties, skillService,
+            vectorService, knowledgeBaseRepository, recordService, memoryService, properties, skillService,
             planService, askRegistry, askEvents::add);
     }
 
@@ -397,6 +402,36 @@ class LearningAgentToolsTest {
                 "askLearner", "{\"question\":\"先学哪个？\"}");
 
             assertThat(summary).contains("向学员提问").contains("先学哪个");
+        }
+    }
+
+    @Nested
+    @DisplayName("个人记忆检索工具")
+    class SearchMemories {
+
+        @Test
+        @DisplayName("命中时按类型列出记忆")
+        void shouldListMemoriesByKind() {
+            LearningMemoryEntity memory = new LearningMemoryEntity();
+            memory.setKind(LearningMemoryEntity.Kind.PREFERENCE);
+            memory.setContent("讲解时给代码示例");
+            when(memoryService.listEntities(1L, "代码", null)).thenReturn(List.of(memory));
+
+            String result = createTools(List.of()).searchMemories("代码");
+
+            assertThat(result).contains("个人记忆共 1 条")
+                .contains("[偏好]")
+                .contains("讲解时给代码示例");
+        }
+
+        @Test
+        @DisplayName("无命中时返回提示")
+        void shouldHintWhenEmpty() {
+            when(memoryService.listEntities(1L, "量子", null)).thenReturn(List.of());
+
+            String result = createTools(List.of()).searchMemories("量子");
+
+            assertThat(result).contains("暂无").contains("量子");
         }
     }
 }

@@ -14,7 +14,7 @@ public enum Permission {
 
   INTERVIEW_USE("interview:use", "模拟面试", "发起模拟面试并查看面试记录与报告"),
   VOICE_USE("voice:use", "语音面试", "使用语音面试并查看评估报告"),
-  LEARNING_USE("learning:use", "学习帮手", "使用学习帮手、学习计划与学习台账"),
+  LEARNING_USE("learning:use", "学习帮手", "使用学习帮手、学习计划、学习台账与个人记忆"),
   KNOWLEDGE_BASE_MANAGE("knowledgebase:manage", "知识库管理", "上传与删除知识库、维护题库"),
   USER_VIEW("user:view", "查看用户", "查看后台用户列表与角色权限说明"),
   USER_MANAGE("user:manage", "管理用户", "新建用户、编辑资料、启用或禁用账号"),

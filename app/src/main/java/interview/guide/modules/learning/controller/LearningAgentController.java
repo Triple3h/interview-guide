@@ -12,6 +12,7 @@ import interview.guide.modules.knowledgebase.service.RagChatSessionService;
 import interview.guide.modules.learning.agent.AgentEvent;
 import interview.guide.modules.learning.agent.LearningAgentService;
 import interview.guide.modules.learning.agent.LearningAskRegistry;
+import interview.guide.modules.learning.listener.MemoryExtractStreamProducer;
 import interview.guide.modules.learning.model.LearningAgentDTO.AskAnswerRequest;
 import interview.guide.modules.learning.model.LearningAgentDTO.CreateLearningSessionRequest;
 import interview.guide.modules.learning.model.LearningAgentDTO.LearningAgentChatRequest;
@@ -37,7 +38,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * 学习帮手 Agent 控制器
  * 会话创建走本控制器，会话列表/详情/删除复用 /api/rag-chat/sessions（按成员隔离）
  */
-@Tag(name = "学习帮手", description = "ReAct 学习 Agent：自主检索知识库、维护学习台账")
+@Tag(name = "学习帮手", description = "ReAct 学习 Agent：自主检索知识库、维护学习台账与个人记忆")
 @Slf4j
 @RestController
 @RequiredArgsConstructor
@@ -52,6 +53,7 @@ public class LearningAgentController {
     private final LearningAgentService agentService;
     private final SessionTitleService sessionTitleService;
     private final LearningAskRegistry askRegistry;
+    private final MemoryExtractStreamProducer memoryExtractProducer;
     private final SseEventWriter sseEventWriter;
 
     /**
@@ -122,6 +124,8 @@ public class LearningAgentController {
         // 2. 构建 Agent 流（工具步骤 + 回答分片）
         LearningAgentService.AgentStreamResult stream = agentService.chatStream(sessionId, userId, question);
         AtomicBoolean answerFailed = new AtomicBoolean(false);
+        // 事件流是否已收尾（回答已按完成态或失败态落库），用于区分「标题阶段断连」与「回答还没落库就断连」
+        AtomicBoolean persisted = new AtomicBoolean(false);
 
         return stream.events()
             .onErrorResume(e -> {
@@ -133,6 +137,7 @@ public class LearningAgentController {
             .doOnComplete(() -> {
                 if (answerFailed.get()) {
                     sessionService.failStreamMessage(messageId, stream.content().get());
+                    persisted.set(true);
                     return;
                 }
                 // 3. 完成后落库（含工具步骤与回答时间线，供前端回放）
@@ -142,8 +147,22 @@ public class LearningAgentController {
                 }
                 sessionService.completeStreamMessage(messageId, content,
                     stream.stepsJson().get(), stream.timelineJson().get());
+                if (!content.startsWith("【错误】")) {
+                    memoryExtractProducer.sendExtractTask(userId, sessionId, messageId);
+                }
+                persisted.set(true);
                 log.info("学习帮手流式完成: sessionId={}, messageId={}, steps={}, timeline={}",
                     sessionId, messageId, stream.stepsJson().get(), stream.timelineJson().get());
+            })
+            // 客户端断连走的是 cancel 而不是 complete：把已生成的内容留成「未完成」态，前端仍有重试入口。
+            // 回答可能是半截，不入队抽取；学员重试后自然会重新抽取
+            .doOnCancel(() -> {
+                if (!persisted.get()) {
+                    sessionService.failStreamMessage(messageId, stream.content().get());
+                    persisted.set(true);
+                    log.info("学习帮手流式被中断，已保留部分回答: sessionId={}, messageId={}",
+                        sessionId, messageId);
+                }
             })
             .concatWith(Mono
                 // 4. 首轮回答结束后自动生成会话标题（标题仍是默认占位时才生成），经 title 事件推给前端
