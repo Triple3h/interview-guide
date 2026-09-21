@@ -136,9 +136,11 @@ public class VoiceHistoryLoader {
       return 0;
     }
     VoiceInterviewMessageEntity nth = messageRepository
-        .findFirstBySessionIdAndMessageTypeNotOrderBySequenceNumAsc(
+        .findBySessionIdAndMessageTypeNotOrderBySequenceNumAsc(
             sessionIdLong, VoiceInterviewMessageEntity.MESSAGE_TYPE_SUMMARY,
             PageRequest.of(coveredTurns - 1, 1))
+        .stream()
+        .findFirst()
         .orElse(null);
     if (nth == null || nth.getSequenceNum() == null) {
       log.warn("旧摘要边界迁移定位失败，回退边界 0: sessionId={}", sessionIdLong);

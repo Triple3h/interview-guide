@@ -131,8 +131,8 @@ class VoiceHistoryLoaderTest {
     stubWindow(17, 20);
     // 旧编码：sequenceNum=-16 → coveredTurns=15
     when(interviewService.loadSummaryRow("1")).thenReturn(Optional.of(summaryRow(-16, null)));
-    when(messageRepository.findFirstBySessionIdAndMessageTypeNotOrderBySequenceNumAsc(
-        any(), anyString(), any(Pageable.class))).thenReturn(Optional.of(msg(15)));
+    when(messageRepository.findBySessionIdAndMessageTypeNotOrderBySequenceNumAsc(
+        any(), anyString(), any(Pageable.class))).thenReturn(List.of(msg(15)));
     when(messageRepository.findBySessionIdAndMessageTypeNotAndSequenceNumGreaterThanAndSequenceNumLessThanOrderBySequenceNumAsc(
         any(), anyString(), eq(15), eq(17), any(Pageable.class))).thenReturn(List.of());
     when(compressor.compress(any(), anyString(), eq(0), isNull()))
@@ -143,7 +143,7 @@ class VoiceHistoryLoaderTest {
 
     // 迁移定位：OFFSET 14, LIMIT 1
     ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
-    verify(messageRepository).findFirstBySessionIdAndMessageTypeNotOrderBySequenceNumAsc(
+    verify(messageRepository).findBySessionIdAndMessageTypeNotOrderBySequenceNumAsc(
         any(), anyString(), captor.capture());
     assertThat(captor.getValue().getOffset()).isEqualTo(14);
     assertThat(captor.getValue().getPageSize()).isEqualTo(1);
